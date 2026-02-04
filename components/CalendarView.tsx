@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { MOCK_POSTS, HOLIDAYS, MOCK_ACCOUNTS } from '../constants';
 import { Post, PostStatus, SocialPlatform, User } from '../types';
 import { ChevronLeft, ChevronRight, Clock, CheckCircle, Calendar as CalendarIcon, Filter, Plus, X, Image as ImageIcon, Sparkles, Loader2 } from 'lucide-react';
@@ -8,6 +8,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { useStore } from '../contexts/StoreContext';
 import { postMediaService } from '../services/postMediaService';
 import { geminiService } from '../services/geminiService';
+import { ModalPortal } from './ModalPortal';
 
 // Helpers
 const startOfMonth = (date: Date) => {
@@ -127,6 +128,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [detailPost, setDetailPost] = useState<Post | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const maxFileSizeBytes = 10 * 1024 * 1024;
 
   const reload = async () => {
@@ -169,8 +172,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
     return posts.filter(post => {
       const targetDate = post.scheduledDate || post.publishedDate;
       if (!targetDate || !isSameDay(targetDate, day)) return false;
-      
-      if (filterPlatform !== 'ALL' && !post.platforms.includes(filterPlatform)) return false;
+      const platforms = post.platforms || [];
+      if (filterPlatform !== 'ALL' && !platforms.includes(filterPlatform)) return false;
       return true;
     });
   };
@@ -224,12 +227,34 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
     }
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files) {
+      processFiles(Array.from(e.dataTransfer.files));
+    }
+  };
+
   const removeImage = (index: number) => {
     setCreateImages((prev) => prev.filter((_, i) => i !== index));
     setCreateImagePreviewUrls((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleGenerateContent = async () => {
+    if (!geminiService.isConfigured()) {
+      addNotification('AI未設定', 'GEMINI_API_KEY が未設定のため、AI生成は使えません。', 'WARNING');
+      return;
+    }
     if (!aiTopic.trim()) {
       addNotification('トピック未入力', 'トピックを入力してください。', 'WARNING');
       return;
@@ -410,7 +435,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
                           {post.status === PostStatus.PUBLISHED ? <CheckCircle size={10} /> : <Clock size={10} />}
                           <span className="truncate font-bold">{formatTime(post.scheduledDate || post.publishedDate || new Date())}</span>
                           <div className="flex gap-0.5 ml-auto">
-                             {post.platforms.map(p => (
+                             {(post.platforms || []).map(p => (
                                  <span key={p} className={`w-1.5 h-1.5 rounded-full ${
                                      p === 'INSTAGRAM' ? 'bg-pink-500' : 
                                      p === 'FACEBOOK' ? 'bg-blue-600' : 
@@ -431,6 +456,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
       </div>
 
       {isCreateModalOpen && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
@@ -483,9 +509,22 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
                   <label className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-bold text-gray-600 dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
                     <ImageIcon size={16} />
                     画像を選択
-                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageChange} />
+                    <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageChange} />
                   </label>
                   <span className="text-xs text-gray-500 dark:text-gray-400">PNG, JPG (Max 10MB)</span>
+                </div>
+                <div
+                  className={`mt-3 rounded-xl border-2 border-dashed p-4 text-center text-xs transition-colors ${
+                    isDragging
+                      ? 'border-primary-500 bg-primary-50/60 text-primary-700'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'
+                  }`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  クリックまたはドラッグ＆ドロップで画像を追加
                 </div>
                 {createImagePreviewUrls.length > 0 && (
                   <div className="mt-3 grid grid-cols-5 gap-2">
@@ -577,9 +616,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {detailPost && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="w-full max-w-lg bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
@@ -611,7 +652,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
               <div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">投稿先</div>
                 <div className="flex gap-2 flex-wrap">
-                  {detailPost.platforms.map((p) => (
+                  {(detailPost.platforms || []).map((p) => (
                     <span key={p} className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-xs">
                       {p}
                     </span>
@@ -622,11 +663,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">内容</div>
                 <div className="whitespace-pre-wrap">{detailPost.content}</div>
               </div>
-              {detailPost.imageUrls.length > 0 && (
+              {(detailPost.imageUrls || []).length > 0 && (
                 <div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">画像</div>
                   <div className="grid grid-cols-3 gap-2">
-                    {detailPost.imageUrls.map((url, idx) => (
+                    {(detailPost.imageUrls || []).map((url, idx) => (
                       <img key={idx} src={url} className="w-full h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
                     ))}
                   </div>
@@ -635,6 +676,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

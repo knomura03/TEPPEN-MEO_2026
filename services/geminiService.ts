@@ -2,16 +2,25 @@ import { GoogleGenAI } from "@google/genai";
 
 // Gemini APIを使用して投稿文を作成するサービス
 export class GeminiService {
-  private ai: GoogleGenAI;
+  private ai: GoogleGenAI | null = null;
   private modelId = "gemini-3-flash-preview";
+  private apiKey = (process.env.API_KEY || process.env.GEMINI_API_KEY || '').toString();
 
-  constructor() {
-    // 環境変数からAPIキーを取得
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  isConfigured(): boolean {
+    return Boolean(this.apiKey);
+  }
+
+  private getClient(): GoogleGenAI | null {
+    if (!this.apiKey) return null;
+    if (!this.ai) {
+      this.ai = new GoogleGenAI({ apiKey: this.apiKey });
+    }
+    return this.ai;
   }
 
   async generatePostCaption(topic: string, platform: string, tone: string): Promise<string> {
-    if (!process.env.API_KEY) {
+    const client = this.getClient();
+    if (!client) {
       return "APIキーが設定されていないため、AI生成機能を使用できません。";
     }
 
@@ -31,7 +40,7 @@ export class GeminiService {
         - 読者の興味を引くような書き出しにすること
       `;
 
-      const response = await this.ai.models.generateContent({
+      const response = await client.models.generateContent({
         model: this.modelId,
         contents: prompt,
       });
@@ -44,11 +53,12 @@ export class GeminiService {
   }
 
   async generateHashtags(content: string): Promise<string> {
-    if (!process.env.API_KEY) return "";
+    const client = this.getClient();
+    if (!client) return "";
 
     try {
         const prompt = `以下の投稿内容に最適なハッシュタグを10個、日本語または英語でリストアップしてください。カンマ区切りで出力してください。\n\n投稿内容: ${content}`;
-        const response = await this.ai.models.generateContent({
+        const response = await client.models.generateContent({
             model: this.modelId,
             contents: prompt
         });

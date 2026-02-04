@@ -40,6 +40,10 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
   };
 
   const handleGenerateContent = async () => {
+    if (!geminiService.isConfigured()) {
+      addNotification('AI未設定', 'GEMINI_API_KEY が未設定のため、AI生成は使えません。', 'WARNING');
+      return;
+    }
     setIsGenerating(true);
     const platformName = selectedPlatforms.length > 0 ? selectedPlatforms.join(', ') : 'SNS全般';
     

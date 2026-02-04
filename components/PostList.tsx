@@ -7,6 +7,7 @@ import { postsService } from '../services/postsService';
 import { useNotification } from '../contexts/NotificationContext';
 import { useStore } from '../contexts/StoreContext';
 import { postMediaService } from '../services/postMediaService';
+import { ModalPortal } from './ModalPortal';
 
 const formatDate = (date: Date) => {
   const y = date.getFullYear();
@@ -245,9 +246,9 @@ export const PostList: React.FC = () => {
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-sm text-gray-900 dark:text-white line-clamp-2">{post.content}</p>
-                    {post.imageUrls.length > 0 && (
+                    {(post.imageUrls || []).length > 0 && (
                         <div className="mt-2 flex gap-1">
-                            {post.imageUrls.map((url, i) => (
+                            {(post.imageUrls || []).map((url, i) => (
                                 <img key={i} src={url} alt="Post media" className="w-8 h-8 rounded object-cover border border-gray-200 dark:border-gray-600" />
                             ))}
                         </div>
@@ -292,6 +293,7 @@ export const PostList: React.FC = () => {
       </div>
 
       {editingPost && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
@@ -413,6 +415,7 @@ export const PostList: React.FC = () => {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

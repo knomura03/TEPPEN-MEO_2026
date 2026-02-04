@@ -12,6 +12,12 @@ type UploadResult = {
   errors: string[];
 };
 
+type PostMediaItem = {
+  id: string;
+  storagePath: string;
+  signedUrl?: string;
+};
+
 const BUCKET_ID = 'post-media';
 
 const requireSupabase = () => {
@@ -97,5 +103,32 @@ export const postMediaService = {
       }
     });
     return result;
+  },
+
+  async listForPost(postId: string): Promise<PostMediaItem[]> {
+    const client = requireSupabase();
+    const { data, error } = await client
+      .from('post_media')
+      .select('id, storage_path')
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+
+    const rows = (data || []) as { id: string; storage_path: string }[];
+    const paths = rows.map((row) => row.storage_path);
+    const urlMap = await postMediaService.createSignedUrlMap(paths);
+    return rows.map((row) => ({
+      id: row.id,
+      storagePath: row.storage_path,
+      signedUrl: urlMap.get(row.storage_path),
+    }));
+  },
+
+  async deleteMedia(params: { id: string; storagePath: string }): Promise<void> {
+    const client = requireSupabase();
+    const { error: storageError } = await client.storage.from(BUCKET_ID).remove([params.storagePath]);
+    if (storageError) throw storageError;
+    const { error: dbError } = await client.from('post_media').delete().eq('id', params.id);
+    if (dbError) throw dbError;
   },
 };

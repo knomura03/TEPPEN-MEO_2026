@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { MOCK_POSTS } from '../constants';
 import { Post, PostStatus } from '../types';
-import { Clock, CheckCircle, AlertCircle, Calendar, X } from 'lucide-react';
+import { Clock, CheckCircle, AlertCircle, Calendar, X, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { postsService } from '../services/postsService';
 import { useNotification } from '../contexts/NotificationContext';
 import { useStore } from '../contexts/StoreContext';
+import { postMediaService } from '../services/postMediaService';
 
 const formatDate = (date: Date) => {
   const y = date.getFullYear();
@@ -33,6 +34,11 @@ export const PostList: React.FC = () => {
   const [editContent, setEditContent] = useState('');
   const [editScheduledDate, setEditScheduledDate] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [existingMedia, setExistingMedia] = useState<{ id: string; storagePath: string; signedUrl?: string }[]>([]);
+  const [isLoadingMedia, setIsLoadingMedia] = useState(false);
+  const [newImages, setNewImages] = useState<File[]>([]);
+  const [newImagePreviews, setNewImagePreviews] = useState<string[]>([]);
+  const maxFileSizeBytes = 10 * 1024 * 1024;
 
   const reload = async () => {
     if (!isSupabaseConfigured) {
@@ -73,10 +79,27 @@ export const PostList: React.FC = () => {
     }
   };
 
+  const loadMedia = async (postId: string) => {
+    if (!isSupabaseConfigured) return;
+    setIsLoadingMedia(true);
+    try {
+      const list = await postMediaService.listForPost(postId);
+      setExistingMedia(list);
+    } catch {
+      addNotification('読み込みエラー', '画像の取得に失敗しました。', 'ERROR');
+    } finally {
+      setIsLoadingMedia(false);
+    }
+  };
+
   const openEdit = (post: Post) => {
     setEditingPost(post);
     setEditContent(post.content);
     setEditScheduledDate(post.scheduledDate ? toDatetimeLocalValue(post.scheduledDate) : '');
+    setExistingMedia([]);
+    setNewImages([]);
+    setNewImagePreviews([]);
+    void loadMedia(post.id);
   };
 
   const closeEdit = () => {
@@ -84,6 +107,49 @@ export const PostList: React.FC = () => {
     setEditingPost(null);
     setEditContent('');
     setEditScheduledDate('');
+    setExistingMedia([]);
+    setNewImages([]);
+    setNewImagePreviews([]);
+  };
+
+  const processFiles = (files: File[]) => {
+    const accepted: File[] = [];
+    files.forEach((file) => {
+      if (file.size > maxFileSizeBytes) {
+        addNotification('ファイルサイズ超過', '10MB以下の画像を選んでください。', 'WARNING');
+        return;
+      }
+      accepted.push(file);
+    });
+    if (accepted.length === 0) return;
+    setNewImages((prev) => [...prev, ...accepted]);
+    const urls = accepted.map((file) => URL.createObjectURL(file));
+    setNewImagePreviews((prev) => [...prev, ...urls]);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      processFiles(Array.from(e.target.files));
+    }
+  };
+
+  const removeNewImage = (index: number) => {
+    setNewImages((prev) => prev.filter((_, i) => i !== index));
+    setNewImagePreviews((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removeExistingImage = async (id: string, storagePath: string) => {
+    if (!confirm('この画像を削除しますか？')) return;
+    setIsLoadingMedia(true);
+    try {
+      await postMediaService.deleteMedia({ id, storagePath });
+      setExistingMedia((prev) => prev.filter((m) => m.id !== id));
+      addNotification('削除完了', '画像を削除しました。', 'SUCCESS');
+    } catch {
+      addNotification('削除エラー', '画像の削除に失敗しました。', 'ERROR');
+    } finally {
+      setIsLoadingMedia(false);
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -103,6 +169,26 @@ export const PostList: React.FC = () => {
         scheduledAt,
         status: scheduledAt ? PostStatus.SCHEDULED : PostStatus.DRAFT,
       });
+
+      if (isSupabaseConfigured && newImages.length > 0 && activeStoreId) {
+        try {
+          const result = await postMediaService.uploadForPost({
+            storeId: activeStoreId,
+            postId: editingPost.id,
+            files: newImages,
+          });
+          if (result.failedCount > 0) {
+            addNotification('画像アップロード一部失敗', `${result.failedCount}件の画像アップロードに失敗しました。`, 'WARNING');
+          }
+        } catch (error: any) {
+          addNotification(
+            '画像アップロード失敗',
+            `投稿は更新されましたが、画像のアップロードに失敗しました。${error?.message ? `（${error.message}）` : ''}`,
+            'WARNING'
+          );
+        }
+      }
+
       addNotification('更新完了', '投稿を更新しました。', 'SUCCESS');
       closeEdit();
       await reload();
@@ -242,6 +328,68 @@ export const PostList: React.FC = () => {
                   onChange={(e) => setEditScheduledDate(e.target.value)}
                   className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none dark:text-white"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">画像</label>
+                {isLoadingMedia && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2 mb-2">
+                    <Loader2 className="animate-spin" size={14} />
+                    読み込み中...
+                  </div>
+                )}
+
+                {existingMedia.length > 0 && (
+                  <div className="mb-3">
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">既存画像</div>
+                    <div className="grid grid-cols-5 gap-2">
+                      {existingMedia.map((media) => (
+                        <div key={media.id} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                          {media.signedUrl ? (
+                            <img src={media.signedUrl} alt="media" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">no image</div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void removeExistingImage(media.id, media.storagePath)}
+                            className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-bold text-gray-600 dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <ImageIcon size={16} />
+                    画像を追加
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageChange} />
+                  </label>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">PNG, JPG (Max 10MB)</span>
+                </div>
+                {newImagePreviews.length > 0 && (
+                  <div className="mt-3">
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">追加画像</div>
+                    <div className="grid grid-cols-5 gap-2">
+                      {newImagePreviews.map((url, i) => (
+                        <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                          <img src={url} alt="preview" className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => removeNewImage(i)}
+                            className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

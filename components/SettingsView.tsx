@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from '../services/supabaseClient';
 import { storesService } from '../services/storesService';
 import { profilesService } from '../services/profilesService';
 import { authService } from '../services/authService';
+import { integrationsService } from '../services/integrationsService';
 
 interface SettingsViewProps {
   currentUser: User;
@@ -61,8 +62,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   const [isLoadingStore, setIsLoadingStore] = useState(false);
   const [isSavingStore, setIsSavingStore] = useState(false);
 
-  // Integrations State (Mock)
+  // Integrations State
   const [accounts, setAccounts] = useState<SocialAccount[]>(MOCK_ACCOUNTS);
+  const [isLoadingIntegrations, setIsLoadingIntegrations] = useState(false);
+  const [updatingIntegrationId, setUpdatingIntegrationId] = useState<string | null>(null);
 
   // System State (Admin Only)
   const [apiKey, setApiKey] = useState('****************************');
@@ -270,19 +273,85 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   }, [activeStoreId]);
 
   const handleToggleConnection = (id: string) => {
-    setAccounts(prev => prev.map(acc => {
-      if (acc.id === id) {
-        const newState = !acc.isConnected;
+    const target = accounts.find((acc) => acc.id === id);
+    if (!target) return;
+
+    if (!isSupabaseConfigured) {
+      setAccounts(prev => prev.map(acc => {
+        if (acc.id === id) {
+          const newState = !acc.isConnected;
+          addNotification(
+            newState ? '連携完了' : '連携解除', 
+            `${acc.platform}との連携を${newState ? '開始' : '解除'}しました。`,
+            newState ? 'SUCCESS' : 'INFO'
+          );
+          return { ...acc, isConnected: newState };
+        }
+        return acc;
+      }));
+      return;
+    }
+
+    if (!activeStoreId) {
+      addNotification('店舗未選択', '店舗が選択されていません。', 'WARNING');
+      return;
+    }
+
+    setUpdatingIntegrationId(id);
+    integrationsService
+      .setConnection(activeStoreId, target.platform, !target.isConnected)
+      .then((updated) => {
+        setAccounts(prev => prev.map(acc => acc.id === id ? { ...acc, isConnected: updated.isConnected } : acc));
         addNotification(
-          newState ? '連携完了' : '連携解除', 
-          `${acc.platform}との連携を${newState ? '開始' : '解除'}しました。`,
-          newState ? 'SUCCESS' : 'INFO'
+          updated.isConnected ? '連携完了' : '連携解除', 
+          `${target.platform}との連携を${updated.isConnected ? '開始' : '解除'}しました。`,
+          updated.isConnected ? 'SUCCESS' : 'INFO'
         );
-        return { ...acc, isConnected: newState };
-      }
-      return acc;
-    }));
+      })
+      .catch(() => {
+        addNotification('連携エラー', '連携状態の更新に失敗しました。', 'ERROR');
+      })
+      .finally(() => {
+        setUpdatingIntegrationId(null);
+      });
   };
+
+  useEffect(() => {
+    const loadIntegrations = async () => {
+      if (!isSupabaseConfigured) {
+        setAccounts(MOCK_ACCOUNTS);
+        return;
+      }
+      if (!activeStoreId) {
+        setAccounts([]);
+        return;
+      }
+
+      setIsLoadingIntegrations(true);
+      try {
+        const rows = await integrationsService.listByStore(activeStoreId);
+        const connected = new Map(rows.map((row) => [row.platform, row.isConnected]));
+        const baseAccounts: SocialAccount[] = [
+          { id: 'INSTAGRAM', platform: 'INSTAGRAM', name: 'Instagram', handle: '@instagram', isConnected: false },
+          { id: 'FACEBOOK', platform: 'FACEBOOK', name: 'Facebook', handle: 'Facebook Page', isConnected: false },
+          { id: 'GOOGLE_BUSINESS', platform: 'GOOGLE_BUSINESS', name: 'Google Business', handle: 'Google Maps', isConnected: false },
+        ];
+        setAccounts(
+          baseAccounts.map((acc) => ({
+            ...acc,
+            isConnected: connected.get(acc.platform) ?? false,
+          }))
+        );
+      } catch {
+        addNotification('読み込みエラー', '連携状態の取得に失敗しました。', 'ERROR');
+      } finally {
+        setIsLoadingIntegrations(false);
+      }
+    };
+
+    void loadIntegrations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStoreId]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -568,6 +637,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                 <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-1">SNS連携設定</h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400">投稿や分析を行うアカウントを接続します。</p>
               </div>
+              {!activeStoreId && (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 text-sm rounded-xl p-4">
+                  店舗が選択されていません。右上の店舗セレクタから選択してください。
+                </div>
+              )}
+              {isLoadingIntegrations && (
+                <div className="text-sm text-gray-500 dark:text-gray-400">連携状態を読み込み中...</div>
+              )}
 
               <div className="grid gap-4">
                 {accounts.map(account => (
@@ -591,14 +668,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       {account.isConnected ? (
                         <button 
                           onClick={() => handleToggleConnection(account.id)}
-                          className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 rounded-lg transition-colors"
+                          disabled={isLoadingIntegrations || updatingIntegrationId === account.id}
+                          className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           連携解除
                         </button>
                       ) : (
                         <button 
                           onClick={() => handleToggleConnection(account.id)}
-                          className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-md shadow-primary-200 dark:shadow-none transition-all"
+                          disabled={isLoadingIntegrations || updatingIntegrationId === account.id}
+                          className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-md shadow-primary-200 dark:shadow-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           連携する
                         </button>

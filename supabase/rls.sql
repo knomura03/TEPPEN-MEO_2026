@@ -219,6 +219,19 @@ on public.integrations
 for select
 using (public.user_has_store_access(store_id));
 
+drop policy if exists integrations_insert_by_store_access on public.integrations;
+create policy integrations_insert_by_store_access
+on public.integrations
+for insert
+with check (public.user_has_store_access(store_id));
+
+drop policy if exists integrations_update_by_store_access on public.integrations;
+create policy integrations_update_by_store_access
+on public.integrations
+for update
+using (public.user_has_store_access(store_id))
+with check (public.user_has_store_access(store_id));
+
 alter table public.gbp_locations enable row level security;
 drop policy if exists gbp_locations_select_by_store_access on public.gbp_locations;
 create policy gbp_locations_select_by_store_access

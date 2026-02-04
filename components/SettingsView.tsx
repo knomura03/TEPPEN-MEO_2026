@@ -31,6 +31,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     if (message.includes('invalid login credentials')) {
       return '現在のパスワードが正しくありません。';
     }
+    if (message.includes('rate limit')) {
+      return 'メール送信の上限に達しました。数分〜1時間ほど待ってから再試行してください（既に届いた確認メールがあればそちらで完了できます）。';
+    }
     if (message.includes('already requested')) {
       return 'メール変更は既に申請されています。旧メールに届いた確認メールのリンクを先にクリックしてください。';
     }
@@ -108,16 +111,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     setIsSavingProfile(true);
     try {
       if (wantsPasswordChange) {
-        await authService.changePassword(trimmedCurrentPassword, trimmedNewPassword);
-        setCurrentPassword('');
-        setNewPassword('');
-        addNotification('パスワード更新', 'パスワードを更新しました。', 'SUCCESS');
+        try {
+          await authService.changePassword(trimmedCurrentPassword, trimmedNewPassword);
+          setCurrentPassword('');
+          setNewPassword('');
+          addNotification('パスワード更新', 'パスワードを更新しました。', 'SUCCESS');
+        } catch (error) {
+          addNotification('パスワード更新エラー', getProfileSaveErrorMessage(error), 'ERROR');
+        }
       }
 
       if (wantsEmailChange) {
-        await authService.changeEmail(trimmedCurrentPassword, trimmedNewEmail);
-        setNewEmail('');
-        addNotification('メール変更', '確認メールを送信しました。リンクをクリックして完了してください。', 'INFO');
+        try {
+          await authService.changeEmail(trimmedCurrentPassword, trimmedNewEmail);
+          setNewEmail('');
+          addNotification('メール変更', '確認メールを送信しました。リンクをクリックして完了してください。', 'INFO');
+        } catch (error) {
+          addNotification('メール変更エラー', getProfileSaveErrorMessage(error), 'ERROR');
+        }
       }
 
       const nextEmail = trimmedEmail ? trimmedEmail : '';

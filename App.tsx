@@ -78,7 +78,7 @@ const App: React.FC = () => {
       case 'DASHBOARD':
         return <Dashboard isDarkMode={isDarkMode} />;
       case 'CALENDAR':
-        return <CalendarView />;
+        return <CalendarView currentUser={currentUser} />;
       case 'CREATE_POST':
         return <PostCreator currentUser={currentUser} />;
       case 'POST_LIST':

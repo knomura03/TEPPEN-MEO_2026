@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { MOCK_POSTS, HOLIDAYS } from '../constants';
-import { Post, PostStatus, SocialPlatform } from '../types';
-import { ChevronLeft, ChevronRight, Clock, CheckCircle, Calendar as CalendarIcon, Filter, Plus } from 'lucide-react';
+import { MOCK_POSTS, HOLIDAYS, MOCK_ACCOUNTS } from '../constants';
+import { Post, PostStatus, SocialPlatform, User } from '../types';
+import { ChevronLeft, ChevronRight, Clock, CheckCircle, Calendar as CalendarIcon, Filter, Plus, X } from 'lucide-react';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { postsService } from '../services/postsService';
 import { useNotification } from '../contexts/NotificationContext';
@@ -81,17 +81,36 @@ const formatTime = (date: Date) => {
   return `${h}:${min}`;
 };
 
+const toDatetimeLocalValue = (date: Date) => {
+  const y = date.getFullYear();
+  const m = ('0' + (date.getMonth() + 1)).slice(-2);
+  const d = ('0' + date.getDate()).slice(-2);
+  const h = ('0' + date.getHours()).slice(-2);
+  const min = ('0' + date.getMinutes()).slice(-2);
+  return `${y}-${m}-${d}T${h}:${min}`;
+};
+
 const getHolidayName = (date: Date) => {
   const key = `${date.getMonth() + 1}/${date.getDate()}`;
   return HOLIDAYS[key];
 };
 
-export const CalendarView: React.FC = () => {
+interface CalendarViewProps {
+  currentUser: User;
+}
+
+export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
   const { activeStoreId } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [filterPlatform, setFilterPlatform] = useState<SocialPlatform | 'ALL'>('ALL');
   const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [createDateTime, setCreateDateTime] = useState('');
+  const [createContent, setCreateContent] = useState('');
+  const [createPlatforms, setCreatePlatforms] = useState<SocialPlatform[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [detailPost, setDetailPost] = useState<Post | null>(null);
 
   const reload = async () => {
     if (!isSupabaseConfigured) {
@@ -140,8 +159,13 @@ export const CalendarView: React.FC = () => {
   };
 
   const handleDateClick = (date: Date) => {
-    // 実際の実装では、ここでモーダルを開くか作成画面へ遷移し、初期日付をセットする
-    alert(`${date.toLocaleDateString()} の新規投稿を作成します`);
+    const now = new Date();
+    const base = new Date(date);
+    base.setHours(now.getHours(), now.getMinutes(), 0, 0);
+    setCreateDateTime(toDatetimeLocalValue(base));
+    setCreateContent('');
+    setCreatePlatforms([]);
+    setIsCreateModalOpen(true);
   };
 
   const statusColor = (status: PostStatus) => {
@@ -151,6 +175,54 @@ export const CalendarView: React.FC = () => {
       case PostStatus.DRAFT: return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-gray-200 dark:border-gray-600';
       case PostStatus.FAILED: return 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 border-red-200 dark:border-red-800';
       default: return 'bg-gray-100';
+    }
+  };
+
+  const togglePlatform = (platform: SocialPlatform) => {
+    setCreatePlatforms((prev) => (prev.includes(platform) ? prev.filter((p) => p !== platform) : [...prev, platform]));
+  };
+
+  const handleCreatePost = async () => {
+    if (!createDateTime) {
+      addNotification('日時未入力', '投稿日時を入力してください。', 'WARNING');
+      return;
+    }
+    if (createPlatforms.length === 0) {
+      addNotification('投稿先未選択', '投稿先を1つ以上選択してください。', 'WARNING');
+      return;
+    }
+    if (!createContent.trim()) {
+      addNotification('内容未入力', '投稿内容を入力してください。', 'WARNING');
+      return;
+    }
+
+    if (!isSupabaseConfigured) {
+      addNotification('モック', 'Supabase未設定のため保存できません。', 'INFO');
+      setIsCreateModalOpen(false);
+      return;
+    }
+
+    if (!activeStoreId) {
+      addNotification('店舗未設定', '店舗が未設定のため投稿を保存できません。', 'ERROR');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await postsService.create({
+        storeId: activeStoreId,
+        authorUserId: currentUser.id,
+        content: createContent,
+        platforms: createPlatforms,
+        scheduledAt: new Date(createDateTime),
+      });
+      addNotification('予約作成完了', 'カレンダーに投稿を追加しました。', 'SUCCESS');
+      setIsCreateModalOpen(false);
+      await reload();
+    } catch {
+      addNotification('作成エラー', '投稿の作成に失敗しました。', 'ERROR');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -245,7 +317,7 @@ export const CalendarView: React.FC = () => {
                       title={post.content}
                       onClick={(e) => {
                           e.stopPropagation();
-                          alert(`投稿詳細: ${post.content}`);
+                          setDetailPost(post);
                       }}
                     >
                       <div className="flex items-center gap-1 mb-0.5">
@@ -270,6 +342,135 @@ export const CalendarView: React.FC = () => {
           })}
         </div>
       </div>
+
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+              <div className="font-bold text-gray-900 dark:text-white">この日の投稿を作成</div>
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(false)}
+                disabled={isSaving}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-300 disabled:opacity-60"
+                aria-label="閉じる"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">投稿日時</label>
+                <input
+                  type="datetime-local"
+                  value={createDateTime}
+                  onChange={(e) => setCreateDateTime(e.target.value)}
+                  className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">投稿先</label>
+                <div className="flex flex-wrap gap-2">
+                  {MOCK_ACCOUNTS.map((account) => (
+                    <button
+                      key={account.id}
+                      type="button"
+                      onClick={() => togglePlatform(account.platform)}
+                      className={`px-3 py-2 rounded-full text-xs font-bold border transition-all ${
+                        createPlatforms.includes(account.platform)
+                          ? 'bg-primary-600 text-white border-primary-600'
+                          : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+                      }`}
+                    >
+                      {account.platform}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">投稿内容</label>
+                <textarea
+                  value={createContent}
+                  onChange={(e) => setCreateContent(e.target.value)}
+                  rows={5}
+                  className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none dark:text-white"
+                  placeholder="投稿内容を入力してください"
+                />
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(false)}
+                disabled={isSaving}
+                className="px-4 py-2 text-sm font-bold rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-60"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleCreatePost()}
+                disabled={isSaving}
+                className="px-4 py-2 text-sm font-bold rounded-xl bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-70"
+              >
+                {isSaving ? '保存中...' : '予約投稿を作成'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {detailPost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="w-full max-w-lg bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+              <div className="font-bold text-gray-900 dark:text-white">投稿詳細</div>
+              <button
+                type="button"
+                onClick={() => setDetailPost(null)}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-300"
+                aria-label="閉じる"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-5 space-y-3 text-sm text-gray-700 dark:text-gray-200">
+              <div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">ステータス</div>
+                <div>{detailPost.status}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">日時</div>
+                <div>
+                  {detailPost.scheduledDate
+                    ? formatDate(detailPost.scheduledDate)
+                    : detailPost.publishedDate
+                      ? formatDate(detailPost.publishedDate)
+                      : '-'}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">投稿先</div>
+                <div className="flex gap-2 flex-wrap">
+                  {detailPost.platforms.map((p) => (
+                    <span key={p} className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-xs">
+                      {p}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">内容</div>
+                <div className="whitespace-pre-wrap">{detailPost.content}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

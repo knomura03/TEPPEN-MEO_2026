@@ -7,6 +7,7 @@ import { useStore } from '../contexts/StoreContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { storesService } from '../services/storesService';
 import { profilesService } from '../services/profilesService';
+import { authService } from '../services/authService';
 
 interface SettingsViewProps {
   currentUser: User;
@@ -41,17 +42,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   // System State (Admin Only)
   const [apiKey, setApiKey] = useState('****************************');
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       addNotification('入力エラー', '表示名を入力してください。', 'WARNING');
       return;
     }
 
-    if (currentPassword || newPassword) {
-      addNotification('未対応', 'パスワード変更は次フェーズで対応します。', 'WARNING');
-      setCurrentPassword('');
-      setNewPassword('');
+    const hasCurrentPassword = currentPassword.trim().length > 0;
+    const hasNewPassword = newPassword.trim().length > 0;
+    if (hasCurrentPassword !== hasNewPassword) {
+      addNotification('入力エラー', 'パスワード変更は両方入力してください。', 'WARNING');
+      return;
+    }
+    if (hasNewPassword && newPassword.trim().length < 6) {
+      addNotification('入力エラー', '新しいパスワードは6文字以上で入力してください。', 'WARNING');
+      return;
     }
 
     if (!isSupabaseConfigured) {
@@ -60,30 +66,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     }
 
     setIsSavingProfile(true);
-    profilesService
-      .upsertProfile(currentUser.id, {
+    try {
+      if (hasCurrentPassword && hasNewPassword) {
+        await authService.changePassword(currentPassword.trim(), newPassword.trim());
+        setCurrentPassword('');
+        setNewPassword('');
+        addNotification('パスワード更新', 'パスワードを更新しました。', 'SUCCESS');
+      }
+
+      const profile = await profilesService.upsertProfile(currentUser.id, {
         name: name.trim(),
         email: email.trim() ? email.trim() : null,
         avatarUrl: currentUser.avatarUrl ?? null,
-      })
-      .then((profile) => {
-        const updatedUser: User = {
-          ...currentUser,
-          name: profile.name || name.trim(),
-          email: profile.email || email.trim(),
-          avatarUrl: profile.avatarUrl || currentUser.avatarUrl,
-        };
-        setName(updatedUser.name);
-        setEmail(updatedUser.email);
-        onProfileUpdated?.(updatedUser);
-        addNotification('プロフィール更新', 'ユーザー情報を保存しました。', 'SUCCESS');
-      })
-      .catch(() => {
-        addNotification('保存エラー', 'ユーザー情報の保存に失敗しました。', 'ERROR');
-      })
-      .finally(() => {
-        setIsSavingProfile(false);
       });
+      const updatedUser: User = {
+        ...currentUser,
+        name: profile.name || name.trim(),
+        email: profile.email || email.trim(),
+        avatarUrl: profile.avatarUrl || currentUser.avatarUrl,
+      };
+      setName(updatedUser.name);
+      setEmail(updatedUser.email);
+      onProfileUpdated?.(updatedUser);
+      addNotification('プロフィール更新', 'ユーザー情報を保存しました。', 'SUCCESS');
+    } catch {
+      addNotification('保存エラー', 'ユーザー情報の保存に失敗しました。', 'ERROR');
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   const handleSaveStore = (e: React.FormEvent) => {

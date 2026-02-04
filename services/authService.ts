@@ -149,6 +149,29 @@ class AuthService {
     }
   }
 
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    if (!isSupabaseConfigured || !supabase) {
+      throw new Error('Supabaseが未設定のため、パスワードを変更できません。');
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    const sessionUser = sessionData.session?.user;
+    const email = sessionUser?.email;
+    if (!email) {
+      throw new Error('セッションが見つからないため、パスワードを変更できません。');
+    }
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password: currentPassword,
+    });
+    if (signInError) throw signInError;
+
+    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+    if (updateError) throw updateError;
+  }
+
   // 権限チェックヘルパー
   canManageUsers(user: User): boolean {
     return user.role === Role.ADMIN || user.role === Role.MANAGER;

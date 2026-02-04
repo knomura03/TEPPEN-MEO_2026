@@ -1,0 +1,44 @@
+name: バグ報告
+description: 不具合の報告（再現手順つき）
+title: "[Bug] "
+labels:
+  - Bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: 何が起きているか（1〜2文で）
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: クリック順・入力内容など（番号付きで）
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する動作
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の動作
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: エラー/ログ/スクショ
+      description: 可能ならスクショやエラーメッセージを貼ってください
+    validations:
+      required: false
+

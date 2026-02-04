@@ -1,0 +1,38 @@
+name: 機能要望
+description: 新機能/改善の提案
+title: "[Feature] "
+labels:
+  - Feature
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 解決したい課題
+      description: どんな困りごと/目的があるか
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提案する解決案
+      description: どういう動き/画面/設定にしたいか
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 優先度（目安）
+      options:
+        - High（急ぎ）
+        - Medium（近いうち）
+        - Low（いつか）
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: 補足
+      description: 参考URLやスクショ、制約など
+    validations:
+      required: false
+

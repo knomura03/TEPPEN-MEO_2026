@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { MOCK_POSTS } from '../constants';
 import { Post, PostStatus } from '../types';
-import { Clock, CheckCircle, AlertCircle, Calendar } from 'lucide-react';
+import { Clock, CheckCircle, AlertCircle, Calendar, X } from 'lucide-react';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { postsService } from '../services/postsService';
 import { useNotification } from '../contexts/NotificationContext';
@@ -16,10 +16,23 @@ const formatDate = (date: Date) => {
   return `${y}/${m}/${d} ${h}:${min}`;
 };
 
+const toDatetimeLocalValue = (date: Date) => {
+  const y = date.getFullYear();
+  const m = ('0' + (date.getMonth() + 1)).slice(-2);
+  const d = ('0' + date.getDate()).slice(-2);
+  const h = ('0' + date.getHours()).slice(-2);
+  const min = ('0' + date.getMinutes()).slice(-2);
+  return `${y}-${m}-${d}T${h}:${min}`;
+};
+
 export const PostList: React.FC = () => {
   const { addNotification } = useNotification();
   const { activeStoreId } = useStore();
   const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [editScheduledDate, setEditScheduledDate] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const reload = async () => {
     if (!isSupabaseConfigured) {
@@ -57,6 +70,46 @@ export const PostList: React.FC = () => {
       await reload();
     } catch {
       addNotification('削除エラー', '投稿の削除に失敗しました。', 'ERROR');
+    }
+  };
+
+  const openEdit = (post: Post) => {
+    setEditingPost(post);
+    setEditContent(post.content);
+    setEditScheduledDate(post.scheduledDate ? toDatetimeLocalValue(post.scheduledDate) : '');
+  };
+
+  const closeEdit = () => {
+    if (isSaving) return;
+    setEditingPost(null);
+    setEditContent('');
+    setEditScheduledDate('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingPost) return;
+
+    if (!isSupabaseConfigured) {
+      addNotification('モック', 'デモでは編集できません。', 'INFO');
+      closeEdit();
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const scheduledAt = editScheduledDate ? new Date(editScheduledDate) : null;
+      await postsService.update(editingPost.id, {
+        content: editContent,
+        scheduledAt,
+        status: scheduledAt ? PostStatus.SCHEDULED : PostStatus.DRAFT,
+      });
+      addNotification('更新完了', '投稿を更新しました。', 'SUCCESS');
+      closeEdit();
+      await reload();
+    } catch {
+      addNotification('更新エラー', '投稿の更新に失敗しました。', 'ERROR');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -132,7 +185,12 @@ export const PostList: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 mr-3">編集</button>
+                    <button
+                      onClick={() => openEdit(post)}
+                      className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 mr-3"
+                    >
+                      編集
+                    </button>
                     <button
                       onClick={() => handleDelete(post.id)}
                       className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
@@ -146,6 +204,68 @@ export const PostList: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {editingPost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+              <div className="font-bold text-gray-900 dark:text-white">投稿を編集</div>
+              <button
+                type="button"
+                onClick={closeEdit}
+                disabled={isSaving}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-300 disabled:opacity-60"
+                aria-label="閉じる"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">内容</label>
+                <textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  rows={6}
+                  className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">
+                  予約日時（空にすると下書き）
+                </label>
+                <input
+                  type="datetime-local"
+                  value={editScheduledDate}
+                  onChange={(e) => setEditScheduledDate(e.target.value)}
+                  className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none dark:text-white"
+                />
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEdit}
+                disabled={isSaving}
+                className="px-4 py-2 text-sm font-bold rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-60"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveEdit()}
+                disabled={isSaving}
+                className="px-4 py-2 text-sm font-bold rounded-xl bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-70"
+              >
+                {isSaving ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

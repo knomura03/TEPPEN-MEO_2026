@@ -6,6 +6,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { userManagementService } from '../services/userManagementService';
 import { useStore } from '../contexts/StoreContext';
+import { supabase } from '../services/supabaseClient';
 
 interface UserManagementProps {
   currentUser: User;
@@ -17,6 +18,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const [users, setUsers] = useState<User[]>(MOCK_USERS);
   const [isLoading, setIsLoading] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [inviteName, setInviteName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<Role>(Role.USER);
+  const [inviteStoreId, setInviteStoreId] = useState<string>('');
+  const [isInviting, setIsInviting] = useState(false);
 
   const activeOrgId = useMemo(() => {
     if (!activeStoreId) return null;
@@ -25,24 +32,35 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   }, [activeStoreId, stores]);
 
   useEffect(() => {
+    if (!inviteStoreId && activeStoreId) {
+      setInviteStoreId(activeStoreId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStoreId]);
+
+  const loadUsers = async (orgId: string | null) => {
+    if (!isSupabaseConfigured) {
+      setUsers(MOCK_USERS);
+      return;
+    }
+    if (!orgId) {
+      setUsers([]);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const data = await userManagementService.listUsersByOrg(orgId);
+      setUsers(data);
+    } catch {
+      addNotification('読み込みエラー', 'ユーザー一覧の取得に失敗しました。', 'ERROR');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     const loadUsers = async () => {
-      if (!isSupabaseConfigured) {
-        setUsers(MOCK_USERS);
-        return;
-      }
-      if (!activeOrgId) {
-        setUsers([]);
-        return;
-      }
-      setIsLoading(true);
-      try {
-        const data = await userManagementService.listUsersByOrg(activeOrgId);
-        setUsers(data);
-      } catch {
-        addNotification('読み込みエラー', 'ユーザー一覧の取得に失敗しました。', 'ERROR');
-      } finally {
-        setIsLoading(false);
-      }
+      await loadUsers(activeOrgId);
     };
 
     void loadUsers();
@@ -81,6 +99,47 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
         .finally(() => {
           setDeletingUserId(null);
         });
+    }
+  };
+
+  const handleInvite = async () => {
+    if (!inviteName.trim() || !inviteEmail.trim()) {
+      addNotification('入力エラー', '名前とメールアドレスを入力してください。', 'WARNING');
+      return;
+    }
+    if (!inviteStoreId) {
+      addNotification('店舗未選択', '店舗を選択してください。', 'WARNING');
+      return;
+    }
+    if (!isSupabaseConfigured || !supabase) {
+      addNotification('準備中', 'Supabase未設定のため招待できません。', 'INFO');
+      return;
+    }
+
+    setIsInviting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-create-user', {
+        body: {
+          name: inviteName.trim(),
+          email: inviteEmail.trim(),
+          role: inviteRole,
+          storeId: inviteStoreId,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      addNotification('招待完了', '招待メールを送信しました。', 'SUCCESS');
+      setInviteName('');
+      setInviteEmail('');
+      setInviteRole(Role.USER);
+      setIsInviteOpen(false);
+      await loadUsers(activeOrgId);
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String((err as { message?: string }).message || '') : '招待に失敗しました。';
+      addNotification('招待エラー', message || '招待に失敗しました。', 'ERROR');
+    } finally {
+      setIsInviting(false);
     }
   };
 
@@ -151,7 +210,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                 <span>CSVエクスポート</span>
             </button>
             <button
-                onClick={() => addNotification('準備中', '新規ユーザー作成は次フェーズで対応します。', 'INFO')}
+                onClick={() => setIsInviteOpen(true)}
                 className="flex items-center space-x-2 bg-primary-600 text-white px-4 py-2 rounded-xl hover:bg-primary-700 shadow-md shadow-primary-200 dark:shadow-none transition-all"
             >
                 <UserPlus size={18} />
@@ -260,6 +319,85 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
           </table>
         </div>
       </div>
+
+      {isInviteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-xl p-6">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">新規ユーザー作成（招待）</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">名前</label>
+                <input
+                  type="text"
+                  value={inviteName}
+                  onChange={(e) => setInviteName(e.target.value)}
+                  className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">メールアドレス</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">権限ロール</label>
+                  <select
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value as Role)}
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                  >
+                    {currentUser.role === Role.ADMIN && (
+                      <>
+                        <option value={Role.ADMIN}>ADMIN</option>
+                        <option value={Role.MANAGER}>MANAGER</option>
+                      </>
+                    )}
+                    <option value={Role.USER}>USER</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">店舗</label>
+                  <select
+                    value={inviteStoreId}
+                    onChange={(e) => setInviteStoreId(e.target.value)}
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                  >
+                    <option value="">選択してください</option>
+                    {stores.map((store) => (
+                      <option key={store.id} value={store.id}>
+                        {store.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                招待メールはSupabaseから送信されます。MANAGER/ADMINは全店アクセス、USERは選択店舗に所属します。
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setIsInviteOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleInvite}
+                disabled={isInviting}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isInviting ? '送信中...' : '招待を送信'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

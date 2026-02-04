@@ -130,6 +130,27 @@ SupabaseでRLS（アクセス制御）を有効にすると、最初は「所属
 GBP連携を進める段階（M2）で、ここに **スクショ付き**で追記します。
 ゴールは「TEPPEN MEOの管理画面で“接続する”を押すだけ」で終わる形です。
 
+## （追加）新規ユーザー作成（招待）を使うための設定
+「ユーザー・契約管理」画面から**招待メールを送る**ために、Supabase側で1つだけ設定が必要です。
+
+### 手順（クリック順）
+1. Supabaseダッシュボードを開く
+2. 左メニューの「Functions」を押す
+3. 「New function」を押す
+4. 名前を `admin-create-user` にする
+5. リポジトリ内の `supabase/functions/admin-create-user/index.ts` を開く
+6. 中身をすべてコピーして、Supabaseのエディタに貼り付ける
+7. 保存してデプロイする
+
+### シークレットの設定（超重要）
+1. Functions画面の「Secrets」または「Settings」を開く
+2. `SUPABASE_SERVICE_ROLE_KEY` を追加する
+   - 値は Project Settings → API → `service_role` をコピー
+3. 保存
+
+### 確認
+TEPPEN MEO の「ユーザー・契約管理」→「新規ユーザー作成」で招待メールが届けばOKです。
+
 ## よくある詰まりポイント
 ### A) 作成できない（支払い/制限が出る）
 - 画面のメッセージをスクショして送ってください（こちらで状況に応じて案内します）

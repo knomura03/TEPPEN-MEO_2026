@@ -46,5 +46,24 @@ StorageのポリシーはSQLでエラーになることがあるため、**GUI�
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
+## 8) （MVP拡張）ユーザー招待（管理者機能）
+ユーザー管理画面から「新規ユーザー作成（招待）」を使うには、Supabase Edge Function を1つデプロイします。
+
+### 8-1) Edge Function をデプロイ
+1. Supabaseダッシュボードで対象プロジェクトを開く
+2. 左メニューの「Functions」を開く
+3. 「New function」を押す
+4. 名前を `admin-create-user` にする
+5. `supabase/functions/admin-create-user/index.ts` の内容を貼り付けて保存
+
+### 8-2) 環境変数（シークレット）を設定
+Functions 画面の「Secrets」または「Settings」で以下を追加します。
+- `SUPABASE_SERVICE_ROLE_KEY`（Supabase Project Settings → API → service_role）
+
+※ `SUPABASE_URL` はSupabase側で自動注入されるため通常不要ですが、もし必要なら追加してください。
+
+### 8-3) 動作確認
+管理画面「ユーザー・契約管理」→「新規ユーザー作成」で招待メールが届けばOK。
+
 ## 注意
 - `service_role key` はシークレットです。フロントに入れない/共有しないでください。

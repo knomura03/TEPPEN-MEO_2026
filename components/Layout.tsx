@@ -20,6 +20,8 @@ import {
 import { OnboardingTour } from './OnboardingTour';
 import { NotificationCenter } from './NotificationCenter';
 import { StoreSelector } from './StoreSelector';
+import { useStore } from '../contexts/StoreContext';
+import { isSupabaseConfigured } from '../services/supabaseClient';
 
 interface LayoutProps {
   currentUser: User;
@@ -75,6 +77,7 @@ export const Layout: React.FC<LayoutProps> = ({
   toggleTheme,
   children 
 }) => {
+  const { stores, isLoadingStores, reloadStores } = useStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showTour, setShowTour] = useState(false);
 
@@ -112,6 +115,8 @@ export const Layout: React.FC<LayoutProps> = ({
     'USER_MANAGEMENT': 'ユーザー・契約管理',
     'SETTINGS': '設定'
   };
+
+  const needsStoreBootstrap = isSupabaseConfigured && !isLoadingStores && stores.length === 0;
 
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden transition-colors duration-200`}>
@@ -282,6 +287,41 @@ export const Layout: React.FC<LayoutProps> = ({
 
         <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
           <div className="max-w-7xl mx-auto h-full pb-20 md:pb-0">
+            {needsStoreBootstrap && (
+              <div className="mb-6 p-4 md:p-5 rounded-2xl border border-yellow-200 dark:border-yellow-900/50 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100">
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="font-bold text-sm md:text-base">店舗が未設定です（初期データ作成が必要）</div>
+                    <div className="text-xs md:text-sm opacity-90 leading-relaxed">
+                      SupabaseのRLS有効化後は「所属（membership）が無いユーザー」は店舗が見えません。
+                      まずは Supabase の SQL Editor で <code className="px-1 py-0.5 rounded bg-white/70 dark:bg-gray-900/40">supabase/bootstrap.sql</code> を実行してください。
+                    </div>
+                    <ol className="text-xs md:text-sm list-decimal list-inside space-y-1 opacity-95">
+                      <li>Supabase → SQL Editor を開く</li>
+                      <li><code className="px-1 py-0.5 rounded bg-white/70 dark:bg-gray-900/40">supabase/bootstrap.sql</code> を開いてコピペする</li>
+                      <li><code className="px-1 py-0.5 rounded bg-white/70 dark:bg-gray-900/40">YOUR_EMAIL_HERE</code> を、今ログイン中のメール（<code className="px-1 py-0.5 rounded bg-white/70 dark:bg-gray-900/40">{currentUser.email || '（メールが取得できません）'}</code>）に置換する</li>
+                      <li>実行 → 右上の「店舗一覧を再読み込み」を押す</li>
+                    </ol>
+                  </div>
+                  <div className="flex gap-2 md:flex-col md:items-stretch">
+                    <button
+                      type="button"
+                      onClick={() => void reloadStores()}
+                      className="px-4 py-2 text-xs md:text-sm font-bold rounded-xl bg-white/80 dark:bg-gray-900/40 border border-yellow-200 dark:border-yellow-900/60 hover:bg-white dark:hover:bg-gray-900/60 transition-colors"
+                    >
+                      店舗一覧を再読み込み
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('SETTINGS')}
+                      className="px-4 py-2 text-xs md:text-sm font-bold rounded-xl bg-yellow-600 text-white hover:bg-yellow-700 transition-colors"
+                    >
+                      設定へ
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {children}
           </div>
         </main>

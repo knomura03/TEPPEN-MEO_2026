@@ -2,12 +2,13 @@ import { User, Role, PlanType, StoreInfo } from '../types';
 import { MOCK_USERS } from '../constants';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
 import type { User as SupabaseAuthUser } from '@supabase/supabase-js';
+import { membershipsService } from './membershipsService';
 
 class AuthService {
   private currentUser: User | null = null;
   private demoStorageKey = 'social_sync_user';
 
-  private mapSupabaseUser(user: SupabaseAuthUser): User {
+  private mapSupabaseUser(user: SupabaseAuthUser, override?: Partial<Pick<User, 'role'>>): User {
     const email = user.email || '';
     const username = email.includes('@') ? email.split('@')[0] : (email || user.id);
 
@@ -26,7 +27,7 @@ class AuthService {
       username,
       name: user.user_metadata?.name || username,
       email,
-      role,
+      role: override?.role ?? role,
       avatarUrl: user.user_metadata?.avatarUrl,
       plan,
       lastLoginAt,
@@ -51,7 +52,13 @@ class AuthService {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     if (!data.user) throw new Error('ログインに失敗しました。');
-    this.currentUser = this.mapSupabaseUser(data.user);
+    let membershipRole: Role | null = null;
+    try {
+      membershipRole = await membershipsService.getMyHighestRole();
+    } catch {
+      // まだDB/RLS未設定の可能性があるので握りつぶす（メタデータroleにフォールバック）
+    }
+    this.currentUser = this.mapSupabaseUser(data.user, membershipRole ? { role: membershipRole } : undefined);
     return this.currentUser;
   }
 
@@ -83,7 +90,13 @@ class AuthService {
       if (error) return null;
       const sessionUser = data.session?.user;
       if (!sessionUser) return null;
-      this.currentUser = this.mapSupabaseUser(sessionUser);
+      let membershipRole: Role | null = null;
+      try {
+        membershipRole = await membershipsService.getMyHighestRole();
+      } catch {
+        // 同上：DB未設定時はフォールバック
+      }
+      this.currentUser = this.mapSupabaseUser(sessionUser, membershipRole ? { role: membershipRole } : undefined);
       return this.currentUser;
     }
 

@@ -18,6 +18,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   const { addNotification } = useNotification();
   const { activeStoreId, reloadStores } = useStore();
   const [activeTab, setActiveTab] = useState<'PROFILE' | 'STORE' | 'INTEGRATIONS' | 'SYSTEM'>('PROFILE');
+
+  const getProfileSaveErrorMessage = (error: unknown) => {
+    const rawMessage = typeof error === 'string'
+      ? error
+      : error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: string }).message || '')
+        : '';
+    if (!rawMessage) return 'ユーザー情報の保存に失敗しました。';
+
+    const message = rawMessage.toLowerCase();
+    if (message.includes('invalid login credentials')) {
+      return '現在のパスワードが正しくありません。';
+    }
+    if (message.includes('already requested')) {
+      return 'メール変更は既に申請されています。旧メールに届いた確認メールのリンクを先にクリックしてください。';
+    }
+    if (message.includes('email') && message.includes('already')) {
+      return 'このメールアドレスは既に使用されています。';
+    }
+    return `ユーザー情報の保存に失敗しました。(${rawMessage})`;
+  };
   
   // Profile State
   const [name, setName] = useState(currentUser.name);
@@ -115,8 +136,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       setEmail(updatedUser.email);
       onProfileUpdated?.(updatedUser);
       addNotification('プロフィール更新', 'ユーザー情報を保存しました。', 'SUCCESS');
-    } catch {
-      addNotification('保存エラー', 'ユーザー情報の保存に失敗しました。', 'ERROR');
+    } catch (error) {
+      addNotification('保存エラー', getProfileSaveErrorMessage(error), 'ERROR');
     } finally {
       setIsSavingProfile(false);
     }

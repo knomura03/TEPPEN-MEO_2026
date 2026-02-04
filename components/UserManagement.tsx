@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { User, Role } from '../types';
 import { MOCK_USERS } from '../constants';
 import { Trash2, UserPlus, Download, Edit2, Mail, MoreVertical, TrendingUp, Users as UsersIcon, Award, Clock } from 'lucide-react';
 import { useNotification } from '../contexts/NotificationContext';
+import { isSupabaseConfigured } from '../services/supabaseClient';
+import { userManagementService } from '../services/userManagementService';
+import { useStore } from '../contexts/StoreContext';
 
 interface UserManagementProps {
   currentUser: User;
@@ -10,7 +13,41 @@ interface UserManagementProps {
 
 export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
+  const { stores, activeStoreId } = useStore();
   const [users, setUsers] = useState<User[]>(MOCK_USERS);
+  const [isLoading, setIsLoading] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+
+  const activeOrgId = useMemo(() => {
+    if (!activeStoreId) return null;
+    const store = stores.find((s) => s.id === activeStoreId);
+    return store?.orgId || null;
+  }, [activeStoreId, stores]);
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      if (!isSupabaseConfigured) {
+        setUsers(MOCK_USERS);
+        return;
+      }
+      if (!activeOrgId) {
+        setUsers([]);
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const data = await userManagementService.listUsersByOrg(activeOrgId);
+        setUsers(data);
+      } catch {
+        addNotification('読み込みエラー', 'ユーザー一覧の取得に失敗しました。', 'ERROR');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOrgId]);
   
   const canManage = (targetUser: User) => {
     if (currentUser.role === Role.ADMIN) return true;
@@ -22,14 +59,34 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
 
   const handleDelete = (userId: string) => {
     if (window.confirm('本当にこのユーザーを削除しますか？これにより、ユーザーの契約およびデータが完全に削除されます。')) {
-      setUsers(users.filter(u => u.id !== userId));
-      addNotification('ユーザー削除完了', 'ユーザーと関連データを削除しました。', 'SUCCESS');
+      if (!isSupabaseConfigured) {
+        setUsers((prev) => prev.filter(u => u.id !== userId));
+        addNotification('ユーザー削除完了', 'ユーザーと関連データを削除しました。', 'SUCCESS');
+        return;
+      }
+      if (!activeOrgId) {
+        addNotification('店舗未選択', '店舗が選択されていません。', 'WARNING');
+        return;
+      }
+      setDeletingUserId(userId);
+      userManagementService
+        .removeUserFromOrg(activeOrgId, userId)
+        .then(() => {
+          setUsers((prev) => prev.filter(u => u.id !== userId));
+          addNotification('ユーザー削除完了', 'ユーザーの所属を解除しました。', 'SUCCESS');
+        })
+        .catch(() => {
+          addNotification('削除エラー', 'ユーザーの削除に失敗しました。', 'ERROR');
+        })
+        .finally(() => {
+          setDeletingUserId(null);
+        });
     }
   };
 
   const handleExport = () => {
     // CSV Export Mock
-    const headers = ['ID', 'Username', 'Name', 'Email', 'Role', 'Plan', 'Last Login'];
+    const headers = ['ID', 'Username', 'Name', 'Email', 'Role', 'Plan', 'Registered At'];
     const csvContent = [
         headers.join(','),
         ...users.map(u => [u.id, u.username, u.name, u.email, u.role, u.plan, u.lastLoginAt.toISOString()].join(','))
@@ -59,7 +116,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
 
   // Stats
   const totalUsers = users.length;
-  const activeUsers = users.filter(u => new Date().getTime() - u.lastLoginAt.getTime() < 7 * 24 * 60 * 60 * 1000).length; // Past 7 days
+  const activeUsers = users.filter(u => new Date().getTime() - u.lastLoginAt.getTime() < 7 * 24 * 60 * 60 * 1000).length; // Past 7 days (registered)
   const newThisMonth = 2; // Mock
 
   const StatCard = ({ title, value, icon: Icon, color }: any) => (
@@ -93,17 +150,26 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                 <Download size={18} />
                 <span>CSVエクスポート</span>
             </button>
-            <button className="flex items-center space-x-2 bg-primary-600 text-white px-4 py-2 rounded-xl hover:bg-primary-700 shadow-md shadow-primary-200 dark:shadow-none transition-all">
+            <button
+                onClick={() => addNotification('準備中', '新規ユーザー作成は次フェーズで対応します。', 'INFO')}
+                className="flex items-center space-x-2 bg-primary-600 text-white px-4 py-2 rounded-xl hover:bg-primary-700 shadow-md shadow-primary-200 dark:shadow-none transition-all"
+            >
                 <UserPlus size={18} />
                 <span>新規ユーザー作成</span>
             </button>
         </div>
       </div>
 
+      {!activeOrgId && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 text-sm rounded-xl p-4">
+          店舗が選択されていません。右上の店舗セレクタから選択してください。
+        </div>
+      )}
+
       {/* KPI Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <StatCard title="総契約アカウント" value={totalUsers} icon={UsersIcon} color="bg-blue-500" />
-          <StatCard title="アクティブユーザー (7日)" value={activeUsers} icon={TrendingUp} color="bg-green-500" />
+          <StatCard title="直近7日登録" value={activeUsers} icon={TrendingUp} color="bg-green-500" />
           <StatCard title="今月の新規契約" value={newThisMonth} icon={Award} color="bg-purple-500" />
       </div>
 
@@ -115,11 +181,21 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">ユーザー情報</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">契約プラン</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">権限ロール</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">最終ログイン</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">登録日</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">アクション</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              {isLoading && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-6 text-sm text-gray-500 dark:text-gray-400">読み込み中...</td>
+                </tr>
+              )}
+              {!isLoading && users.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-6 text-sm text-gray-500 dark:text-gray-400">ユーザーがいません。</td>
+                </tr>
+              )}
               {users.map((user) => (
                 <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -150,7 +226,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
                         <Clock size={14} className="mr-2 text-gray-400" />
-                        {user.lastLoginAt.toLocaleDateString()}
+                        {user.lastLoginAt ? user.lastLoginAt.toLocaleDateString() : '—'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -165,7 +241,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                         </button>
                         <button 
                           onClick={() => handleDelete(user.id)}
-                          className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors"
+                          disabled={deletingUserId === user.id}
+                          className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                           title="削除"
                         >
                           <Trash2 size={16} />

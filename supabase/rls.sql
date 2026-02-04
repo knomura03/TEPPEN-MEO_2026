@@ -53,6 +53,25 @@ on public.profiles
 for select
 using (id = auth.uid());
 
+drop policy if exists profiles_select_by_org_admin_manager on public.profiles;
+create policy profiles_select_by_org_admin_manager
+on public.profiles
+for select
+using (
+  exists (
+    select 1
+    from public.memberships m_actor
+    join public.memberships m_target
+      on m_target.user_id = profiles.id
+     and m_target.org_id = m_actor.org_id
+    where m_actor.user_id = auth.uid()
+      and (
+        m_actor.role = 'ADMIN'
+        or (m_actor.role = 'MANAGER' and m_target.role = 'USER')
+      )
+  )
+);
+
 drop policy if exists profiles_update_own on public.profiles;
 create policy profiles_update_own
 on public.profiles
@@ -78,6 +97,40 @@ on public.memberships
 for select
 using (user_id = auth.uid());
 
+drop policy if exists memberships_select_by_org_admin_manager on public.memberships;
+create policy memberships_select_by_org_admin_manager
+on public.memberships
+for select
+using (
+  exists (
+    select 1
+    from public.memberships m_actor
+    where m_actor.user_id = auth.uid()
+      and m_actor.org_id = memberships.org_id
+      and (
+        m_actor.role = 'ADMIN'
+        or (m_actor.role = 'MANAGER' and memberships.role = 'USER')
+      )
+  )
+);
+
+drop policy if exists memberships_delete_by_org_admin_manager on public.memberships;
+create policy memberships_delete_by_org_admin_manager
+on public.memberships
+for delete
+using (
+  memberships.user_id <> auth.uid()
+  and exists (
+    select 1
+    from public.memberships m_actor
+    where m_actor.user_id = auth.uid()
+      and m_actor.org_id = memberships.org_id
+      and (
+        m_actor.role = 'ADMIN'
+        or (m_actor.role = 'MANAGER' and memberships.role = 'USER')
+      )
+  )
+);
 -- insert/update/delete はMVPではクライアントから許可しない想定
 -- （管理機能 or サーバー側で実施。service_role はRLSをバイパス可能）
 

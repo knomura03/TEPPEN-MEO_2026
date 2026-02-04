@@ -59,10 +59,10 @@ begin
 
   if v_membership_id is null then
     insert into public.memberships (user_id, org_id, store_id, role, permissions)
-    values (v_user_id, v_org_id, v_store_id, 'ADMIN', '{}'::jsonb);
+    values (v_user_id, v_org_id, null, 'ADMIN', '{}'::jsonb);
   else
     update public.memberships
-    set store_id = v_store_id,
+    set store_id = null,
         role = 'ADMIN',
         permissions = '{}'::jsonb
     where id = v_membership_id;

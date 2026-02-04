@@ -242,35 +242,6 @@ with check (false);
 -- ------------------------------------------------------------
 -- Storage: post-media bucket
 -- ------------------------------------------------------------
-
-alter table storage.objects enable row level security;
-
-drop policy if exists storage_post_media_select on storage.objects;
-create policy storage_post_media_select
-on storage.objects
-for select
-using (
-  bucket_id = 'post-media'
-  and auth.role() = 'authenticated'
-  and public.user_has_store_access((split_part(name, '/', 1))::uuid)
-);
-
-drop policy if exists storage_post_media_insert on storage.objects;
-create policy storage_post_media_insert
-on storage.objects
-for insert
-with check (
-  bucket_id = 'post-media'
-  and auth.role() = 'authenticated'
-  and public.user_has_store_access((split_part(name, '/', 1))::uuid)
-);
-
-drop policy if exists storage_post_media_delete on storage.objects;
-create policy storage_post_media_delete
-on storage.objects
-for delete
-using (
-  bucket_id = 'post-media'
-  and auth.role() = 'authenticated'
-  and public.user_has_store_access((split_part(name, '/', 1))::uuid)
-);
+-- 注: Supabaseの権限上、storage.objects へのALTER/CREATE POLICYは
+-- SQL Editorではエラーになる場合があります（must be owner of table objects）。
+-- その場合はGUIでポリシーを作成してください。

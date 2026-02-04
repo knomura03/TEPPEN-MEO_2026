@@ -81,6 +81,46 @@ SupabaseでRLS（アクセス制御）を有効にすると、最初は「所属
 
 ※ SQLで作る場合は `supabase/storage.sql` を SQL Editor で実行してください。
 
+## （重要）Storageのポリシーを設定する（GUIでOK）
+投稿画像のアップロード/表示に必要な**アクセス許可**を設定します。
+
+### 手順（クリック順）
+1. Supabaseの左メニューで「Storage」を開く
+2. `post-media` バケットをクリック
+3. 上部タブの「Policies」を開く
+4. 「New policy」を押す
+5. それぞれ次の3つを作成します（同じ画面で繰り返し作成）
+
+**A) Select（読み取り）**
+- Policy name: `post_media_select`
+- Allowed operations: `SELECT`
+- USING expression:
+  ```
+  bucket_id = 'post-media'
+  and auth.role() = 'authenticated'
+  and public.user_has_store_access((split_part(name, '/', 1))::uuid)
+  ```
+
+**B) Insert（アップロード）**
+- Policy name: `post_media_insert`
+- Allowed operations: `INSERT`
+- WITH CHECK expression:
+  ```
+  bucket_id = 'post-media'
+  and auth.role() = 'authenticated'
+  and public.user_has_store_access((split_part(name, '/', 1))::uuid)
+  ```
+
+**C) Delete（削除）**
+- Policy name: `post_media_delete`
+- Allowed operations: `DELETE`
+- USING expression:
+  ```
+  bucket_id = 'post-media'
+  and auth.role() = 'authenticated'
+  and public.user_has_store_access((split_part(name, '/', 1))::uuid)
+  ```
+
 ### もしエラーが出たら
 - エラー画面をスクショして送ってください（ほぼ確実にこちらで解決できます）
   - よくある原因: メールの打ち間違い / まだユーザーが作成されていない

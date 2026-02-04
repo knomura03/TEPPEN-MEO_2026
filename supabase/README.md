@@ -37,7 +37,11 @@ RLSを有効にすると「所属がないユーザー」は店舗データが�
 4. 「Public」は OFF（非公開）にする
 5. 「Create bucket」を押す
 
-### 6) フロントの環境変数を設定
+### 6) Storageポリシーを設定（GUIでOK）
+StorageのポリシーはSQLでエラーになることがあるため、**GUIで設定**します。
+手順は `docs/05_RUNBOOK_KNOMURA.md` を参照してください。
+
+### 7) フロントの環境変数を設定
 `.env.example` を参考に `.env.local` を作成し、以下を埋めてください。
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`

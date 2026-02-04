@@ -64,7 +64,20 @@ class AuthService {
     }
     let profileOverride: Partial<User> | undefined;
     try {
-      const profile = await profilesService.getProfile(data.user.id);
+      const authEmail = data.user.email || '';
+      const fallbackName = data.user.user_metadata?.name || (authEmail.includes('@') ? authEmail.split('@')[0] : data.user.id);
+      let profile = await profilesService.getProfile(data.user.id);
+      if (!profile || (authEmail && profile.email !== authEmail)) {
+        try {
+          profile = await profilesService.upsertProfile(data.user.id, {
+            name: profile?.name || fallbackName,
+            email: authEmail || profile?.email || null,
+            avatarUrl: profile?.avatarUrl ?? data.user.user_metadata?.avatarUrl ?? null,
+          });
+        } catch {
+          // 反映に失敗してもログインは続行
+        }
+      }
       if (profile) {
         profileOverride = {
           name: profile.name,
@@ -119,7 +132,20 @@ class AuthService {
       }
       let profileOverride: Partial<User> | undefined;
       try {
-        const profile = await profilesService.getProfile(sessionUser.id);
+        const authEmail = sessionUser.email || '';
+        const fallbackName = sessionUser.user_metadata?.name || (authEmail.includes('@') ? authEmail.split('@')[0] : sessionUser.id);
+        let profile = await profilesService.getProfile(sessionUser.id);
+        if (!profile || (authEmail && profile.email !== authEmail)) {
+          try {
+            profile = await profilesService.upsertProfile(sessionUser.id, {
+              name: profile?.name || fallbackName,
+              email: authEmail || profile?.email || null,
+              avatarUrl: profile?.avatarUrl ?? sessionUser.user_metadata?.avatarUrl ?? null,
+            });
+          } catch {
+            // 反映に失敗してもセッションは続行
+          }
+        }
         if (profile) {
           profileOverride = {
             name: profile.name,

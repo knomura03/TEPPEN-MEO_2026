@@ -99,7 +99,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
         addNotification('メール変更', '確認メールを送信しました。リンクをクリックして完了してください。', 'INFO');
       }
 
-      const nextEmail = wantsEmailChange ? trimmedNewEmail : (trimmedEmail ? trimmedEmail : '');
+      const nextEmail = trimmedEmail ? trimmedEmail : '';
       const profile = await profilesService.upsertProfile(currentUser.id, {
         name: name.trim(),
         email: nextEmail ? nextEmail : null,
@@ -389,6 +389,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                           />
                         </div>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">※変更には現在のパスワードが必要です。</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">※確認メールは現在のメールアドレスに届きます。</p>
                       </div>
                    </div>
 

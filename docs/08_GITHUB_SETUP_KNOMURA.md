@@ -63,3 +63,17 @@ GitHubリポジトリのURLが分かり次第、こちらで以下を実施し�
 - `git push -u origin codex/m0-supabase-foundation`
 - PR作成（MVP作業の履歴がGitHubに残る状態へ）
 
+## 4) （自動化）GitHub Actions Secretsを登録する（クリック順）
+DB反映などの自動化で必要です。値は **必ずSecretとして** 登録してください（VariablesではなくSecrets）。
+
+1. GitHubのリポジトリを開く
+2. `Settings` を押す
+3. 左メニュー `Secrets and variables` → `Actions` を押す
+4. `New repository secret` を押す
+5. 次の4つを登録する
+   - `PROJECT_REF`（例: `odjlnwfrqckekrdicnaa`）
+   - `SUPABASE_ACCESS_TOKEN`（SupabaseのPersonal access token）
+   - `SUPABASE_DB_PASSWORD`（Supabaseプロジェクト作成時のDBパスワード）
+   - `SUPABASE_SERVICE_ROLE_KEY`（Supabase Project Settings → API → `service_role`）
+
+※値は貼り間違いが多いので、登録後に「名前だけ」スクショで共有してもらえると安心です（値は写さない）。

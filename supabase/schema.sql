@@ -26,6 +26,7 @@ create table if not exists public.organizations (
   updated_at timestamptz not null default now()
 );
 
+drop trigger if exists organizations_set_updated_at on public.organizations;
 create trigger organizations_set_updated_at
 before update on public.organizations
 for each row execute function public.set_updated_at();
@@ -44,6 +45,7 @@ create table if not exists public.stores (
 );
 
 create index if not exists stores_org_id_idx on public.stores(org_id);
+drop trigger if exists stores_set_updated_at on public.stores;
 create trigger stores_set_updated_at
 before update on public.stores
 for each row execute function public.set_updated_at();
@@ -58,6 +60,7 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+drop trigger if exists profiles_set_updated_at on public.profiles;
 create trigger profiles_set_updated_at
 before update on public.profiles
 for each row execute function public.set_updated_at();
@@ -77,6 +80,7 @@ create table if not exists public.memberships (
 create index if not exists memberships_user_id_idx on public.memberships(user_id);
 create index if not exists memberships_org_id_idx on public.memberships(org_id);
 create index if not exists memberships_store_id_idx on public.memberships(store_id);
+drop trigger if exists memberships_set_updated_at on public.memberships;
 create trigger memberships_set_updated_at
 before update on public.memberships
 for each row execute function public.set_updated_at();
@@ -101,6 +105,7 @@ create table if not exists public.posts (
 create index if not exists posts_store_id_idx on public.posts(store_id);
 create index if not exists posts_author_user_id_idx on public.posts(author_user_id);
 create index if not exists posts_scheduled_at_idx on public.posts(scheduled_at);
+drop trigger if exists posts_set_updated_at on public.posts;
 create trigger posts_set_updated_at
 before update on public.posts
 for each row execute function public.set_updated_at();
@@ -135,6 +140,7 @@ create table if not exists public.integrations (
 );
 
 create index if not exists integrations_store_id_idx on public.integrations(store_id);
+drop trigger if exists integrations_set_updated_at on public.integrations;
 create trigger integrations_set_updated_at
 before update on public.integrations
 for each row execute function public.set_updated_at();
@@ -159,6 +165,7 @@ create table if not exists public.integration_credentials (
   unique (integration_id)
 );
 
+drop trigger if exists integration_credentials_set_updated_at on public.integration_credentials;
 create trigger integration_credentials_set_updated_at
 before update on public.integration_credentials
 for each row execute function public.set_updated_at();
@@ -180,6 +187,7 @@ create table if not exists public.inbox_threads (
 );
 
 create index if not exists inbox_threads_store_id_idx on public.inbox_threads(store_id);
+drop trigger if exists inbox_threads_set_updated_at on public.inbox_threads;
 create trigger inbox_threads_set_updated_at
 before update on public.inbox_threads
 for each row execute function public.set_updated_at();

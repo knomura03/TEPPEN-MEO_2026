@@ -1,0 +1,68 @@
+name: Supabase Apply SQL
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which SQL to apply
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - schema
+          - storage
+          - rls
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply SQL
+        env:
+          TARGET: ${{ github.event.inputs.target }}
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PGHOST: db.${{ secrets.PROJECT_REF }}.supabase.co
+          PGUSER: postgres
+          PGDATABASE: postgres
+          PGPORT: "5432"
+          PGSSLMODE: require
+        run: |
+          set -euo pipefail
+
+          echo "Target: ${TARGET}"
+
+          run_sql () {
+            local file="$1"
+            echo "==> Applying ${file}"
+            psql -v ON_ERROR_STOP=1 -f "${file}"
+          }
+
+          case "${TARGET}" in
+            all)
+              run_sql supabase/schema.sql
+              run_sql supabase/storage.sql
+              run_sql supabase/rls.sql
+              ;;
+            schema)
+              run_sql supabase/schema.sql
+              ;;
+            storage)
+              run_sql supabase/storage.sql
+              ;;
+            rls)
+              run_sql supabase/rls.sql
+              ;;
+            *)
+              echo "Unknown target: ${TARGET}"
+              exit 1
+              ;;
+          esac
+

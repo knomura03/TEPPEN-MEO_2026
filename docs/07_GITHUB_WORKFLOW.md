@@ -26,8 +26,14 @@ GitHubを「コードの変更・レビュー・履歴」の中心として使�
   - `npm run build` が通るか
 
 ## CI（GitHub Actions）
-- `.github/workflows/ci.yml` で `npm run build` を実行します
-- 将来、型チェックやE2Eなどは段階的に追加します
+- `.github/workflows/ci.yml` で `npm run typecheck` / `npm run build` を実行します
+- E2Eなどは段階的に追加します
+
+## Supabase（DB反映の自動化）
+- `.github/workflows/supabase_apply_sql.yml` を手動実行（workflow_dispatch）することで、以下を順に適用できます
+  - `supabase/schema.sql`
+  - `supabase/storage.sql`
+  - `supabase/rls.sql`
 
 ## 秘密情報（重要）
 - `.env*` やOAuthシークレット等は **絶対にコミットしない**

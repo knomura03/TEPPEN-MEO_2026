@@ -59,11 +59,11 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   };
 
   useEffect(() => {
-    const loadUsers = async () => {
+    const loadUsersEffect = async () => {
       await loadUsers(activeOrgId);
     };
 
-    void loadUsers();
+    void loadUsersEffect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOrgId]);
   

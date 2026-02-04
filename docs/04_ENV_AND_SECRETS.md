@@ -55,3 +55,12 @@ Supabaseの以下2つ（フロント接続に必要）:
 
 ※`service_role key` の共有は原則不要（こちらで運用する）。
 
+## GitHub Actions（自動化）で使うSecrets（MVP）
+DB反映やFunctionsデプロイ等を自動化するため、GitHubリポジトリの `Settings → Secrets and variables → Actions` に登録します。
+
+- `PROJECT_REF`
+- `SUPABASE_ACCESS_TOKEN`
+- `SUPABASE_DB_PASSWORD`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+※これらは **絶対にコードや `.env.local` に入れない** でください。

@@ -49,6 +49,14 @@ StorageのポリシーはSQLでエラーになることがあるため、**GUI�
 ## 8) （MVP拡張）ユーザー招待（管理者機能）
 ユーザー管理画面から「新規ユーザー作成（招待）」を使うには、Supabase Edge Function を1つデプロイします。
 
+## （自動化）GitHub ActionsでDB反映（任意）
+GitHubにSecretsを登録している場合、Actionsの `Supabase Apply SQL` を手動実行することで、DBへSQLを反映できます。
+
+- `all`: `supabase/schema.sql` → `supabase/storage.sql` → `supabase/rls.sql`
+- `schema` / `storage` / `rls`: 個別適用
+
+※Secretsの登録方法は `docs/08_GITHUB_SETUP_KNOMURA.md`、秘密情報の扱いは `docs/04_ENV_AND_SECRETS.md` を参照してください。
+
 ### 8-1) Edge Function をデプロイ
 1. Supabaseダッシュボードで対象プロジェクトを開く
 2. 左メニューの「Functions」を開く

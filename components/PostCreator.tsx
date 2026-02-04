@@ -3,6 +3,7 @@ import { User, SocialPlatform } from '../types';
 import { MOCK_ACCOUNTS } from '../constants';
 import { geminiService } from '../services/geminiService';
 import { postsService } from '../services/postsService';
+import { postMediaService } from '../services/postMediaService';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { Send, Calendar, Image as ImageIcon, Sparkles, Loader2, X, Eye, MonitorSmartphone, UploadCloud } from 'lucide-react';
 import { useNotification } from '../contexts/NotificationContext';
@@ -19,6 +20,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
   const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>([]);
   const [scheduledDate, setScheduledDate] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -29,6 +31,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
   const [showAiModal, setShowAiModal] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const maxFileSizeBytes = 10 * 1024 * 1024;
 
   const togglePlatform = (platform: SocialPlatform) => {
     setSelectedPlatforms(prev => 
@@ -61,14 +64,27 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
         return;
       }
 
+      setIsSubmitting(true);
       try {
-        await postsService.create({
+        const created = await postsService.create({
           storeId: activeStoreId,
           authorUserId: currentUser.id,
           content,
           platforms: selectedPlatforms,
           scheduledAt: scheduledDate ? new Date(scheduledDate) : null,
         });
+
+        if (images.length > 0) {
+          try {
+            await postMediaService.uploadForPost({
+              storeId: activeStoreId,
+              postId: created.id,
+              files: images,
+            });
+          } catch {
+            addNotification('画像アップロード失敗', '投稿は保存されましたが、画像のアップロードに失敗しました。', 'WARNING');
+          }
+        }
 
         addNotification(
           scheduledDate ? '予約作成完了' : '下書き保存完了',
@@ -85,6 +101,8 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
         setSelectedPlatforms([]);
       } catch (error) {
         addNotification('保存エラー', '投稿の保存に失敗しました。', 'ERROR');
+      } finally {
+        setIsSubmitting(false);
       }
       return;
     }
@@ -107,9 +125,18 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
 
   // File Handling
   const processFiles = (files: File[]) => {
-    setImages(prev => [...prev, ...files]);
-    const urls = files.map(file => URL.createObjectURL(file));
-    setImagePreviewUrls(prev => [...prev, ...urls]);
+    const accepted: File[] = [];
+    files.forEach((file) => {
+      if (file.size > maxFileSizeBytes) {
+        addNotification('ファイルサイズ超過', '10MB以下の画像を選んでください。', 'WARNING');
+        return;
+      }
+      accepted.push(file);
+    });
+    if (accepted.length === 0) return;
+    setImages((prev) => [...prev, ...accepted]);
+    const urls = accepted.map((file) => URL.createObjectURL(file));
+    setImagePreviewUrls((prev) => [...prev, ...urls]);
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -277,14 +304,14 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
                         <p className="text-sm text-gray-500 dark:text-gray-400">
                             {isDragging ? 'ここにドロップ' : 'クリックまたはドラッグ＆ドロップ'}
                         </p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">PNG, JPG, MP4 (Max 10MB)</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">PNG, JPG (Max 10MB)</p>
                     </div>
                     <input 
                         ref={fileInputRef}
                         type="file" 
                         className="hidden" 
                         multiple 
-                        accept="image/*,video/*" 
+                        accept="image/*" 
                         onChange={handleImageChange} 
                     />
                 </div>
@@ -326,11 +353,11 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
             <div className="flex items-center justify-end space-x-4 pt-4 border-t border-gray-100 dark:border-gray-700">
                 <button
                 type="submit"
-                disabled={selectedPlatforms.length === 0 || !content}
+                disabled={selectedPlatforms.length === 0 || !content || isSubmitting}
                 className="flex items-center space-x-2 px-6 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md w-full justify-center"
                 >
-                <Send size={18} />
-                <span>{scheduledDate ? '予約投稿する' : '投稿する'}</span>
+                {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
+                <span>{isSubmitting ? '保存中...' : scheduledDate ? '予約投稿する' : '投稿する'}</span>
                 </button>
             </div>
             </form>

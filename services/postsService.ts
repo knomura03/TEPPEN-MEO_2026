@@ -1,5 +1,6 @@
 import { Post, PostStatus, SocialPlatform } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { postMediaService } from './postMediaService';
 
 type DbPostRow = {
   id: string;
@@ -10,6 +11,7 @@ type DbPostRow = {
   platforms: string[];
   scheduled_at: string | null;
   published_at: string | null;
+  post_media?: { storage_path: string }[];
 };
 
 const toPostStatus = (status: string): PostStatus => {
@@ -17,11 +19,11 @@ const toPostStatus = (status: string): PostStatus => {
   return PostStatus.DRAFT;
 };
 
-const mapDbPost = (row: DbPostRow): Post => {
+const mapDbPost = (row: DbPostRow, imageUrls: string[]): Post => {
   return {
     id: row.id,
     content: row.content,
-    imageUrls: [],
+    imageUrls,
     platforms: (row.platforms || []) as SocialPlatform[],
     scheduledDate: row.scheduled_at ? new Date(row.scheduled_at) : undefined,
     publishedDate: row.published_at ? new Date(row.published_at) : undefined,
@@ -42,11 +44,25 @@ export const postsService = {
     const client = requireSupabase();
     const { data, error } = await client
       .from('posts')
-      .select('id, store_id, author_user_id, content, status, platforms, scheduled_at, published_at')
+      .select('id, store_id, author_user_id, content, status, platforms, scheduled_at, published_at, post_media (storage_path)')
       .eq('store_id', storeId)
       .order('scheduled_at', { ascending: true, nullsFirst: false });
     if (error) throw error;
-    return (data || []).map(mapDbPost);
+    const rows = (data || []) as DbPostRow[];
+    const allPaths = rows.flatMap((row) => (row.post_media || []).map((media) => media.storage_path));
+    let urlMap = new Map<string, string>();
+    if (allPaths.length > 0) {
+      try {
+        urlMap = await postMediaService.createSignedUrlMap(allPaths);
+      } catch {
+        urlMap = new Map<string, string>();
+      }
+    }
+    return rows.map((row) => {
+      const paths = (row.post_media || []).map((media) => media.storage_path);
+      const imageUrls = paths.map((path) => urlMap.get(path)).filter((url): url is string => Boolean(url));
+      return mapDbPost(row, imageUrls);
+    });
   },
 
   async create(params: {
@@ -74,7 +90,7 @@ export const postsService = {
       .single();
 
     if (error) throw error;
-    return mapDbPost(data as DbPostRow);
+    return mapDbPost(data as DbPostRow, []);
   },
 
   async update(postId: string, patch: Partial<{ content: string; status: PostStatus; scheduledAt: Date | null }>): Promise<void> {
@@ -94,4 +110,3 @@ export const postsService = {
     if (error) throw error;
   },
 };
-

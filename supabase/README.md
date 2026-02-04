@@ -23,7 +23,21 @@ TEPPEN MEO のログインに必要なので、Supabaseの **Authentication → 
 ### 4) 初期データ（最初の店舗/所属）を作成
 RLSを有効にすると「所属がないユーザー」は店舗データが見えません。最初の1回だけ、`supabase/bootstrap.sql` を使って初期データを作成します。
 
-### 5) フロントの環境変数を設定
+### 5) Storageバケットを作成（投稿画像用）
+以下どちらかでOKです。
+
+**A. SQLで作成（おすすめ）**
+1. Supabaseの管理画面 → **SQL Editor** を開く
+2. `supabase/storage.sql` の中身を貼り付けて実行
+
+**B. 画面で作成**
+1. 左メニューの「Storage」を開く
+2. 「New bucket」を押す
+3. Name を `post-media` にする
+4. 「Public」は OFF（非公開）にする
+5. 「Create bucket」を押す
+
+### 6) フロントの環境変数を設定
 `.env.example` を参考に `.env.local` を作成し、以下を埋めてください。
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`

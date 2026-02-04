@@ -238,3 +238,39 @@ on public.integration_credentials
 for all
 using (false)
 with check (false);
+
+-- ------------------------------------------------------------
+-- Storage: post-media bucket
+-- ------------------------------------------------------------
+
+alter table storage.objects enable row level security;
+
+drop policy if exists storage_post_media_select on storage.objects;
+create policy storage_post_media_select
+on storage.objects
+for select
+using (
+  bucket_id = 'post-media'
+  and auth.role() = 'authenticated'
+  and public.user_has_store_access((split_part(name, '/', 1))::uuid)
+);
+
+drop policy if exists storage_post_media_insert on storage.objects;
+create policy storage_post_media_insert
+on storage.objects
+for insert
+with check (
+  bucket_id = 'post-media'
+  and auth.role() = 'authenticated'
+  and public.user_has_store_access((split_part(name, '/', 1))::uuid)
+);
+
+drop policy if exists storage_post_media_delete on storage.objects;
+create policy storage_post_media_delete
+on storage.objects
+for delete
+using (
+  bucket_id = 'post-media'
+  and auth.role() = 'authenticated'
+  and public.user_has_store_access((split_part(name, '/', 1))::uuid)
+);

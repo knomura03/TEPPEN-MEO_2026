@@ -42,5 +42,43 @@ export const storesService = {
     if (error) throw error;
     return (data || []).map(mapDbStore);
   },
-};
 
+  async getById(storeId: string): Promise<Store | null> {
+    const client = requireSupabase();
+    const { data, error } = await client
+      .from('stores')
+      .select('id, org_id, name, address, phone, website, category, business_hours')
+      .eq('id', storeId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    return mapDbStore(data as DbStoreRow);
+  },
+
+  async updateStore(
+    storeId: string,
+    payload: {
+      name: string;
+      address: string | null;
+      phone: string | null;
+      category: string | null;
+      businessHours: string | null;
+    }
+  ): Promise<Store> {
+    const client = requireSupabase();
+    const { data, error } = await client
+      .from('stores')
+      .update({
+        name: payload.name,
+        address: payload.address,
+        phone: payload.phone,
+        category: payload.category,
+        business_hours: payload.businessHours,
+      })
+      .eq('id', storeId)
+      .select('id, org_id, name, address, phone, website, category, business_hours')
+      .single();
+    if (error) throw error;
+    return mapDbStore(data as DbStoreRow);
+  },
+};

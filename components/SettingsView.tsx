@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { User, Role, SocialAccount } from '../types';
 import { MOCK_ACCOUNTS } from '../constants';
 import { Save, Lock, User as UserIcon, Mail, Link as LinkIcon, AlertTriangle, Key, Shield, MapPin, Store, CreditCard } from 'lucide-react';
 import { useNotification } from '../contexts/NotificationContext';
+import { useStore } from '../contexts/StoreContext';
+import { isSupabaseConfigured } from '../services/supabaseClient';
+import { storesService } from '../services/storesService';
 
 interface SettingsViewProps {
   currentUser: User;
@@ -10,6 +13,7 @@ interface SettingsViewProps {
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
+  const { activeStoreId, reloadStores } = useStore();
   const [activeTab, setActiveTab] = useState<'PROFILE' | 'STORE' | 'INTEGRATIONS' | 'SYSTEM'>('PROFILE');
   
   // Profile State
@@ -19,11 +23,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
   const [newPassword, setNewPassword] = useState('');
 
   // Store Info State
-  const [storeName, setStoreName] = useState('TEPPEN総本店');
-  const [address, setAddress] = useState(currentUser.storeInfo?.address || '');
-  const [phone, setPhone] = useState(currentUser.storeInfo?.phone || '');
-  const [businessHours, setBusinessHours] = useState(currentUser.storeInfo?.businessHours || '');
-  const [category, setCategory] = useState(currentUser.storeInfo?.category || '');
+  const [storeName, setStoreName] = useState('');
+  const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
+  const [businessHours, setBusinessHours] = useState('');
+  const [category, setCategory] = useState('');
+  const [isLoadingStore, setIsLoadingStore] = useState(false);
+  const [isSavingStore, setIsSavingStore] = useState(false);
 
   // Integrations State (Mock)
   const [accounts, setAccounts] = useState<SocialAccount[]>(MOCK_ACCOUNTS);
@@ -38,8 +44,92 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
 
   const handleSaveStore = (e: React.FormEvent) => {
     e.preventDefault();
-    addNotification('店舗情報更新', 'MEO対策用の店舗情報を更新しました。', 'SUCCESS');
+    if (!storeName.trim()) {
+      addNotification('入力エラー', '店舗名を入力してください。', 'WARNING');
+      return;
+    }
+    if (!activeStoreId) {
+      addNotification('店舗未選択', '店舗が選択されていません。', 'WARNING');
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      addNotification('店舗情報更新', 'Supabase未設定のためローカル表示のみ更新しました。', 'INFO');
+      return;
+    }
+
+    const normalizeText = (value: string) => {
+      const trimmed = value.trim();
+      return trimmed.length === 0 ? null : trimmed;
+    };
+
+    setIsSavingStore(true);
+    storesService
+      .updateStore(activeStoreId, {
+        name: storeName.trim(),
+        address: normalizeText(address),
+        phone: normalizeText(phone),
+        category: normalizeText(category),
+        businessHours: normalizeText(businessHours),
+      })
+      .then(async (updated) => {
+        setStoreName(updated.name);
+        setAddress(updated.address || '');
+        setPhone(updated.phone || '');
+        setCategory(updated.category || '');
+        setBusinessHours(updated.businessHours || '');
+        await reloadStores();
+        addNotification('店舗情報更新', 'MEO対策用の店舗情報を更新しました。', 'SUCCESS');
+      })
+      .catch(() => {
+        addNotification('保存エラー', '店舗情報の保存に失敗しました。', 'ERROR');
+      })
+      .finally(() => {
+        setIsSavingStore(false);
+      });
   }
+
+  useEffect(() => {
+    const loadStoreInfo = async () => {
+      if (!activeStoreId) {
+        setStoreName('');
+        setAddress('');
+        setPhone('');
+        setCategory('');
+        setBusinessHours('');
+        return;
+      }
+
+      if (!isSupabaseConfigured) {
+        setStoreName('TEPPEN総本店');
+        setAddress(currentUser.storeInfo?.address || '');
+        setPhone(currentUser.storeInfo?.phone || '');
+        setCategory(currentUser.storeInfo?.category || '');
+        setBusinessHours(currentUser.storeInfo?.businessHours || '');
+        return;
+      }
+
+      setIsLoadingStore(true);
+      try {
+        const store = await storesService.getById(activeStoreId);
+        if (store) {
+          setStoreName(store.name);
+          setAddress(store.address || '');
+          setPhone(store.phone || '');
+          setCategory(store.category || '');
+          setBusinessHours(store.businessHours || '');
+        } else {
+          addNotification('店舗情報', '店舗データが見つかりません。', 'WARNING');
+        }
+      } catch {
+        addNotification('読み込みエラー', '店舗情報の取得に失敗しました。', 'ERROR');
+      } finally {
+        setIsLoadingStore(false);
+      }
+    };
+
+    void loadStoreInfo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStoreId]);
 
   const handleToggleConnection = (id: string) => {
     setAccounts(prev => prev.map(acc => {
@@ -219,6 +309,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
                     <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-1">店舗情報設定</h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400">Googleマップ等に反映される正確な店舗情報を入力してください。</p>
                   </div>
+                  {!activeStoreId && (
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 text-sm rounded-xl p-4">
+                      店舗が選択されていません。右上の店舗セレクタから選択してください。
+                    </div>
+                  )}
+                  {isLoadingStore && (
+                    <div className="text-sm text-gray-500 dark:text-gray-400">店舗情報を読み込み中...</div>
+                  )}
 
                   <form onSubmit={handleSaveStore} className="space-y-6">
                       <div>
@@ -227,6 +325,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
                             type="text" 
                             value={storeName}
                             onChange={(e) => setStoreName(e.target.value)}
+                            disabled={isLoadingStore || isSavingStore}
                             className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                         />
                       </div>
@@ -240,6 +339,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
                                 value={address}
                                 onChange={(e) => setAddress(e.target.value)}
                                 placeholder="例: 東京都港区六本木..."
+                                disabled={isLoadingStore || isSavingStore}
                                 className="pl-10 w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                             />
                         </div>
@@ -253,6 +353,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
                                 value={phone}
                                 onChange={(e) => setPhone(e.target.value)}
                                 placeholder="03-xxxx-xxxx"
+                                disabled={isLoadingStore || isSavingStore}
                                 className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                             />
                         </div>
@@ -263,6 +364,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
                                 value={category}
                                 onChange={(e) => setCategory(e.target.value)}
                                 placeholder="例: イタリア料理店"
+                                disabled={isLoadingStore || isSavingStore}
                                 className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                             />
                         </div>
@@ -274,14 +376,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
                             value={businessHours}
                             onChange={(e) => setBusinessHours(e.target.value)}
                             placeholder="月: 10:00-19:00&#10;火: 10:00-19:00..."
+                            disabled={isLoadingStore || isSavingStore}
                             className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all h-32"
                         />
                       </div>
 
                       <div className="flex justify-end pt-4">
-                        <button type="submit" className="flex items-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl shadow-lg shadow-primary-200 dark:shadow-none transition-all">
+                        <button
+                          type="submit"
+                          disabled={isLoadingStore || isSavingStore}
+                          className="flex items-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl shadow-lg shadow-primary-200 dark:shadow-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
                             <Save size={18} />
-                            店舗情報を保存
+                            {isSavingStore ? '保存中...' : '店舗情報を保存'}
                         </button>
                     </div>
                   </form>

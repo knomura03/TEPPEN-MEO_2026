@@ -14,8 +14,10 @@
 
 1. 依存関係のインストール:
    `npm install`
-2. （任意）Gemini APIキーを設定（AI文章生成を使う場合）:
-   `.env.local` の `GEMINI_API_KEY`
+2. 環境変数を設定:
+   - `.env.example` を参考に `.env.local` を作成
+   - （任意）AI文章生成を使う場合は `GEMINI_API_KEY` を設定
+   - （MVP以降）Supabase接続時は `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` を設定
 3. 起動:
    `npm run dev`
 

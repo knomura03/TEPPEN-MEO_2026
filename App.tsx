@@ -55,7 +55,7 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-    authService.logout();
+    void authService.logout();
     setCurrentUser(null);
   };
 

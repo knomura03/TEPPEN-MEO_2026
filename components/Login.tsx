@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { User, Role } from '../types';
+import { User } from '../types';
 import { authService } from '../services/authService';
+import { isSupabaseConfigured } from '../services/supabaseClient';
 import { MapPin, Lock, User as UserIcon, Loader2 } from 'lucide-react';
 
 interface LoginProps {
@@ -8,7 +9,7 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const [username, setUsername] = useState('admin');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('password');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -19,15 +20,31 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     setTimeout(async () => {
-      const user = await authService.login(username);
-      if (user) {
+      try {
+        const user = await authService.login(email, password);
         onLogin(user);
-      } else {
-        setError('ユーザー名またはパスワードが違います');
+      } catch (err: any) {
+        setError(err?.message || 'ログインに失敗しました');
         setIsLoading(false);
       }
     }, 800);
   };
+
+  const handleDemoLogin = async (username: string) => {
+    setError('');
+    setIsLoading(true);
+    setTimeout(async () => {
+      const user = await authService.loginDemo(username);
+      if (user) {
+        onLogin(user);
+      } else {
+        setError('デモログインに失敗しました');
+        setIsLoading(false);
+      }
+    }, 300);
+  };
+
+  const showDemoLogin = import.meta.env.DEV;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4 relative overflow-hidden">
@@ -44,19 +61,25 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           <p className="text-gray-500 dark:text-gray-400 mt-2 text-sm font-medium">店舗集客を最大化する次世代プラットフォーム</p>
         </div>
 
+        {!isSupabaseConfigured && (
+          <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 text-sm rounded-xl border border-yellow-200 dark:border-yellow-800">
+            Supabaseが未設定のため、メールログインは利用できません。開発中はデモログインでUI確認できます。
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">ユーザーID</label>
+            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">メールアドレス</label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <UserIcon className="h-5 w-5 text-gray-400 group-focus-within:text-primary-500 transition-colors" />
               </div>
               <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="pl-10 block w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3.5 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all outline-none dark:text-white"
-                placeholder="ユーザー名を入力"
+                placeholder="you@example.com"
                 required
               />
             </div>
@@ -94,14 +117,34 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           </button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700 text-center text-xs text-gray-500 dark:text-gray-400">
-          <p className="mb-3 font-medium">デモアカウント切替:</p>
-          <div className="flex justify-center gap-3">
-            <span className="cursor-pointer hover:text-primary-600 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full transition-colors" onClick={() => setUsername('admin')}>Admin</span>
-            <span className="cursor-pointer hover:text-primary-600 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full transition-colors" onClick={() => setUsername('manager')}>Manager</span>
-            <span className="cursor-pointer hover:text-primary-600 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full transition-colors" onClick={() => setUsername('user')}>User</span>
+        {showDemoLogin && (
+          <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700 text-center text-xs text-gray-500 dark:text-gray-400">
+            <p className="mb-3 font-medium">開発用デモログイン:</p>
+            <div className="flex justify-center gap-3">
+              <button
+                type="button"
+                className="hover:text-primary-600 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full transition-colors"
+                onClick={() => handleDemoLogin('admin')}
+              >
+                Admin
+              </button>
+              <button
+                type="button"
+                className="hover:text-primary-600 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full transition-colors"
+                onClick={() => handleDemoLogin('manager')}
+              >
+                Manager
+              </button>
+              <button
+                type="button"
+                className="hover:text-primary-600 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full transition-colors"
+                onClick={() => handleDemoLogin('user')}
+              >
+                User
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

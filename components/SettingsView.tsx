@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { User, Role, SocialAccount } from '../types';
 import { MOCK_ACCOUNTS } from '../constants';
 import { Save, Lock, User as UserIcon, Mail, Link as LinkIcon, AlertTriangle, Key, Shield, MapPin, Store, CreditCard } from 'lucide-react';
@@ -9,6 +9,7 @@ import { storesService } from '../services/storesService';
 import { profilesService } from '../services/profilesService';
 import { authService } from '../services/authService';
 import { integrationsService } from '../services/integrationsService';
+import { getErrorMessage } from '../services/errorMessage';
 
 interface SettingsViewProps {
   currentUser: User;
@@ -19,6 +20,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   const { addNotification } = useNotification();
   const { activeStoreId, reloadStores } = useStore();
   const [activeTab, setActiveTab] = useState<'PROFILE' | 'STORE' | 'INTEGRATIONS' | 'SYSTEM'>('PROFILE');
+  const lastProfileLoadErrorRef = useRef<string | null>(null);
+  const lastStoreLoadErrorRef = useRef<string | null>(null);
 
   const getProfileSaveErrorMessage = (error: unknown) => {
     const rawMessage = typeof error === 'string'
@@ -195,8 +198,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
         await reloadStores();
         addNotification('店舗情報更新', 'MEO対策用の店舗情報を更新しました。', 'SUCCESS');
       })
-      .catch(() => {
-        addNotification('保存エラー', '店舗情報の保存に失敗しました。', 'ERROR');
+      .catch((error) => {
+        const message = getErrorMessage(error);
+        console.error('[SettingsView] Failed to save store:', error);
+        addNotification('保存エラー', `店舗情報の保存に失敗しました。${message ? `（${message}）` : ''}`, 'ERROR');
       })
       .finally(() => {
         setIsSavingStore(false);
@@ -218,8 +223,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
         setName(profile?.name || currentUser.name);
         setEmail(profile?.email || currentUser.email);
         setNewEmail('');
-      } catch {
-        addNotification('読み込みエラー', 'プロフィール情報の取得に失敗しました。', 'ERROR');
+      } catch (error) {
+        const message = getErrorMessage(error);
+        if (lastProfileLoadErrorRef.current !== message) {
+          lastProfileLoadErrorRef.current = message;
+          console.error('[SettingsView] Failed to load profile:', error);
+          addNotification('読み込みエラー', `プロフィール情報の取得に失敗しました。${message ? `（${message}）` : ''}`, 'ERROR');
+        }
       } finally {
         setIsLoadingProfile(false);
       }
@@ -261,8 +271,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
         } else {
           addNotification('店舗情報', '店舗データが見つかりません。', 'WARNING');
         }
-      } catch {
-        addNotification('読み込みエラー', '店舗情報の取得に失敗しました。', 'ERROR');
+      } catch (error) {
+        const message = getErrorMessage(error);
+        if (lastStoreLoadErrorRef.current !== message) {
+          lastStoreLoadErrorRef.current = message;
+          console.error('[SettingsView] Failed to load store:', error);
+          addNotification('読み込みエラー', `店舗情報の取得に失敗しました。${message ? `（${message}）` : ''}`, 'ERROR');
+        }
       } finally {
         setIsLoadingStore(false);
       }

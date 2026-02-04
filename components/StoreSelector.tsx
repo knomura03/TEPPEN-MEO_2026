@@ -3,7 +3,7 @@ import { useStore } from '../contexts/StoreContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 
 export const StoreSelector: React.FC = () => {
-  const { stores, activeStoreId, setActiveStoreId, isLoadingStores } = useStore();
+  const { stores, activeStoreId, setActiveStoreId, isLoadingStores, storesError, reloadStores } = useStore();
 
   if (!isSupabaseConfigured) return null;
 
@@ -17,9 +17,18 @@ export const StoreSelector: React.FC = () => {
 
   if (stores.length === 0) {
     return (
-      <div className="px-3 py-2 text-sm bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-full text-yellow-800 dark:text-yellow-200">
-        店舗が未設定
-      </div>
+      <button
+        type="button"
+        onClick={() => void reloadStores()}
+        className={`px-3 py-2 text-sm rounded-full border transition-colors ${
+          storesError
+            ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-200'
+            : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200'
+        }`}
+        title={storesError ? storesError : 'クリックで再読み込み'}
+      >
+        {storesError ? '店舗取得エラー' : '店舗が未設定'}
+      </button>
     );
   }
 
@@ -37,4 +46,3 @@ export const StoreSelector: React.FC = () => {
     </select>
   );
 };
-

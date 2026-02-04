@@ -77,7 +77,7 @@ export const Layout: React.FC<LayoutProps> = ({
   toggleTheme,
   children 
 }) => {
-  const { stores, isLoadingStores, reloadStores } = useStore();
+  const { stores, isLoadingStores, storesError, reloadStores } = useStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showTour, setShowTour] = useState(false);
 
@@ -116,7 +116,8 @@ export const Layout: React.FC<LayoutProps> = ({
     'SETTINGS': '設定'
   };
 
-  const needsStoreBootstrap = isSupabaseConfigured && !isLoadingStores && stores.length === 0;
+  const hasStoresError = isSupabaseConfigured && !isLoadingStores && Boolean(storesError);
+  const needsStoreBootstrap = isSupabaseConfigured && !isLoadingStores && stores.length === 0 && !storesError;
 
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden transition-colors duration-200`}>
@@ -287,6 +288,42 @@ export const Layout: React.FC<LayoutProps> = ({
 
         <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
           <div className="max-w-7xl mx-auto h-full pb-20 md:pb-0">
+            {hasStoresError && (
+              <div className="mb-6 p-4 md:p-5 rounded-2xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 text-red-900 dark:text-red-100">
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="font-bold text-sm md:text-base">店舗一覧の取得に失敗しました</div>
+                    <div className="text-xs md:text-sm opacity-90 leading-relaxed">
+                      Supabaseから店舗一覧（stores）を取得できていないため、店舗セレクタが「未設定」になり、投稿/カレンダー/店舗情報が空に見えます。
+                    </div>
+                    <div className="text-[11px] md:text-xs opacity-90 leading-relaxed break-all">
+                      <span className="font-bold">詳細:</span> {storesError}
+                    </div>
+                    <ol className="text-xs md:text-sm list-decimal list-inside space-y-1 opacity-95">
+                      <li>右上の「店舗取得エラー」をクリック（再読み込み）</li>
+                      <li>直らない場合は、一度ログアウト→ログインを試す</li>
+                      <li>それでも直らない場合は、Supabase側（RLS/権限/テーブル）に問題がある可能性が高い</li>
+                    </ol>
+                  </div>
+                  <div className="flex gap-2 md:flex-col md:items-stretch">
+                    <button
+                      type="button"
+                      onClick={() => void reloadStores()}
+                      className="px-4 py-2 text-xs md:text-sm font-bold rounded-xl bg-white/80 dark:bg-gray-900/40 border border-red-200 dark:border-red-900/60 hover:bg-white dark:hover:bg-gray-900/60 transition-colors"
+                    >
+                      再読み込み
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('SETTINGS')}
+                      className="px-4 py-2 text-xs md:text-sm font-bold rounded-xl bg-red-600 text-white hover:bg-red-700 transition-colors"
+                    >
+                      設定へ
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {needsStoreBootstrap && (
               <div className="mb-6 p-4 md:p-5 rounded-2xl border border-yellow-200 dark:border-yellow-900/50 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100">
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">

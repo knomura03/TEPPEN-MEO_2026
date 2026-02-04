@@ -22,6 +22,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   // Profile State
   const [name, setName] = useState(currentUser.name);
   const [email, setEmail] = useState(currentUser.email);
+  const [newEmail, setNewEmail] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
@@ -49,40 +50,65 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       return;
     }
 
-    const hasCurrentPassword = currentPassword.trim().length > 0;
-    const hasNewPassword = newPassword.trim().length > 0;
-    if (hasCurrentPassword !== hasNewPassword) {
-      addNotification('入力エラー', 'パスワード変更は両方入力してください。', 'WARNING');
+    const trimmedCurrentPassword = currentPassword.trim();
+    const trimmedNewPassword = newPassword.trim();
+    const trimmedNewEmail = newEmail.trim();
+    const trimmedEmail = email.trim();
+
+    const wantsPasswordChange = trimmedNewPassword.length > 0;
+    const wantsEmailChange = trimmedNewEmail.length > 0 && trimmedNewEmail !== trimmedEmail;
+    const hasCurrentPassword = trimmedCurrentPassword.length > 0;
+
+    if ((wantsPasswordChange || wantsEmailChange) && !hasCurrentPassword) {
+      addNotification('入力エラー', '現在のパスワードを入力してください。', 'WARNING');
       return;
     }
-    if (hasNewPassword && newPassword.trim().length < 6) {
+    if (hasCurrentPassword && !wantsPasswordChange && !wantsEmailChange) {
+      addNotification('入力エラー', '変更内容がありません。', 'WARNING');
+      return;
+    }
+    if (wantsPasswordChange && trimmedNewPassword.length < 6) {
       addNotification('入力エラー', '新しいパスワードは6文字以上で入力してください。', 'WARNING');
       return;
     }
+    if (wantsEmailChange) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(trimmedNewEmail)) {
+        addNotification('入力エラー', '新しいメールアドレスの形式が正しくありません。', 'WARNING');
+        return;
+      }
+    }
 
     if (!isSupabaseConfigured) {
-      addNotification('プロフィール更新', 'Supabase未設定のためローカル表示のみ更新しました。', 'INFO');
+      addNotification('プロフィール更新', 'Supabase未設定のため変更できません。', 'INFO');
       return;
     }
 
     setIsSavingProfile(true);
     try {
-      if (hasCurrentPassword && hasNewPassword) {
-        await authService.changePassword(currentPassword.trim(), newPassword.trim());
+      if (wantsPasswordChange) {
+        await authService.changePassword(trimmedCurrentPassword, trimmedNewPassword);
         setCurrentPassword('');
         setNewPassword('');
         addNotification('パスワード更新', 'パスワードを更新しました。', 'SUCCESS');
       }
 
+      if (wantsEmailChange) {
+        await authService.changeEmail(trimmedCurrentPassword, trimmedNewEmail);
+        setNewEmail('');
+        addNotification('メール変更', '確認メールを送信しました。リンクをクリックして完了してください。', 'INFO');
+      }
+
+      const nextEmail = wantsEmailChange ? trimmedNewEmail : (trimmedEmail ? trimmedEmail : '');
       const profile = await profilesService.upsertProfile(currentUser.id, {
         name: name.trim(),
-        email: email.trim() ? email.trim() : null,
+        email: nextEmail ? nextEmail : null,
         avatarUrl: currentUser.avatarUrl ?? null,
       });
       const updatedUser: User = {
         ...currentUser,
         name: profile.name || name.trim(),
-        email: profile.email || email.trim(),
+        email: profile.email || nextEmail || trimmedEmail,
         avatarUrl: profile.avatarUrl || currentUser.avatarUrl,
       };
       setName(updatedUser.name);
@@ -147,6 +173,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       if (!isSupabaseConfigured) {
         setName(currentUser.name);
         setEmail(currentUser.email);
+        setNewEmail('');
         return;
       }
 
@@ -155,6 +182,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
         const profile = await profilesService.getProfile(currentUser.id);
         setName(profile?.name || currentUser.name);
         setEmail(profile?.email || currentUser.email);
+        setNewEmail('');
       } catch {
         addNotification('読み込みエラー', 'プロフィール情報の取得に失敗しました。', 'ERROR');
       } finally {
@@ -340,11 +368,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                         className="pl-10 w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">※ログイン用メールの変更は次フェーズで対応予定です。</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">※ログイン用メールは下で変更できます（確認メールで確定）。</p>
                   </div>
                 </div>
 
                 <div className="pt-6 border-t border-gray-100 dark:border-gray-700">
+                   <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">メールアドレス変更</h3>
+                   <div className="grid gap-4 mb-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">新しいメールアドレス</label>
+                        <div className="relative">
+                          <Mail className="absolute left-3 top-3 text-gray-400" size={18} />
+                          <input 
+                            type="email" 
+                            value={newEmail}
+                            onChange={(e) => setNewEmail(e.target.value)}
+                            placeholder="example@domain.com"
+                            disabled={isSavingProfile}
+                            className="pl-10 w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">※変更には現在のパスワードが必要です。</p>
+                      </div>
+                   </div>
+
                    <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">パスワード変更</h3>
                    <div className="grid gap-4">
                       <div>

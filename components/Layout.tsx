@@ -302,6 +302,9 @@ export const Layout: React.FC<LayoutProps> = ({
                       <li><code className="px-1 py-0.5 rounded bg-white/70 dark:bg-gray-900/40">YOUR_EMAIL_HERE</code> を、今ログイン中のメール（<code className="px-1 py-0.5 rounded bg-white/70 dark:bg-gray-900/40">{currentUser.email || '（メールが取得できません）'}</code>）に置換する</li>
                       <li>実行 → 右上の「店舗一覧を再読み込み」を押す</li>
                     </ol>
+                    <div className="text-xs md:text-sm opacity-90">
+                      店舗が表示されたのに権限（ADMINなど）が反映されない場合は、ブラウザの再読み込み（リロード）を1回してください。
+                    </div>
                   </div>
                   <div className="flex gap-2 md:flex-col md:items-stretch">
                     <button

@@ -1,7 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { MOCK_POSTS, HOLIDAYS } from '../constants';
 import { Post, PostStatus, SocialPlatform } from '../types';
 import { ChevronLeft, ChevronRight, Clock, CheckCircle, Calendar as CalendarIcon, Filter, Plus } from 'lucide-react';
+import { isSupabaseConfigured } from '../services/supabaseClient';
+import { postsService } from '../services/postsService';
+import { useNotification } from '../contexts/NotificationContext';
+import { useStore } from '../contexts/StoreContext';
 
 // Helpers
 const startOfMonth = (date: Date) => {
@@ -83,8 +87,33 @@ const getHolidayName = (date: Date) => {
 };
 
 export const CalendarView: React.FC = () => {
+  const { addNotification } = useNotification();
+  const { activeStoreId } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [filterPlatform, setFilterPlatform] = useState<SocialPlatform | 'ALL'>('ALL');
+  const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
+
+  const reload = async () => {
+    if (!isSupabaseConfigured) {
+      setPosts(MOCK_POSTS);
+      return;
+    }
+    if (!activeStoreId) {
+      setPosts([]);
+      return;
+    }
+    try {
+      const data = await postsService.listByStore(activeStoreId);
+      setPosts(data);
+    } catch {
+      addNotification('読み込みエラー', 'カレンダー用の投稿取得に失敗しました。', 'ERROR');
+    }
+  };
+
+  useEffect(() => {
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStoreId]);
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
@@ -101,7 +130,7 @@ export const CalendarView: React.FC = () => {
   const goToToday = () => setCurrentDate(new Date());
 
   const getPostsForDay = (day: Date) => {
-    return MOCK_POSTS.filter(post => {
+    return posts.filter(post => {
       const targetDate = post.scheduledDate || post.publishedDate;
       if (!targetDate || !isSameDay(targetDate, day)) return false;
       

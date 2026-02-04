@@ -2,8 +2,11 @@ import React, { useState, useRef } from 'react';
 import { User, SocialPlatform } from '../types';
 import { MOCK_ACCOUNTS } from '../constants';
 import { geminiService } from '../services/geminiService';
+import { postsService } from '../services/postsService';
+import { isSupabaseConfigured } from '../services/supabaseClient';
 import { Send, Calendar, Image as ImageIcon, Sparkles, Loader2, X, Eye, MonitorSmartphone, UploadCloud } from 'lucide-react';
 import { useNotification } from '../contexts/NotificationContext';
+import { useStore } from '../contexts/StoreContext';
 
 interface PostCreatorProps {
   currentUser: User;
@@ -11,6 +14,7 @@ interface PostCreatorProps {
 
 export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
+  const { activeStoreId } = useStore();
   const [content, setContent] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>([]);
   const [scheduledDate, setScheduledDate] = useState('');
@@ -48,8 +52,42 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isSupabaseConfigured) {
+      if (!activeStoreId) {
+        addNotification('店舗未設定', '店舗が未設定のため投稿を保存できません。', 'ERROR');
+        return;
+      }
+
+      try {
+        await postsService.create({
+          storeId: activeStoreId,
+          authorUserId: currentUser.id,
+          content,
+          platforms: selectedPlatforms,
+          scheduledAt: scheduledDate ? new Date(scheduledDate) : null,
+        });
+
+        addNotification(
+          scheduledDate ? '予約作成完了' : '下書き保存完了',
+          scheduledDate
+            ? `予約投稿を作成しました（${selectedPlatforms.length}プラットフォーム）`
+            : `下書きを保存しました（${selectedPlatforms.length}プラットフォーム）`,
+          'SUCCESS'
+        );
+
+        setContent('');
+        setImages([]);
+        setImagePreviewUrls([]);
+        setScheduledDate('');
+        setSelectedPlatforms([]);
+      } catch (error) {
+        addNotification('保存エラー', '投稿の保存に失敗しました。', 'ERROR');
+      }
+      return;
+    }
     
     // Simulate API call
     setTimeout(() => {

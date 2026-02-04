@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { OnboardingTour } from './OnboardingTour';
 import { NotificationCenter } from './NotificationCenter';
+import { StoreSelector } from './StoreSelector';
 
 interface LayoutProps {
   currentUser: User;
@@ -216,6 +217,7 @@ export const Layout: React.FC<LayoutProps> = ({
                 {viewLabels[currentView] || 'TEPPEN MEO'}
             </h2>
             <div className="flex items-center gap-4">
+                <StoreSelector />
                 <div className="relative group">
                     <Search className="absolute left-3 top-2.5 text-gray-400 h-4 w-4" />
                     <input 

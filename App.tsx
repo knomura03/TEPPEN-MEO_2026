@@ -12,6 +12,7 @@ import { UnifiedInbox } from './components/UnifiedInbox';
 import { SettingsView } from './components/SettingsView';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ToastContainer } from './components/Toast';
+import { StoreProvider } from './contexts/StoreContext';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -99,16 +100,18 @@ const App: React.FC = () => {
 
   return (
     <NotificationProvider>
-      <Layout
-        currentUser={currentUser}
-        currentView={currentView}
-        onNavigate={setCurrentView}
-        onLogout={handleLogout}
-        isDarkMode={isDarkMode}
-        toggleTheme={toggleTheme}
-      >
-        {renderContent()}
-      </Layout>
+      <StoreProvider>
+        <Layout
+          currentUser={currentUser}
+          currentView={currentView}
+          onNavigate={setCurrentView}
+          onLogout={handleLogout}
+          isDarkMode={isDarkMode}
+          toggleTheme={toggleTheme}
+        >
+          {renderContent()}
+        </Layout>
+      </StoreProvider>
       <ToastContainer />
     </NotificationProvider>
   );

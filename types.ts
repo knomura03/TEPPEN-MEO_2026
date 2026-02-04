@@ -15,6 +15,18 @@ export interface StoreInfo {
   businessHours?: string;
 }
 
+// DB上の店舗（MVP）
+export interface Store {
+  id: string;
+  orgId: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  website?: string;
+  category?: string;
+  businessHours?: string;
+}
+
 export interface User {
   id: string;
   username: string;

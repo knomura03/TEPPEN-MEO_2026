@@ -1,7 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { MOCK_POSTS } from '../constants';
-import { PostStatus } from '../types';
+import { Post, PostStatus } from '../types';
 import { Clock, CheckCircle, AlertCircle, Calendar } from 'lucide-react';
+import { isSupabaseConfigured } from '../services/supabaseClient';
+import { postsService } from '../services/postsService';
+import { useNotification } from '../contexts/NotificationContext';
+import { useStore } from '../contexts/StoreContext';
 
 const formatDate = (date: Date) => {
   const y = date.getFullYear();
@@ -13,6 +17,49 @@ const formatDate = (date: Date) => {
 };
 
 export const PostList: React.FC = () => {
+  const { addNotification } = useNotification();
+  const { activeStoreId } = useStore();
+  const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
+
+  const reload = async () => {
+    if (!isSupabaseConfigured) {
+      setPosts(MOCK_POSTS);
+      return;
+    }
+    if (!activeStoreId) {
+      setPosts([]);
+      return;
+    }
+    try {
+      const data = await postsService.listByStore(activeStoreId);
+      setPosts(data);
+    } catch {
+      addNotification('読み込みエラー', '投稿の取得に失敗しました。', 'ERROR');
+    }
+  };
+
+  useEffect(() => {
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStoreId]);
+
+  const handleDelete = async (postId: string) => {
+    if (!window.confirm('この投稿を削除しますか？')) return;
+
+    if (!isSupabaseConfigured) {
+      addNotification('モック', 'デモでは削除できません。', 'INFO');
+      return;
+    }
+
+    try {
+      await postsService.delete(postId);
+      addNotification('削除完了', '投稿を削除しました。', 'SUCCESS');
+      await reload();
+    } catch {
+      addNotification('削除エラー', '投稿の削除に失敗しました。', 'ERROR');
+    }
+  };
+
   const getStatusBadge = (status: PostStatus) => {
     switch (status) {
       case PostStatus.PUBLISHED:
@@ -52,7 +99,7 @@ export const PostList: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {MOCK_POSTS.map((post) => (
+              {posts.map((post) => (
                 <tr key={post.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
                     {getStatusBadge(post.status)}
@@ -86,7 +133,12 @@ export const PostList: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 mr-3">編集</button>
-                    <button className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300">削除</button>
+                    <button
+                      onClick={() => handleDelete(post.id)}
+                      className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
+                    >
+                      削除
+                    </button>
                   </td>
                 </tr>
               ))}

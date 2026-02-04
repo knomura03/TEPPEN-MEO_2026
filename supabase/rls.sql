@@ -234,6 +234,13 @@ on public.inbox_messages
 for select
 using (public.user_has_store_access(store_id));
 
+drop policy if exists inbox_messages_update_by_store_access on public.inbox_messages;
+create policy inbox_messages_update_by_store_access
+on public.inbox_messages
+for update
+using (public.user_has_store_access(store_id))
+with check (public.user_has_store_access(store_id));
+
 -- ------------------------------------------------------------
 -- audit_logs（MVPではクライアントからの閲覧はまだ許可しない）
 -- ------------------------------------------------------------

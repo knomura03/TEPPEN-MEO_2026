@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { MOCK_MESSAGES } from '../constants';
 import { InboxMessage } from '../types';
 import { Search, Filter, Send, MessageCircle } from 'lucide-react';
 import { useNotification } from '../contexts/NotificationContext';
+import { isSupabaseConfigured } from '../services/supabaseClient';
+import { inboxService } from '../services/inboxService';
+import { useStore } from '../contexts/StoreContext';
 
 const formatMessageDate = (date: Date) => {
   const m = date.getMonth() + 1;
@@ -23,26 +26,75 @@ const formatDetailDate = (date: Date) => {
 
 export const UnifiedInbox: React.FC = () => {
   const { addNotification } = useNotification();
+  const { activeStoreId } = useStore();
   const [messages, setMessages] = useState<InboxMessage[]>(MOCK_MESSAGES);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedMessage = messages.find(m => m.id === selectedMessageId);
 
-  const handleReply = (e: React.FormEvent) => {
+  const reload = async () => {
+    if (!isSupabaseConfigured) {
+      setMessages(MOCK_MESSAGES);
+      return;
+    }
+    if (!activeStoreId) {
+      setMessages([]);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const data = await inboxService.listByStore(activeStoreId);
+      setMessages(data);
+      if (data.length > 0 && !data.find((m) => m.id === selectedMessageId)) {
+        setSelectedMessageId(data[0].id);
+      }
+    } catch {
+      addNotification('読み込みエラー', '受信箱の取得に失敗しました。', 'ERROR');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStoreId]);
+
+  const handleReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMessage || !replyText.trim()) return;
 
-    // モック更新処理
-    const updatedMessages = messages.map(msg => 
-      msg.id === selectedMessage.id 
-        ? { ...msg, isReplied: true, replyContent: replyText } 
-        : msg
-    );
-    
-    setMessages(updatedMessages);
-    addNotification('返信送信完了', `${selectedMessage.senderName} さんへ返信しました`, 'SUCCESS');
-    setReplyText('');
+    if (!isSupabaseConfigured) {
+      const updatedMessages = messages.map(msg => 
+        msg.id === selectedMessage.id 
+          ? { ...msg, isReplied: true, replyContent: replyText } 
+          : msg
+      );
+      setMessages(updatedMessages);
+      addNotification('返信送信完了', `${selectedMessage.senderName} さんへ返信しました`, 'SUCCESS');
+      setReplyText('');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await inboxService.replyToMessage(selectedMessage.id, replyText.trim());
+      const updatedMessages = messages.map(msg => 
+        msg.id === selectedMessage.id 
+          ? { ...msg, isReplied: true, replyContent: replyText } 
+          : msg
+      );
+      setMessages(updatedMessages);
+      addNotification('返信送信完了', `${selectedMessage.senderName} さんへ返信しました`, 'SUCCESS');
+      setReplyText('');
+    } catch {
+      addNotification('返信エラー', '返信の保存に失敗しました。', 'ERROR');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const PlatformIcon = ({ platform }: { platform: string }) => {
@@ -77,6 +129,9 @@ export const UnifiedInbox: React.FC = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto">
+          {isLoading && (
+            <div className="p-4 text-sm text-gray-500 dark:text-gray-400">読み込み中...</div>
+          )}
           {messages.map(message => (
             <div 
               key={message.id}
@@ -164,7 +219,7 @@ export const UnifiedInbox: React.FC = () => {
                 />
                 <button 
                   type="submit"
-                  disabled={!replyText.trim()}
+                  disabled={!replyText.trim() || isSubmitting}
                   className="absolute bottom-4 right-4 bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <Send size={18} />

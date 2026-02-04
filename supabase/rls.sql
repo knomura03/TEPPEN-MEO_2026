@@ -9,6 +9,60 @@
 -- Helper: storeアクセス判定
 -- ------------------------------------------------------------
 
+-- NOTE:
+-- RLSポリシー内で「memberships を参照する memberships のポリシー」を書くと
+-- Postgresが再帰（infinite recursion）として検出し、42P17 で全体が壊れます。
+-- そのため、memberships を参照する判定は SECURITY DEFINER 関数に寄せて
+-- ポリシー側は “同一テーブルを直接参照しない” 形にします。
+
+create or replace function public.actor_highest_role_in_org(target_org_id uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    case
+      when exists (
+        select 1
+        from public.memberships m
+        where m.user_id = auth.uid()
+          and m.org_id = target_org_id
+          and m.role = 'ADMIN'
+      ) then 'ADMIN'
+      when exists (
+        select 1
+        from public.memberships m
+        where m.user_id = auth.uid()
+          and m.org_id = target_org_id
+          and m.role = 'MANAGER'
+      ) then 'MANAGER'
+      when exists (
+        select 1
+        from public.memberships m
+        where m.user_id = auth.uid()
+          and m.org_id = target_org_id
+      ) then 'USER'
+      else null
+    end;
+$$;
+
+create or replace function public.actor_can_manage_membership(target_org_id uuid, target_membership_role text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    case public.actor_highest_role_in_org(target_org_id)
+      when 'ADMIN' then true
+      when 'MANAGER' then target_membership_role = 'USER'
+      else false
+    end;
+$$;
+
 create or replace function public.user_has_store_access(target_store_id uuid)
 returns boolean
 language sql
@@ -102,16 +156,7 @@ create policy memberships_select_by_org_admin_manager
 on public.memberships
 for select
 using (
-  exists (
-    select 1
-    from public.memberships m_actor
-    where m_actor.user_id = auth.uid()
-      and m_actor.org_id = memberships.org_id
-      and (
-        m_actor.role = 'ADMIN'
-        or (m_actor.role = 'MANAGER' and memberships.role = 'USER')
-      )
-  )
+  public.actor_can_manage_membership(org_id, role)
 );
 
 drop policy if exists memberships_delete_by_org_admin_manager on public.memberships;
@@ -120,16 +165,7 @@ on public.memberships
 for delete
 using (
   memberships.user_id <> auth.uid()
-  and exists (
-    select 1
-    from public.memberships m_actor
-    where m_actor.user_id = auth.uid()
-      and m_actor.org_id = memberships.org_id
-      and (
-        m_actor.role = 'ADMIN'
-        or (m_actor.role = 'MANAGER' and memberships.role = 'USER')
-      )
-  )
+  and public.actor_can_manage_membership(org_id, role)
 );
 -- insert/update/delete はMVPではクライアントから許可しない想定
 -- （管理機能 or サーバー側で実施。service_role はRLSをバイパス可能）

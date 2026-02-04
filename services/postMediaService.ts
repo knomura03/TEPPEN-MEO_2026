@@ -6,6 +6,12 @@ type UploadedMedia = {
   size?: number | null;
 };
 
+type UploadResult = {
+  uploadedCount: number;
+  failedCount: number;
+  errors: string[];
+};
+
 const BUCKET_ID = 'post-media';
 
 const requireSupabase = () => {
@@ -26,11 +32,14 @@ const buildStoragePath = (storeId: string, postId: string, fileName: string) => 
 };
 
 export const postMediaService = {
-  async uploadForPost(params: { storeId: string; postId: string; files: File[] }): Promise<UploadedMedia[]> {
+  async uploadForPost(params: { storeId: string; postId: string; files: File[] }): Promise<UploadResult> {
     const client = requireSupabase();
-    if (params.files.length === 0) return [];
+    if (params.files.length === 0) {
+      return { uploadedCount: 0, failedCount: 0, errors: [] };
+    }
 
     const uploaded: UploadedMedia[] = [];
+    const errors: string[] = [];
 
     for (const file of params.files) {
       const path = buildStoragePath(params.storeId, params.postId, file.name);
@@ -40,7 +49,10 @@ export const postMediaService = {
           upsert: false,
           contentType: file.type || undefined,
         });
-      if (error) throw error;
+      if (error) {
+        errors.push(`${file.name}: ${error.message || 'upload error'}`);
+        continue;
+      }
       uploaded.push({
         storagePath: path,
         mime: file.type || null,
@@ -48,20 +60,26 @@ export const postMediaService = {
       });
     }
 
-    if (uploaded.length > 0) {
-      const { error } = await client.from('post_media').insert(
-        uploaded.map((item) => ({
-          post_id: params.postId,
-          store_id: params.storeId,
-          storage_path: item.storagePath,
-          mime: item.mime,
-          size: item.size,
-        }))
-      );
-      if (error) throw error;
+    if (uploaded.length === 0) {
+      return { uploadedCount: 0, failedCount: params.files.length, errors };
     }
 
-    return uploaded;
+    const { error } = await client.from('post_media').insert(
+      uploaded.map((item) => ({
+        post_id: params.postId,
+        store_id: params.storeId,
+        storage_path: item.storagePath,
+        mime: item.mime,
+        size: item.size,
+      }))
+    );
+    if (error) throw error;
+
+    return {
+      uploadedCount: uploaded.length,
+      failedCount: params.files.length - uploaded.length,
+      errors,
+    };
   },
 
   async createSignedUrlMap(paths: string[], expiresInSeconds = 3600): Promise<Map<string, string>> {
@@ -81,4 +99,3 @@ export const postMediaService = {
     return result;
   },
 };
-

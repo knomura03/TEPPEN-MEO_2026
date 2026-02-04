@@ -76,13 +76,24 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
 
         if (images.length > 0) {
           try {
-            await postMediaService.uploadForPost({
+            const result = await postMediaService.uploadForPost({
               storeId: activeStoreId,
               postId: created.id,
               files: images,
             });
-          } catch {
-            addNotification('画像アップロード失敗', '投稿は保存されましたが、画像のアップロードに失敗しました。', 'WARNING');
+            if (result.failedCount > 0) {
+              addNotification(
+                '画像アップロード一部失敗',
+                `${result.failedCount}件の画像アップロードに失敗しました。`,
+                'WARNING'
+              );
+            }
+          } catch (error: any) {
+            addNotification(
+              '画像アップロード失敗',
+              `投稿は保存されましたが、画像のアップロードに失敗しました。${error?.message ? `（${error.message}）` : ''}`,
+              'WARNING'
+            );
           }
         }
 

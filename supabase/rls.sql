@@ -97,15 +97,51 @@ drop policy if exists stores_select_by_membership on public.stores;
 create policy stores_select_by_membership
 on public.stores
 for select
-using (public.user_has_store_access(id));
+using (
+  exists (
+    select 1
+    from public.memberships m
+    where m.user_id = auth.uid()
+      and m.org_id = org_id
+      and (
+        m.role = 'ADMIN'
+        or m.store_id is null
+        or m.store_id = id
+      )
+  )
+);
 
 -- update はMVPでは一旦「所属者が更新可能」まで（後で権限フラグで絞る）
 drop policy if exists stores_update_by_membership on public.stores;
 create policy stores_update_by_membership
 on public.stores
 for update
-using (public.user_has_store_access(id))
-with check (public.user_has_store_access(id));
+using (
+  exists (
+    select 1
+    from public.memberships m
+    where m.user_id = auth.uid()
+      and m.org_id = org_id
+      and (
+        m.role = 'ADMIN'
+        or m.store_id is null
+        or m.store_id = id
+      )
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.memberships m
+    where m.user_id = auth.uid()
+      and m.org_id = org_id
+      and (
+        m.role = 'ADMIN'
+        or m.store_id is null
+        or m.store_id = id
+      )
+  )
+);
 
 -- ------------------------------------------------------------
 -- posts

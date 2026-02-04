@@ -60,6 +60,12 @@ for update
 using (id = auth.uid())
 with check (id = auth.uid());
 
+drop policy if exists profiles_insert_own on public.profiles;
+create policy profiles_insert_own
+on public.profiles
+for insert
+with check (id = auth.uid());
+
 -- ------------------------------------------------------------
 -- memberships（まずは自分の所属だけ見える）
 -- ------------------------------------------------------------

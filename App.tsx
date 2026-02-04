@@ -86,7 +86,7 @@ const App: React.FC = () => {
       case 'INBOX':
         return <UnifiedInbox />;
       case 'SETTINGS':
-        return <SettingsView currentUser={currentUser} />;
+        return <SettingsView currentUser={currentUser} onProfileUpdated={setCurrentUser} />;
       case 'USER_MANAGEMENT':
         // User Roleはアクセス不可
         if (currentUser.role === Role.USER) {

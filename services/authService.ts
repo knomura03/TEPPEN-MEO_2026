@@ -3,12 +3,16 @@ import { MOCK_USERS } from '../constants';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
 import type { User as SupabaseAuthUser } from '@supabase/supabase-js';
 import { membershipsService } from './membershipsService';
+import { profilesService } from './profilesService';
 
 class AuthService {
   private currentUser: User | null = null;
   private demoStorageKey = 'social_sync_user';
 
-  private mapSupabaseUser(user: SupabaseAuthUser, override?: Partial<Pick<User, 'role'>>): User {
+  private mapSupabaseUser(
+    user: SupabaseAuthUser,
+    override?: Partial<Pick<User, 'role' | 'name' | 'email' | 'avatarUrl' | 'plan'>>
+  ): User {
     const email = user.email || '';
     const username = email.includes('@') ? email.split('@')[0] : (email || user.id);
 
@@ -16,7 +20,7 @@ class AuthService {
     const role = roleFromMeta && Object.values(Role).includes(roleFromMeta) ? (roleFromMeta as Role) : Role.USER;
 
     const planFromMeta = user.user_metadata?.plan;
-    const plan: PlanType = planFromMeta || 'FREE';
+    const plan: PlanType = override?.plan || planFromMeta || 'FREE';
 
     const storeInfoFromMeta = (user.user_metadata?.storeInfo || {}) as StoreInfo;
 
@@ -25,10 +29,10 @@ class AuthService {
     return {
       id: user.id,
       username,
-      name: user.user_metadata?.name || username,
-      email,
+      name: override?.name ?? user.user_metadata?.name ?? username,
+      email: override?.email ?? email,
       role: override?.role ?? role,
-      avatarUrl: user.user_metadata?.avatarUrl,
+      avatarUrl: override?.avatarUrl ?? user.user_metadata?.avatarUrl,
       plan,
       lastLoginAt,
       storeInfo: storeInfoFromMeta,
@@ -58,7 +62,24 @@ class AuthService {
     } catch {
       // まだDB/RLS未設定の可能性があるので握りつぶす（メタデータroleにフォールバック）
     }
-    this.currentUser = this.mapSupabaseUser(data.user, membershipRole ? { role: membershipRole } : undefined);
+    let profileOverride: Partial<User> | undefined;
+    try {
+      const profile = await profilesService.getProfile(data.user.id);
+      if (profile) {
+        profileOverride = {
+          name: profile.name,
+          email: profile.email,
+          avatarUrl: profile.avatarUrl,
+        };
+      }
+    } catch {
+      // profileは任意。取れない場合はメタデータで続行
+    }
+    const override = {
+      ...(membershipRole ? { role: membershipRole } : {}),
+      ...(profileOverride || {}),
+    };
+    this.currentUser = this.mapSupabaseUser(data.user, Object.keys(override).length > 0 ? override : undefined);
     return this.currentUser;
   }
 
@@ -96,7 +117,24 @@ class AuthService {
       } catch {
         // 同上：DB未設定時はフォールバック
       }
-      this.currentUser = this.mapSupabaseUser(sessionUser, membershipRole ? { role: membershipRole } : undefined);
+      let profileOverride: Partial<User> | undefined;
+      try {
+        const profile = await profilesService.getProfile(sessionUser.id);
+        if (profile) {
+          profileOverride = {
+            name: profile.name,
+            email: profile.email,
+            avatarUrl: profile.avatarUrl,
+          };
+        }
+      } catch {
+        // profileは任意
+      }
+      const override = {
+        ...(membershipRole ? { role: membershipRole } : {}),
+        ...(profileOverride || {}),
+      };
+      this.currentUser = this.mapSupabaseUser(sessionUser, Object.keys(override).length > 0 ? override : undefined);
       return this.currentUser;
     }
 

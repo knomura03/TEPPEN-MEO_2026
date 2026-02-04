@@ -6,12 +6,14 @@ import { useNotification } from '../contexts/NotificationContext';
 import { useStore } from '../contexts/StoreContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { storesService } from '../services/storesService';
+import { profilesService } from '../services/profilesService';
 
 interface SettingsViewProps {
   currentUser: User;
+  onProfileUpdated?: (user: User) => void;
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfileUpdated }) => {
   const { addNotification } = useNotification();
   const { activeStoreId, reloadStores } = useStore();
   const [activeTab, setActiveTab] = useState<'PROFILE' | 'STORE' | 'INTEGRATIONS' | 'SYSTEM'>('PROFILE');
@@ -21,6 +23,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
   const [email, setEmail] = useState(currentUser.email);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Store Info State
   const [storeName, setStoreName] = useState('');
@@ -39,7 +43,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    addNotification('プロフィール更新', 'ユーザー情報を保存しました。', 'SUCCESS');
+    if (!name.trim()) {
+      addNotification('入力エラー', '表示名を入力してください。', 'WARNING');
+      return;
+    }
+
+    if (currentPassword || newPassword) {
+      addNotification('未対応', 'パスワード変更は次フェーズで対応します。', 'WARNING');
+      setCurrentPassword('');
+      setNewPassword('');
+    }
+
+    if (!isSupabaseConfigured) {
+      addNotification('プロフィール更新', 'Supabase未設定のためローカル表示のみ更新しました。', 'INFO');
+      return;
+    }
+
+    setIsSavingProfile(true);
+    profilesService
+      .upsertProfile(currentUser.id, {
+        name: name.trim(),
+        email: email.trim() ? email.trim() : null,
+        avatarUrl: currentUser.avatarUrl ?? null,
+      })
+      .then((profile) => {
+        const updatedUser: User = {
+          ...currentUser,
+          name: profile.name || name.trim(),
+          email: profile.email || email.trim(),
+          avatarUrl: profile.avatarUrl || currentUser.avatarUrl,
+        };
+        setName(updatedUser.name);
+        setEmail(updatedUser.email);
+        onProfileUpdated?.(updatedUser);
+        addNotification('プロフィール更新', 'ユーザー情報を保存しました。', 'SUCCESS');
+      })
+      .catch(() => {
+        addNotification('保存エラー', 'ユーザー情報の保存に失敗しました。', 'ERROR');
+      })
+      .finally(() => {
+        setIsSavingProfile(false);
+      });
   };
 
   const handleSaveStore = (e: React.FormEvent) => {
@@ -87,6 +131,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
         setIsSavingStore(false);
       });
   }
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!isSupabaseConfigured) {
+        setName(currentUser.name);
+        setEmail(currentUser.email);
+        return;
+      }
+
+      setIsLoadingProfile(true);
+      try {
+        const profile = await profilesService.getProfile(currentUser.id);
+        setName(profile?.name || currentUser.name);
+        setEmail(profile?.email || currentUser.email);
+      } catch {
+        addNotification('読み込みエラー', 'プロフィール情報の取得に失敗しました。', 'ERROR');
+      } finally {
+        setIsLoadingProfile(false);
+      }
+    };
+
+    void loadProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser.id]);
 
   useEffect(() => {
     const loadStoreInfo = async () => {
@@ -245,7 +313,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
                         type="text" 
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        className="pl-10 w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+                        disabled={isLoadingProfile || isSavingProfile}
+                        className="pl-10 w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -257,9 +326,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
                         type="email" 
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="pl-10 w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+                        disabled
+                        className="pl-10 w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">※ログイン用メールの変更は次フェーズで対応予定です。</p>
                   </div>
                 </div>
 
@@ -274,7 +345,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
                             type="password" 
                             value={currentPassword}
                             onChange={(e) => setCurrentPassword(e.target.value)}
-                            className="pl-10 w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+                            disabled={isSavingProfile}
+                            className="pl-10 w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                           />
                         </div>
                       </div>
@@ -286,7 +358,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
                             type="password" 
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
-                            className="pl-10 w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+                            disabled={isSavingProfile}
+                            className="pl-10 w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                           />
                         </div>
                       </div>
@@ -294,9 +367,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser }) => {
                 </div>
 
                 <div className="flex justify-end pt-4">
-                  <button type="submit" className="flex items-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl shadow-lg shadow-primary-200 dark:shadow-none transition-all">
+                  <button
+                    type="submit"
+                    disabled={isLoadingProfile || isSavingProfile}
+                    className="flex items-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl shadow-lg shadow-primary-200 dark:shadow-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
                     <Save size={18} />
-                    保存する
+                    {isSavingProfile ? '保存中...' : '保存する'}
                   </button>
                 </div>
               </form>

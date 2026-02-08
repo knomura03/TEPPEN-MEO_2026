@@ -339,7 +339,7 @@ test('Phase1: Store group CRUD + per-user controls + CSV import', async ({ page 
   await ensureStoreSelected(page);
 
   await page.locator('#nav-USER_MANAGEMENT').click();
-  await expect(page.getByText('ユーザー・契約管理')).toBeVisible();
+  await expect(page.locator('h1', { hasText: 'ユーザー・契約管理' }).first()).toBeVisible();
 
   // Create store group with the first store only (minimal).
   await page.getByTestId('store-group-add').click();

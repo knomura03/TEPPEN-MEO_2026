@@ -104,19 +104,47 @@ const runE2ePhase1 = async (params: {
 
   const stdoutLogPath = path.join(logsDir, 'playwright.stdout.log');
   const stderrLogPath = path.join(logsDir, 'playwright.stderr.log');
+  const installStdoutLogPath = path.join(logsDir, 'playwright.install.stdout.log');
+  const installStderrLogPath = path.join(logsDir, 'playwright.install.stderr.log');
 
   const startedAt = new Date();
 
-  const res = await runCommand({
-    cwd: params.repoRoot,
-    command: 'npm',
-    args: ['run', 'audit:e2e:phase1', '--', '--max-failures=1'],
-    env: {
-      AUDIT_BASE_URL: params.baseUrl,
-      AUDIT_OUTPUT_DIR: artifactsDir,
-    },
-    timeoutMs: 25 * 60 * 1000,
-  });
+  const shouldInstallPlaywrightBrowsers = (run: { stdout: string; stderr: string }): boolean => {
+    const combined = `${run.stdout}\n${run.stderr}`;
+    return (
+      combined.includes('playwright install') &&
+      (combined.includes('Executable doesn') ||
+        combined.includes('browserType.launch') ||
+        combined.includes('Please run') ||
+        combined.includes('Missing browser'))
+    );
+  };
+
+  const runPlaywright = async () =>
+    runCommand({
+      cwd: params.repoRoot,
+      command: 'npm',
+      args: ['run', 'audit:e2e:phase1', '--', '--max-failures=1'],
+      env: {
+        AUDIT_BASE_URL: params.baseUrl,
+        AUDIT_OUTPUT_DIR: artifactsDir,
+      },
+      timeoutMs: 25 * 60 * 1000,
+    });
+
+  let res = await runPlaywright();
+  if (res.exitCode !== 0 && shouldInstallPlaywrightBrowsers(res)) {
+    const installRes = await runCommand({
+      cwd: params.repoRoot,
+      command: 'npx',
+      args: ['playwright', 'install', 'chromium'],
+      timeoutMs: 15 * 60 * 1000,
+    });
+    await writeTextFile(installStdoutLogPath, installRes.stdout);
+    await writeTextFile(installStderrLogPath, installRes.stderr);
+
+    res = await runPlaywright();
+  }
 
   await writeTextFile(stdoutLogPath, res.stdout);
   await writeTextFile(stderrLogPath, res.stderr);
@@ -237,4 +265,3 @@ const main = async (): Promise<void> => {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   void main();
 }
-

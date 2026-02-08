@@ -52,9 +52,18 @@ export const surveyAssetService = {
     positiveThreshold: number;
   }): Promise<void> {
     const qrDataUrl = await surveyAssetService.generateQrDataUrl(params.publicUrl);
-    const popup = window.open('', '_blank', 'noopener,noreferrer,width=980,height=760');
+    // NOTE: We need a window handle to `document.write()` into the popup.
+    // Some browsers/headless environments may return `null` when `noopener` is used,
+    // which would break POP generation (blank window). We explicitly open without it.
+    const popup = window.open('', '_blank', 'width=980,height=760');
     if (!popup) {
       throw new Error('ポップアップを開けませんでした。ブラウザのポップアップブロックを解除してください。');
+    }
+    try {
+      // Defensive: don't allow the popup to access the opener even though we keep the handle.
+      popup.opener = null;
+    } catch {
+      // ignore
     }
 
     const safeTitle = escapeHtml(params.surveyTitle);

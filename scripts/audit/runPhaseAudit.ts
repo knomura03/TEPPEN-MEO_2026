@@ -263,5 +263,16 @@ const main = async (): Promise<void> => {
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  void main();
+  void main().catch((error) => {
+    if (error instanceof Error) {
+      // Keep output user-friendly by default. Opt-in stack via AUDIT_DEBUG=1.
+      console.error(error.message);
+      if (process.env.AUDIT_DEBUG === '1' && error.stack) {
+        console.error(error.stack);
+      }
+    } else {
+      console.error(String(error));
+    }
+    process.exit(1);
+  });
 }

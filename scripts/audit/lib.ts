@@ -80,7 +80,26 @@ export const runCommand = async (params: {
 
 export const loadDotEnvFile = async (filePath: string): Promise<Record<string, string>> => {
   const out: Record<string, string> = {};
-  const raw = await fs.readFile(filePath, 'utf8');
+  let raw: string;
+  try {
+    raw = await fs.readFile(filePath, 'utf8');
+  } catch (error) {
+    const err = error as { code?: unknown };
+    if (err && err.code === 'ENOENT') {
+      throw new Error(
+        [
+          `Missing required audit env file: ${filePath}`,
+          '',
+          'Create it once (local only) using the template:',
+          '  cp .env.audit.local.example .env.audit.local',
+          '',
+          'Then fill in your existing ADMIN/MANAGER/USER login credentials.',
+          'See: docs/05_RUNBOOK_KNOMURA.md (Phase監査)',
+        ].join('\n')
+      );
+    }
+    throw error;
+  }
   for (const line of raw.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
@@ -103,4 +122,3 @@ export const loadDotEnvFile = async (filePath: string): Promise<Record<string, s
 export const resolveRepoRoot = (): string => {
   return path.resolve(process.cwd());
 };
-

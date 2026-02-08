@@ -11,6 +11,50 @@
 - P1-01〜P1-09の最終動作確認は `docs/12_P1_FINAL_VERIFICATION_RUNBOOK.md` を使ってください。
 - 今後のP1チケットもこの手順書へ追記していきます。
 
+## Phase監査（自動で一発実行）
+Phase1が正しく動いているかを、**A: 静的監査 / B: DB存在監査 / C: 動的監査（ブラウザ操作）**までまとめて自動実行できます。
+
+実行コマンド:
+- `npm run audit:phase1`
+
+### 最初の1回だけやること（監査用ログイン情報を置く）
+1. リポジトリ直下に `.env.audit.local` を作成します（このファイルはGitに入りません）。
+2. 次を貼り付けて、あなたの監査用アカウント情報に置き換えてください。
+
+```env
+# 監査で使うログイン（既存のADMIN/MANAGER/USER）
+AUDIT_ADMIN_EMAIL=xxx@example.com
+AUDIT_ADMIN_PASSWORD=xxxxxxxx
+AUDIT_MANAGER_EMAIL=xxx@example.com
+AUDIT_MANAGER_PASSWORD=xxxxxxxx
+AUDIT_USER_EMAIL=xxx@example.com
+AUDIT_USER_PASSWORD=xxxxxxxx
+
+# 監査対象URL（通常はローカルでOK）
+AUDIT_BASE_URL=http://localhost:3000
+```
+
+注意:
+- 監査用ADMINは「普段運用に使っていないアカウント」を推奨します（アンケ公開が “ユーザーごと1件制限” のため）。
+- 既存の公開アンケートがあるADMINで監査すると、公開ステップが失敗することがあります。
+- 監査は安全のため、**既存の通常アンケートを自動アーカイブしません**（`[AUDIT]` の公開アンケートだけは自動アーカイブして継続できます）。
+
+### 監査の実行手順（クリック不要）
+1. ターミナルでこのリポジトリへ移動
+2. `npm run audit:phase1` を実行
+
+期待結果:
+- `docs/14_PHASE_AUDIT_LOG.md` に結果が追記され、**自動で commit/push されます**
+- 詳細ログやスクショ/traceは `output/audit/phase1/<timestamp>/` に保存されます（Git管理しません）
+
+失敗した場合:
+- `docs/14_PHASE_AUDIT_LOG.md` のFAIL行を見て、`output/audit/...` のログ（特に `C_e2e/logs`）をこちらに共有してください
+
+### 個別実行（必要な時だけ）
+- 静的監査だけ: `npm run audit:static`
+- DB存在監査だけ: `npm run audit:db:phase1`
+- ブラウザ監査だけ: `npm run audit:e2e:phase1`
+
 ## P1-09（店舗グループ一括投稿/一括設定）の使い方
 ### 一括投稿（ADMIN/MANAGER）
 1. 「新規投稿作成」を開く

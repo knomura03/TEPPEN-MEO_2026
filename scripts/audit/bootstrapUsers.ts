@@ -16,6 +16,14 @@ export type AuditBootstrapUsersResult = {
   error?: string;
 };
 
+type InvokeErrorInfo = {
+  name?: string;
+  message: string;
+  status?: number;
+  statusText?: string;
+  body?: string;
+};
+
 const requireValue = (map: Record<string, string>, key: string): string => {
   const value = map[key];
   if (!value) throw new Error(`Missing required env in .env.audit.local: ${key}`);
@@ -33,6 +41,28 @@ const roleRank = (role: string): number => {
     default:
       return 0;
   }
+};
+
+const toInvokeErrorInfo = async (error: unknown): Promise<InvokeErrorInfo> => {
+  const anyErr = error as { name?: unknown; message?: unknown; context?: unknown };
+  const info: InvokeErrorInfo = {
+    name: anyErr?.name ? String(anyErr.name) : undefined,
+    message: anyErr?.message ? String(anyErr.message) : String(error),
+  };
+  const ctx = anyErr?.context as unknown;
+  if (ctx && typeof ctx === 'object') {
+    const maybeResponse = ctx as { status?: unknown; statusText?: unknown; text?: unknown };
+    if (typeof maybeResponse.status === 'number') info.status = maybeResponse.status;
+    if (typeof maybeResponse.statusText === 'string') info.statusText = maybeResponse.statusText;
+    if (typeof maybeResponse.text === 'function') {
+      try {
+        info.body = await (maybeResponse as unknown as Response).text();
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return info;
 };
 
 export const ensureAuditUsers = async (params: {
@@ -127,7 +157,10 @@ export const ensureAuditUsers = async (params: {
       },
     });
     if (managerRes.error) {
-      throw new Error(`Failed to provision manager: ${managerRes.error.message}`);
+      const info = await toInvokeErrorInfo(managerRes.error);
+      await writeJsonFile(path.join(params.outputDir, 'invoke.manager.error.json'), info);
+      const status = info.status ? ` (status=${info.status})` : '';
+      throw new Error(`Failed to provision manager: ${info.message}${status}`);
     }
     out.managerUserId = String((managerRes.data as { userId?: string } | null)?.userId || '');
 
@@ -143,7 +176,10 @@ export const ensureAuditUsers = async (params: {
       },
     });
     if (userRes.error) {
-      throw new Error(`Failed to provision user: ${userRes.error.message}`);
+      const info = await toInvokeErrorInfo(userRes.error);
+      await writeJsonFile(path.join(params.outputDir, 'invoke.user.error.json'), info);
+      const status = info.status ? ` (status=${info.status})` : '';
+      throw new Error(`Failed to provision user: ${info.message}${status}`);
     }
     out.userUserId = String((userRes.data as { userId?: string } | null)?.userId || '');
 

@@ -217,3 +217,14 @@
   - logs: `output/audit/phase1/20260209_054819/preflight_users`
 - C(e2e): PASS (artifacts: `output/audit/phase1/20260209_054819/C_e2e`)
 
+## 2026-02-08T21:07:54.468Z PHASE2 FAIL
+
+- command: `npm run audit:phase2`
+- commit: `b86561238b33d18469dd59c3f93b28c9ecb348e5`
+- output: `output/audit/phase2/20260209_060754`
+- A(static): PASS (run typecheck=OK(2.7s), run build=OK(3.6s), run smoke:contracts=OK(186ms))
+- B(db): FAIL (brand_kits.columns code=PGRST205: Could not find the table 'public.brand_kits' in the schema cache)
+  - logs: `output/audit/phase2/20260209_060754/B_db`
+- preflight(users): SKIPPED
+- C(e2e): SKIPPED
+

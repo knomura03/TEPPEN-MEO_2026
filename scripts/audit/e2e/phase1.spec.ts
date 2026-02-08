@@ -89,7 +89,11 @@ const ensureLoggedOut = async (page: Page) => {
 };
 
 const login = async (page: Page, creds: AuditCreds) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  // Prefer reusing the current document to avoid racing Supabase signOut() vs. page reload.
+  const loginEmail = page.getByTestId('login-email');
+  if (!(await loginEmail.isVisible().catch(() => false))) {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+  }
   await expect(page.getByTestId('login-email')).toBeVisible();
   await page.getByTestId('login-email').fill(creds.email);
   await page.getByTestId('login-password').fill(creds.password);
@@ -102,6 +106,12 @@ const logout = async (page: Page) => {
   await expect(btn).toBeVisible();
   await btn.click();
   await expect(page.getByTestId('login-email')).toBeVisible();
+  // Ensure Supabase session is fully cleared before the next login.
+  // `authService.logout()` is async but not awaited in the UI handler.
+  await page.waitForFunction(() => {
+    const keys = Object.keys(window.localStorage || {});
+    return keys.filter((k) => k.startsWith('sb-') && k.endsWith('-auth-token')).length === 0;
+  });
 };
 
 const ensureStoreSelected = async (page: Page) => {

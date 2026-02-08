@@ -21,6 +21,22 @@ const extractBearerToken = (headerValue: string | null): string => {
   return headerValue.trim();
 };
 
+const findUserIdByEmail = async (
+  supabaseAdmin: ReturnType<typeof createClient>,
+  email: string
+): Promise<string | null> => {
+  const normalized = email.trim().toLowerCase();
+  // Fallback only. This is used when createUser fails due to an existing account.
+  for (let page = 1; page <= 10; page++) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error || !data?.users) return null;
+    const found = data.users.find((u: { email?: string | null }) => (u.email || '').toLowerCase() === normalized);
+    if (found?.id) return found.id;
+    if (data.users.length < 1000) break;
+  }
+  return null;
+};
+
 const resolveAuthenticatedUserId = async (
   req: Request,
   supabaseUrl: string,
@@ -70,7 +86,15 @@ Deno.serve(async (req) => {
     auth: { persistSession: false },
   });
 
-  let payload: { email?: string; name?: string; role?: string; storeId?: string; orgId?: string };
+  let payload: {
+    email?: string;
+    name?: string;
+    role?: string;
+    storeId?: string;
+    orgId?: string;
+    // Optional: when provided, create/update the user with a known password (no invite email).
+    password?: string;
+  };
   try {
     payload = await req.json();
   } catch {
@@ -82,6 +106,7 @@ Deno.serve(async (req) => {
   const role = payload.role?.toUpperCase();
   const storeId = payload.storeId?.trim();
   const orgId = payload.orgId?.trim();
+  const password = payload.password?.trim();
 
   if (!email || !name || !role) {
     return jsonResponse(400, { error: 'Missing required fields' });
@@ -129,14 +154,43 @@ Deno.serve(async (req) => {
     return jsonResponse(403, { error: 'Only ADMIN or MANAGER can create USER' });
   }
 
-  const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-    data: { name },
-  });
-  if (inviteError || !inviteData?.user) {
-    return jsonResponse(400, { error: inviteError?.message || 'Failed to invite user' });
-  }
+  let newUserId: string;
+  if (password && password.length > 0) {
+    // For deterministic automation (e.g., audits), allow provisioning with a known password.
+    // This does not send an invite email.
+    const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { name },
+    });
 
-  const newUserId = inviteData.user.id;
+    if (createError || !created?.user?.id) {
+      const existingUserId = await findUserIdByEmail(supabaseAdmin, email);
+      if (!existingUserId) {
+        return jsonResponse(400, { error: createError?.message || 'Failed to create user' });
+      }
+      const { data: updated, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(existingUserId, {
+        password,
+        email_confirm: true,
+        user_metadata: { name },
+      });
+      if (updateError || !updated?.user?.id) {
+        return jsonResponse(400, { error: updateError?.message || 'Failed to update user' });
+      }
+      newUserId = existingUserId;
+    } else {
+      newUserId = created.user.id;
+    }
+  } else {
+    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      data: { name },
+    });
+    if (inviteError || !inviteData?.user?.id) {
+      return jsonResponse(400, { error: inviteError?.message || 'Failed to invite user' });
+    }
+    newUserId = inviteData.user.id;
+  }
 
   const { error: profileError } = await supabaseAdmin.from('profiles').upsert(
     {
@@ -151,14 +205,36 @@ Deno.serve(async (req) => {
   }
 
   const membershipStoreId = role === 'USER' ? storeId || null : null;
-  const { error: membershipError } = await supabaseAdmin.from('memberships').insert({
-    user_id: newUserId,
-    org_id: targetOrgId,
-    store_id: membershipStoreId,
-    role,
-  });
-  if (membershipError) {
-    return jsonResponse(400, { error: membershipError.message });
+  const { data: existingMembership, error: existingMembershipError } = await supabaseAdmin
+    .from('memberships')
+    .select('id')
+    .eq('user_id', newUserId)
+    .eq('org_id', targetOrgId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (existingMembershipError) {
+    return jsonResponse(400, { error: existingMembershipError.message });
+  }
+
+  if (existingMembership?.id) {
+    const { error: membershipUpdateError } = await supabaseAdmin
+      .from('memberships')
+      .update({ store_id: membershipStoreId, role })
+      .eq('id', existingMembership.id);
+    if (membershipUpdateError) {
+      return jsonResponse(400, { error: membershipUpdateError.message });
+    }
+  } else {
+    const { error: membershipInsertError } = await supabaseAdmin.from('memberships').insert({
+      user_id: newUserId,
+      org_id: targetOrgId,
+      store_id: membershipStoreId,
+      role,
+    });
+    if (membershipInsertError) {
+      return jsonResponse(400, { error: membershipInsertError.message });
+    }
   }
 
   return jsonResponse(200, {

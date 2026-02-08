@@ -143,42 +143,71 @@ test('Phase1: Survey create/publish/respond/assets', async ({ page }, testInfo) 
   await page.locator('#nav-SURVEY').click();
   await expect(page.getByText('アンケート管理')).toBeVisible();
 
+  // Wait for the survey list to finish its initial load. Otherwise, the component effect that
+  // initializes `selectedSurveyId` can overwrite our edits.
+  await Promise.race([
+    page.getByTestId('survey-list-item').first().waitFor({ state: 'visible', timeout: 20_000 }),
+    page.getByText('アンケートがありません。右側で作成してください。').waitFor({ state: 'visible', timeout: 20_000 }),
+  ]);
+
+  const archivePublishedAuditSurveysInList = async () => {
+    const publishedAudit = page.locator(
+      '[data-testid="survey-list-item"][data-survey-status="PUBLISHED"][data-survey-title*="[AUDIT]"]'
+    );
+    // Keep the audit safe: only auto-archive existing published [AUDIT] surveys.
+    // (A published non-[AUDIT] survey may exist in another store and still block publishing.)
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const count = await publishedAudit.count();
+      if (count === 0) return;
+
+      const item = publishedAudit.first();
+      const surveyId = await item.getAttribute('data-survey-id');
+      await item.click();
+      await page.getByRole('button', { name: 'アーカイブ' }).click();
+
+      if (surveyId) {
+        await expect(
+          page.locator(
+            `[data-testid="survey-list-item"][data-survey-id="${surveyId}"][data-survey-status="ARCHIVED"]`
+          )
+        ).toBeVisible({ timeout: 20_000 });
+      } else {
+        await expect(publishedAudit).toHaveCount(count - 1, { timeout: 20_000 });
+      }
+    }
+  };
+
+  await archivePublishedAuditSurveysInList();
+
   const auditSurveyTitle = `[AUDIT] ${runId} Survey`;
 
   await page.getByTestId('survey-title').fill(auditSurveyTitle);
   await page.getByTestId('survey-positive-threshold').selectOption('4');
   await page.getByTestId('survey-create-draft').click();
 
+  await expect(page.getByTestId('survey-publish')).toBeEnabled({ timeout: 20_000 });
   await page.getByTestId('survey-publish').click();
 
   const publicUrlLocator = page.locator('p').filter({ hasText: '/#/survey/' }).first();
-  try {
-    await expect(publicUrlLocator).toBeVisible({ timeout: 20_000 });
-  } catch {
+  const publishErrorHeading = page.getByRole('heading', { name: '公開エラー' }).first();
+  const publishOutcome = await Promise.race([
+    publicUrlLocator.waitFor({ state: 'visible', timeout: 20_000 }).then(() => 'published' as const),
+    publishErrorHeading.waitFor({ state: 'visible', timeout: 20_000 }).then(() => 'error' as const),
+  ]);
+  if (publishOutcome === 'error') {
+    const toastCard = publishErrorHeading.locator('..').locator('..');
+    const toastMessage = (await toastCard.locator('p').first().textContent())?.trim() || '';
+
     const constraintText = '公開中アンケートはユーザーごとに1件までです。';
-    const constraintError = page.getByText(constraintText).first();
-    if (!(await constraintError.isVisible().catch(() => false))) {
-      throw new Error('Survey publish failed and public URL is not available.');
+    if (toastMessage.includes(constraintText)) {
+      // Try once more: archive any published [AUDIT] survey in the current list and re-publish.
+      await archivePublishedAuditSurveysInList();
+      await page.getByTestId('survey-publish').click();
+      await expect(publicUrlLocator).toBeVisible({ timeout: 20_000 });
+    } else {
+      throw new Error(`Survey publish failed: ${toastMessage || '公開に失敗しました。'}`);
     }
-
-    // Only auto-archive existing published AUDIT surveys to keep the audit safe.
-    const auditPublished = page.locator(
-      '[data-testid="survey-list-item"][data-survey-status="PUBLISHED"][data-survey-title*="[AUDIT]"]'
-    );
-    if ((await auditPublished.count()) === 0) {
-      throw new Error(
-        'Publish blocked by the 1-per-author rule, but no existing [AUDIT] published survey was found to archive. ' +
-          'Use a dedicated audit ADMIN account, or archive the existing published survey manually and re-run.'
-      );
-    }
-
-    await auditPublished.first().click();
-    await page.getByRole('button', { name: 'アーカイブ' }).click();
-
-    const currentDraft = page.locator(`[data-testid="survey-list-item"][data-survey-title*="${runId} Survey"]`).first();
-    await currentDraft.click();
-    await page.getByTestId('survey-publish').click();
-    await expect(publicUrlLocator).toBeVisible({ timeout: 20_000 });
   }
 
   const publicUrl = (await publicUrlLocator.textContent())?.trim();
@@ -227,6 +256,9 @@ test('Phase1: Survey create/publish/respond/assets', async ({ page }, testInfo) 
   ]).then(([p]) => p);
   await expect(popup.getByText('印刷 / PDF保存')).toBeVisible();
   await popup.close();
+
+  // Cleanup: archive the published [AUDIT] surveys to avoid blocking the next audit run.
+  await archivePublishedAuditSurveysInList();
 
   await logout(page);
 });

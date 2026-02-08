@@ -103,6 +103,10 @@ export const ensureAuditUsers = async (params: {
     if (authError) {
       throw new Error(`Admin sign-in failed: ${authError.message}`);
     }
+    const accessToken = authData.session?.access_token;
+    if (!accessToken) {
+      throw new Error('Admin sign-in succeeded but access token is missing.');
+    }
     const actorUserId = authData.user?.id;
     if (!actorUserId) {
       throw new Error('Admin sign-in succeeded but userId is missing.');
@@ -148,6 +152,7 @@ export const ensureAuditUsers = async (params: {
 
     // Ensure MANAGER exists and can sign in (deterministic password provisioning via Edge Function).
     const managerRes = await supabase.functions.invoke('admin-create-user', {
+      headers: { Authorization: `Bearer ${accessToken}` },
       body: {
         email: managerEmail,
         name: '[AUDIT] Manager',
@@ -166,6 +171,7 @@ export const ensureAuditUsers = async (params: {
 
     // Ensure USER exists and is scoped to the selected store.
     const userRes = await supabase.functions.invoke('admin-create-user', {
+      headers: { Authorization: `Bearer ${accessToken}` },
       body: {
         email: userEmail,
         name: '[AUDIT] User',

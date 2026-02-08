@@ -43,6 +43,33 @@ const roleRank = (role: string): number => {
   }
 };
 
+const invokeEdgeFunctionJson = async (params: {
+  supabaseUrl: string;
+  anonKey: string;
+  accessToken: string;
+  functionName: string;
+  body: unknown;
+}): Promise<{ ok: boolean; status: number; statusText: string; json?: unknown; text: string }> => {
+  const url = `${params.supabaseUrl.replace(/\/+$/, '')}/functions/v1/${params.functionName}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      apikey: params.anonKey,
+      Authorization: `Bearer ${params.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params.body),
+  });
+  const text = await res.text();
+  let json: unknown | undefined;
+  try {
+    json = text ? JSON.parse(text) : undefined;
+  } catch {
+    json = undefined;
+  }
+  return { ok: res.ok, status: res.status, statusText: res.statusText, json, text };
+};
+
 const toInvokeErrorInfo = async (error: unknown): Promise<InvokeErrorInfo> => {
   const anyErr = error as { name?: unknown; message?: unknown; context?: unknown };
   const info: InvokeErrorInfo = {
@@ -151,8 +178,11 @@ export const ensureAuditUsers = async (params: {
     out.storeId = storeId;
 
     // Ensure MANAGER exists and can sign in (deterministic password provisioning via Edge Function).
-    const managerRes = await supabase.functions.invoke('admin-create-user', {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    const managerInvoke = await invokeEdgeFunctionJson({
+      supabaseUrl,
+      anonKey,
+      accessToken,
+      functionName: 'admin-create-user',
       body: {
         email: managerEmail,
         name: '[AUDIT] Manager',
@@ -161,17 +191,18 @@ export const ensureAuditUsers = async (params: {
         password: managerPassword,
       },
     });
-    if (managerRes.error) {
-      const info = await toInvokeErrorInfo(managerRes.error);
-      await writeJsonFile(path.join(params.outputDir, 'invoke.manager.error.json'), info);
-      const status = info.status ? ` (status=${info.status})` : '';
-      throw new Error(`Failed to provision manager: ${info.message}${status}`);
+    if (!managerInvoke.ok) {
+      await writeJsonFile(path.join(params.outputDir, 'invoke.manager.error.json'), managerInvoke);
+      throw new Error(`Failed to provision manager: ${managerInvoke.text} (status=${managerInvoke.status})`);
     }
-    out.managerUserId = String((managerRes.data as { userId?: string } | null)?.userId || '');
+    out.managerUserId = String((managerInvoke.json as { userId?: string } | null)?.userId || '');
 
     // Ensure USER exists and is scoped to the selected store.
-    const userRes = await supabase.functions.invoke('admin-create-user', {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    const userInvoke = await invokeEdgeFunctionJson({
+      supabaseUrl,
+      anonKey,
+      accessToken,
+      functionName: 'admin-create-user',
       body: {
         email: userEmail,
         name: '[AUDIT] User',
@@ -181,13 +212,11 @@ export const ensureAuditUsers = async (params: {
         password: userPassword,
       },
     });
-    if (userRes.error) {
-      const info = await toInvokeErrorInfo(userRes.error);
-      await writeJsonFile(path.join(params.outputDir, 'invoke.user.error.json'), info);
-      const status = info.status ? ` (status=${info.status})` : '';
-      throw new Error(`Failed to provision user: ${info.message}${status}`);
+    if (!userInvoke.ok) {
+      await writeJsonFile(path.join(params.outputDir, 'invoke.user.error.json'), userInvoke);
+      throw new Error(`Failed to provision user: ${userInvoke.text} (status=${userInvoke.status})`);
     }
-    out.userUserId = String((userRes.data as { userId?: string } | null)?.userId || '');
+    out.userUserId = String((userInvoke.json as { userId?: string } | null)?.userId || '');
 
     // Basic sign-in sanity (avoid running E2E with broken credentials).
     const sanityClient = createClient(supabaseUrl, anonKey);

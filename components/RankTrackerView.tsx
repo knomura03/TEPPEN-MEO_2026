@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { PlusCircle, Save, Trash2, Pencil, X } from 'lucide-react';
-import { RankKeyword, User } from '../types';
+import { PlusCircle, Save, Trash2, Pencil, X, Play, RefreshCcw } from 'lucide-react';
+import { RankCollectionResult, RankCollectionRun, RankKeyword, User } from '../types';
 import { useStore } from '../contexts/StoreContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { rankKeywordService } from '../services/rankKeywordService';
+import { rankCollectionService } from '../services/rankCollectionService';
 import { getErrorMessage } from '../services/errorMessage';
 
 interface RankTrackerViewProps {
@@ -22,6 +23,11 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editKeyword, setEditKeyword] = useState('');
   const [editNote, setEditNote] = useState('');
+  const [collectionRuns, setCollectionRuns] = useState<RankCollectionRun[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [selectedRunResults, setSelectedRunResults] = useState<RankCollectionResult[]>([]);
+  const [isRunLoading, setIsRunLoading] = useState(false);
+  const [isRunSubmitting, setIsRunSubmitting] = useState(false);
 
   const activeStore = useMemo(() => {
     if (!activeStoreId) return null;
@@ -52,8 +58,64 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
     }
   };
 
+  const loadCollectionRuns = async () => {
+    if (!activeStoreId || !isSupabaseConfigured) {
+      setCollectionRuns([]);
+      setSelectedRunId(null);
+      setSelectedRunResults([]);
+      return;
+    }
+
+    setIsRunLoading(true);
+    try {
+      const runs = await rankCollectionService.listRunsByStore(activeStoreId, 15);
+      setCollectionRuns(runs);
+      if (runs.length === 0) {
+        setSelectedRunId(null);
+        setSelectedRunResults([]);
+        return;
+      }
+
+      const nextSelectedRunId = selectedRunId && runs.some((run) => run.id === selectedRunId) ? selectedRunId : runs[0].id;
+      setSelectedRunId(nextSelectedRunId);
+      const results = await rankCollectionService.listResultsByRun(nextSelectedRunId);
+      setSelectedRunResults(results);
+    } catch (error) {
+      console.error('[RankTrackerView] Failed to load rank collection runs:', error);
+      addNotification(
+        '読み込みエラー',
+        `順位収集履歴の取得に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`,
+        'ERROR'
+      );
+      setCollectionRuns([]);
+      setSelectedRunResults([]);
+    } finally {
+      setIsRunLoading(false);
+    }
+  };
+
+  const loadRunResults = async (runId: string) => {
+    if (!isSupabaseConfigured) {
+      setSelectedRunResults([]);
+      return;
+    }
+    try {
+      const results = await rankCollectionService.listResultsByRun(runId);
+      setSelectedRunResults(results);
+    } catch (error) {
+      console.error('[RankTrackerView] Failed to load rank collection results:', error);
+      addNotification(
+        '読み込みエラー',
+        `収集結果の取得に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`,
+        'ERROR'
+      );
+      setSelectedRunResults([]);
+    }
+  };
+
   useEffect(() => {
     void loadKeywords();
+    void loadCollectionRuns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStoreId]);
 
@@ -147,6 +209,50 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
     }
   };
 
+  const handleRunCollectionMock = async () => {
+    if (!activeStoreId) {
+      addNotification('店舗未選択', '店舗を選択してから収集を実行してください。', 'WARNING');
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      addNotification('未設定', 'Supabase未設定のため収集を実行できません。', 'WARNING');
+      return;
+    }
+
+    setIsRunSubmitting(true);
+    try {
+      const result = await rankCollectionService.collectByFunction({ storeId: activeStoreId, mode: 'MOCK' });
+      addNotification(
+        '収集完了',
+        result.message || `順位収集を実行しました。（${result.collectedCount}件）`,
+        'SUCCESS'
+      );
+      await loadCollectionRuns();
+    } catch (error) {
+      console.error('[RankTrackerView] Failed to run rank collection:', error);
+      addNotification('収集エラー', getErrorMessage(error) || '順位収集の実行に失敗しました。', 'ERROR');
+    } finally {
+      setIsRunSubmitting(false);
+    }
+  };
+
+  const handleSelectRun = async (runId: string) => {
+    setSelectedRunId(runId);
+    await loadRunResults(runId);
+  };
+
+  const runStatusLabel = (status: RankCollectionRun['status']) => {
+    if (status === 'SUCCESS') return 'SUCCESS';
+    if (status === 'FAILED') return 'FAILED';
+    return 'RUNNING';
+  };
+
+  const runStatusClassName = (status: RankCollectionRun['status']) => {
+    if (status === 'SUCCESS') return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-200';
+    if (status === 'FAILED') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-200';
+    return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200';
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-start justify-between gap-4">
@@ -169,6 +275,103 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
           Supabase未設定のため、順位キーワードは保存できません（デモ表示のみ）。
         </div>
       )}
+
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white">日次順位収集（P3-02）</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              現在はMOCK収集のみ対応。REAL収集は後続チケットで拡張します。
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void loadCollectionRuns()}
+              disabled={isRunLoading || !activeStoreId || !isSupabaseConfigured}
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <RefreshCcw size={14} />
+              再読込
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleRunCollectionMock()}
+              disabled={isRunSubmitting || isRunLoading || !activeStoreId || !isSupabaseConfigured}
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <Play size={14} />
+              収集実行（MOCK）
+            </button>
+          </div>
+        </div>
+
+        {isRunLoading ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">収集履歴を読み込み中...</p>
+        ) : collectionRuns.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">収集履歴はまだありません。</p>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">実行履歴</p>
+              {collectionRuns.map((run) => (
+                <button
+                  key={run.id}
+                  type="button"
+                  onClick={() => void handleSelectRun(run.id)}
+                  className={`w-full text-left p-3 rounded-xl border ${
+                    selectedRunId === run.id
+                      ? 'border-primary-300 bg-primary-50 dark:bg-primary-900/20'
+                      : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${runStatusClassName(run.status)}`}>
+                      {runStatusLabel(run.status)}
+                    </span>
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400">{run.startedAt.toLocaleString('ja-JP')}</span>
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-2">
+                    mode: {run.mode} / trigger: {run.triggerType}
+                  </p>
+                  {run.message && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 break-words">{run.message}</p>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">選択中runの収集結果</p>
+              {selectedRunId && selectedRunResults.length > 0 ? (
+                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                  {selectedRunResults.map((result) => (
+                    <div
+                      key={result.id}
+                      className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-gray-800 dark:text-white break-words">{result.keyword}</p>
+                        <span className="text-xs font-semibold text-primary-700 dark:text-primary-300">
+                          {typeof result.position === 'number' ? `${result.position}位` : '-'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                        mode: {result.mode} / status: {result.status}
+                      </p>
+                      {result.message && (
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 break-words">{result.message}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 dark:text-gray-400">runを選択すると結果を表示します。</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
         <div className="flex items-center justify-between gap-3">
@@ -308,4 +511,3 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
     </div>
   );
 };
-

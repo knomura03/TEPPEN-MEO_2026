@@ -1,6 +1,6 @@
 # TEPPEN MEO：Phase1〜Phase3 実装実行計画（再監査版）
 
-最終更新: 2026-02-08（P3-01追記）
+最終更新: 2026-02-08（P3-02追記）
 
 この計画書は、Phase1〜Phase3の機能を「作り直しなし」で進めるための実装設計書です。  
 方針は「Phase0基盤 → Phase1 → Phase2 → Phase3 → Step2集中テスト → 修正 → デプロイ」で固定します。
@@ -537,6 +537,49 @@ provider追加時に次のチェックリストを自動生成し、PRに添付�
 
 ### 18.5 完了条件（P3-01）
 - 順位計測画面でキーワードのCRUDが成立する
+- `docs/13` / `docs/05` / `docs/12` / `docs/11` が同時更新される
+
+## 19. P3-02 日次順位収集ジョブ 実装方針
+### 19.1 目的
+- 順位収集の実行履歴と結果を保存し、日次運用と手動再実行を可能にする
+- P3-04の可視化（推移チャート）で利用する時系列データ基盤を作る
+
+### 19.2 DB変更（migration）
+- 対象: `supabase/migrations/202602060016_p3_rank_daily_collection.sql`
+- 追加テーブル:
+  - `rank_collection_runs`
+    - `store_id`, `trigger_type`, `mode`, `status`, `requested_by_user_id`
+    - 実行開始/終了時刻とメッセージを保持
+  - `rank_collection_results`
+    - `run_id`, `rank_keyword_id`, `keyword`, `position`, `mode`, `status`, `raw`
+    - 重複防止: `unique(run_id, rank_keyword_id)`
+- RLS:
+  - `user_has_store_access(store_id)` で閲覧を許可
+  - insert/updateはストアアクセス + actor整合で制御
+
+### 19.3 Function/Service/UI変更
+- `supabase/functions/rank-collect/index.ts`
+  - 手動実行API（`MANUAL`）を提供
+  - 現時点は `MOCK` 収集を実装（キーワード + 日付ベースの再現可能な疑似順位）
+  - `REAL` 指定時は自動MOCK代替せず `FAILED` で明示終了
+- `services/rankCollectionService.ts`
+  - `collectByFunction` / `listRunsByStore` / `listResultsByRun`
+  - migration未適用時は専用エラー（P3-02 migration適用案内）を返す
+- `components/RankTrackerView.tsx`
+  - 「収集実行（MOCK）」ボタン
+  - 実行履歴一覧（最新run選択）
+  - runごとの収集結果（keyword/position/status）表示
+
+### 19.4 実装ルール（固定）
+- `rank_collection_runs` は必ず `RUNNING -> SUCCESS/FAILED` に遷移させる
+- `MOCK` 結果でも `raw` に生成メタ情報（seed/生成時刻）を残す
+- キーワード0件の場合は異常終了ではなく `SUCCESS(0件)` 扱いにする
+- `REAL` 未実装時は `FAILED` として明示し、サイレント代替しない
+- 収集実行時は `audit_logs` へ `RANK_COLLECTION_RUN` を記録する
+
+### 19.5 完了条件（P3-02）
+- 順位計測画面から手動収集（MOCK）を実行できる
+- 実行履歴/結果が画面で参照できる
 - `docs/13` / `docs/05` / `docs/12` / `docs/11` が同時更新される
 
 ---

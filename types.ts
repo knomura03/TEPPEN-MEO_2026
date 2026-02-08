@@ -49,6 +49,47 @@ export interface RankKeyword {
   updatedAt: Date;
 }
 
+export type RankCollectionMode = 'REAL' | 'MOCK';
+export type RankCollectionTriggerType = 'MANUAL' | 'SCHEDULED';
+export type RankCollectionRunStatus = 'RUNNING' | 'SUCCESS' | 'FAILED';
+export type RankCollectionResultStatus = 'SUCCESS' | 'FAILED';
+
+export interface RankCollectionRun {
+  id: string;
+  storeId: string;
+  triggerType: RankCollectionTriggerType;
+  mode: RankCollectionMode;
+  status: RankCollectionRunStatus;
+  message?: string;
+  requestedByUserId?: string;
+  startedAt: Date;
+  finishedAt?: Date;
+  createdAt: Date;
+}
+
+export interface RankCollectionResult {
+  id: string;
+  runId: string;
+  storeId: string;
+  rankKeywordId: string;
+  keyword: string;
+  position?: number;
+  mode: RankCollectionMode;
+  status: RankCollectionResultStatus;
+  message?: string;
+  raw: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export interface RankCollectionExecutionResult {
+  ok: boolean;
+  runId: string;
+  mode: RankCollectionMode;
+  status: RankCollectionRunStatus;
+  collectedCount: number;
+  message?: string;
+}
+
 export interface OrgStorePolicy {
   orgId: string;
   defaultUserStoreLimit: number;

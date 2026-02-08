@@ -1,6 +1,6 @@
 # knomura向け手順書（最小作業で進める）
 
-最終更新: 2026-02-08（P3-01追記）
+最終更新: 2026-02-08（P3-02追記）
 
 ## この手順書の読み方
 - 「どこをクリックするか」をそのまま書いています。
@@ -450,6 +450,39 @@ OAuthの「連携する/連携解除」ボタンを使うには、P2-01 migratio
 - migration `202602060015` が未適用
 - 店舗未選択（右上セレクタ未選択）
 - rank trackerの公開状態が `HIDDEN/ADMIN_ONLY` になっている（`設定 → システム管理 → Feature Flag` で確認）
+
+## （P3-02）日次順位収集ジョブを有効化する手順
+「順位計測」画面で収集実行（MOCK）と履歴表示を使うには、migration適用とFunction配備が必要です。
+
+### 手順1: migration適用
+1. Supabaseの「SQL Editor」を開く
+2. `supabase/migrations/202602060016_p3_rank_daily_collection.sql` を貼り付けて実行
+3. `Success. No rows returned` を確認する
+
+### 手順2: Edge Function配備
+1. Supabaseの「Functions」を開く
+2. 「Deploy a new function」を押し、名前を `rank-collect` にする
+3. `supabase/functions/rank-collect/index.ts` を全コピーして貼り付ける
+4. `Save` → `Deploy` を実行する
+5. `Details` タブで `Verify JWT` を `OFF` にする
+
+### 手順3: GUIで実行確認
+1. TEPPEN MEOでログインする（ADMIN/MANAGER推奨）
+2. 右上の店舗セレクタで対象店舗を選ぶ
+3. 左メニューの「順位計測」を開く
+4. 「収集実行（MOCK）」を押す
+5. 実行履歴と結果一覧を確認する
+
+期待結果:
+- 実行履歴にrunが追加される
+- キーワードごとの順位結果が表示される
+- キーワード0件店舗でもエラーではなく0件完了になる
+
+### 失敗時の確認ポイント
+- migration `202602060016` が未適用
+- `rank-collect` が未Deploy、または `Verify JWT=OFF` が未設定
+- 店舗未選択（右上セレクタ未選択）
+- 実施ユーザーに対象店舗アクセス権限がない
 
 ## よくある詰まりポイント
 ### A) 作成できない（支払い/制限が出る）

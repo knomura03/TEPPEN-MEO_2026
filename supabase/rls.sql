@@ -1060,6 +1060,58 @@ using (public.user_has_store_access(store_id));
 grant select, insert, update, delete on public.rank_keywords to authenticated;
 
 -- ------------------------------------------------------------
+-- Phase3: rank daily collection
+-- ------------------------------------------------------------
+
+alter table public.rank_collection_runs enable row level security;
+
+drop policy if exists rank_collection_runs_select_by_store_scope on public.rank_collection_runs;
+create policy rank_collection_runs_select_by_store_scope
+on public.rank_collection_runs
+for select
+using (public.user_has_store_access(store_id));
+
+drop policy if exists rank_collection_runs_insert_by_store_scope on public.rank_collection_runs;
+create policy rank_collection_runs_insert_by_store_scope
+on public.rank_collection_runs
+for insert
+with check (
+  public.user_has_store_access(store_id)
+  and (requested_by_user_id is null or requested_by_user_id = auth.uid())
+);
+
+drop policy if exists rank_collection_runs_update_by_store_scope on public.rank_collection_runs;
+create policy rank_collection_runs_update_by_store_scope
+on public.rank_collection_runs
+for update
+using (
+  public.user_has_store_access(store_id)
+  and (requested_by_user_id is null or requested_by_user_id = auth.uid())
+)
+with check (
+  public.user_has_store_access(store_id)
+  and (requested_by_user_id is null or requested_by_user_id = auth.uid())
+);
+
+grant select, insert, update on public.rank_collection_runs to authenticated;
+
+alter table public.rank_collection_results enable row level security;
+
+drop policy if exists rank_collection_results_select_by_store_scope on public.rank_collection_results;
+create policy rank_collection_results_select_by_store_scope
+on public.rank_collection_results
+for select
+using (public.user_has_store_access(store_id));
+
+drop policy if exists rank_collection_results_insert_by_store_scope on public.rank_collection_results;
+create policy rank_collection_results_insert_by_store_scope
+on public.rank_collection_results
+for insert
+with check (public.user_has_store_access(store_id));
+
+grant select, insert on public.rank_collection_results to authenticated;
+
+-- ------------------------------------------------------------
 -- Storage: post-media bucket
 -- ------------------------------------------------------------
 -- 注: Supabaseの権限上、storage.objects へのALTER/CREATE POLICYは

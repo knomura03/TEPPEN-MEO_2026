@@ -323,6 +323,44 @@ create trigger rank_keywords_set_updated_at
 before update on public.rank_keywords
 for each row execute function public.set_updated_at();
 
+create table if not exists public.rank_collection_runs (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores(id) on delete cascade,
+  trigger_type text not null default 'MANUAL' check (trigger_type in ('MANUAL', 'SCHEDULED')),
+  mode text not null default 'MOCK' check (mode in ('REAL', 'MOCK')),
+  status text not null default 'RUNNING' check (status in ('RUNNING', 'SUCCESS', 'FAILED')),
+  message text,
+  requested_by_user_id uuid references auth.users(id) on delete set null,
+  started_at timestamptz not null default now(),
+  finished_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists rank_collection_runs_store_id_idx on public.rank_collection_runs(store_id);
+create index if not exists rank_collection_runs_created_at_idx on public.rank_collection_runs(created_at);
+
+create table if not exists public.rank_collection_results (
+  id uuid primary key default gen_random_uuid(),
+  run_id uuid not null references public.rank_collection_runs(id) on delete cascade,
+  store_id uuid not null references public.stores(id) on delete cascade,
+  rank_keyword_id uuid not null references public.rank_keywords(id) on delete cascade,
+  keyword text not null,
+  position integer,
+  mode text not null default 'MOCK' check (mode in ('REAL', 'MOCK')),
+  status text not null default 'SUCCESS' check (status in ('SUCCESS', 'FAILED')),
+  message text,
+  raw jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  constraint rank_collection_results_position_check check (position is null or position >= 1)
+);
+
+create index if not exists rank_collection_results_run_id_idx on public.rank_collection_results(run_id);
+create index if not exists rank_collection_results_store_id_idx on public.rank_collection_results(store_id);
+create index if not exists rank_collection_results_keyword_id_idx on public.rank_collection_results(rank_keyword_id);
+create index if not exists rank_collection_results_created_at_idx on public.rank_collection_results(created_at);
+create unique index if not exists rank_collection_results_run_keyword_unique_idx
+  on public.rank_collection_results(run_id, rank_keyword_id);
+
 create table if not exists public.post_media (
   id uuid primary key default gen_random_uuid(),
   post_id uuid not null references public.posts(id) on delete cascade,

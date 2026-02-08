@@ -541,7 +541,12 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {posts.map((post) => (
-                <tr key={post.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                <tr
+                  key={post.id}
+                  data-testid="post-row"
+                  data-post-id={post.id}
+                  className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
                     {getStatusWithApproval(post)}
                   </td>
@@ -599,6 +604,7 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
                       {getCanShowSubmitApproval(post) && (
                         <button
                           onClick={() => void handleSubmitForApproval(post.id)}
+                          data-testid={`post-submit-approval-${post.id}`}
                           className="text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-200 disabled:opacity-60"
                           disabled={getActionDisabled(post.id)}
                         >
@@ -608,6 +614,7 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
                       {getCanPublishInstagram(post) && (
                         <button
                           onClick={() => void handlePublishInstagram(post.id)}
+                          data-testid={`post-publish-instagram-${post.id}`}
                           className="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-200 disabled:opacity-60"
                           disabled={getActionDisabled(post.id)}
                         >
@@ -617,6 +624,7 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
                       {getCanPublishFacebook(post) && (
                         <button
                           onClick={() => void handlePublishFacebook(post.id)}
+                          data-testid={`post-publish-facebook-${post.id}`}
                           className="text-cyan-700 dark:text-cyan-300 hover:text-cyan-900 dark:hover:text-cyan-200 disabled:opacity-60"
                           disabled={getActionDisabled(post.id)}
                         >
@@ -627,6 +635,7 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
                         <>
                           <button
                             onClick={() => void handleApprove(post.id)}
+                            data-testid={`post-approve-${post.id}`}
                             className="text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 dark:hover:text-emerald-200 disabled:opacity-60"
                             disabled={getActionDisabled(post.id)}
                           >
@@ -634,6 +643,7 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
                           </button>
                           <button
                             onClick={() => void handleReject(post.id)}
+                            data-testid={`post-reject-${post.id}`}
                             className="text-rose-700 dark:text-rose-300 hover:text-rose-900 dark:hover:text-rose-200 disabled:opacity-60"
                             disabled={getActionDisabled(post.id)}
                           >

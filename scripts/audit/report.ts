@@ -2,8 +2,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { ensureDir, writeTextFile } from './lib';
-import { CommandResult } from './lib';
-import { DbAuditPhase1Result } from './dbAuditPhase1';
 import { StaticAuditResult } from './staticAudit';
 import { AuditBootstrapUsersResult } from './bootstrapUsers';
 
@@ -18,16 +16,38 @@ export type PhaseAuditE2eResult = {
 };
 
 export type PhaseAuditSummary = {
-  phase: 'phase1';
+  phase: 'phase1' | 'phase2';
   ok: boolean;
   gitSha: string;
   startedAt: string;
   finishedAt: string;
   outputDir: string;
   staticAudit: StaticAuditResult;
-  dbAudit?: DbAuditPhase1Result | null;
+  dbAudit?: DbAuditGenericResult | null;
   bootstrapUsers?: AuditBootstrapUsersResult | null;
   e2eAudit?: PhaseAuditE2eResult | null;
+};
+
+export type DbAuditCheckResultLike = {
+  name: string;
+  ok: boolean;
+  kind: string;
+  table?: string;
+  columns?: string;
+  fn?: string;
+  error?: {
+    message: string;
+    code?: string;
+    details?: string;
+    hint?: string;
+  };
+};
+
+export type DbAuditGenericResult = {
+  ok: boolean;
+  startedAt: string;
+  finishedAt: string;
+  checks: DbAuditCheckResultLike[];
 };
 
 const fmtMs = (ms: number): string => {
@@ -51,7 +71,7 @@ const pickFirstFailure = <T extends { ok: boolean }>(items: T[]): T | null => {
   return null;
 };
 
-const summarizeDb = (result: DbAuditPhase1Result): string => {
+const summarizeDb = (result: DbAuditGenericResult): string => {
   if (result.ok) return `PASS (${result.checks.length} checks)`;
   const first = pickFirstFailure(result.checks);
   if (!first) return 'FAIL';

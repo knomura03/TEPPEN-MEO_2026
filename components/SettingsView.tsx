@@ -1040,6 +1040,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
           <nav className="space-y-2">
             {canShowProfileTab && (
               <button
+                data-testid="settings-tab-profile"
                 onClick={() => setActiveTab('PROFILE')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   activeTab === 'PROFILE' 
@@ -1053,6 +1054,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
             )}
             {canShowStoreTab && (
               <button
+                data-testid="settings-tab-store"
                 onClick={() => setActiveTab('STORE')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   activeTab === 'STORE' 
@@ -1066,6 +1068,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
             )}
             {canShowIntegrationsTab && (
               <button
+                data-testid="settings-tab-integrations"
                 onClick={() => setActiveTab('INTEGRATIONS')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   activeTab === 'INTEGRATIONS' 
@@ -1079,6 +1082,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
             )}
             {canShowSystemTab && (
               <button
+                data-testid="settings-tab-system"
                 onClick={() => setActiveTab('SYSTEM')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   activeTab === 'SYSTEM' 
@@ -1338,6 +1342,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                 {visibleProviderCards.map((provider) => (
                   <div
                     key={provider.catalog.id}
+                    data-testid={`provider-card-${provider.catalog.providerKey}`}
+                    data-provider-key={provider.catalog.providerKey}
                     onClick={() => setSelectedProviderId(provider.catalog.id)}
                     className={`p-5 bg-white dark:bg-gray-700 border rounded-2xl shadow-sm transition-all cursor-pointer ${
                       selectedProviderId === provider.catalog.id
@@ -1369,6 +1375,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                           connection: {provider.configuration?.connectionStatus || 'DISCONNECTED'}
                           {provider.configuration?.lastError ? ` / error: ${provider.configuration.lastError}` : ''}
                         </p>
+                        <p
+                          data-testid={`provider-connection-status-${provider.catalog.providerKey}`}
+                          className="sr-only"
+                        >
+                          {provider.configuration?.connectionStatus || 'DISCONNECTED'}
+                        </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         {(() => {
@@ -1379,6 +1391,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                             <>
                         {canManageProviders && (
                           <select
+                            data-testid={`provider-visibility-${provider.catalog.providerKey}`}
                             value={provider.catalog.defaultVisibility}
                             onChange={(e) => void handleChangeProviderVisibility(provider.catalog.id, e.target.value as VisibilityState)}
                             className="px-3 py-2 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
@@ -1390,6 +1403,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                         )}
                         {provider.isConnected ? (
                           <button
+                            data-testid={`provider-toggle-${provider.catalog.providerKey}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleToggleConnection(provider.catalog.id);
@@ -1402,6 +1416,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                           </button>
                         ) : (
                           <button
+                            data-testid={`provider-toggle-${provider.catalog.providerKey}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleToggleConnection(provider.catalog.id);
@@ -1499,6 +1514,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       </p>
                     )}
                     <select
+                      data-testid="provider-admin-select"
                       value={selectedProviderId}
                       onChange={(e) => setSelectedProviderId(e.target.value)}
                       className="w-full p-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
@@ -1511,11 +1527,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       ))}
                     </select>
                     <textarea
+                      data-testid="provider-config-json"
                       value={providerConfigJson}
                       onChange={(e) => setProviderConfigJson(e.target.value)}
                       className="w-full h-32 p-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg font-mono text-xs"
                     />
                     <input
+                      data-testid="provider-config-secret"
                       type="password"
                       value={providerSecretInput}
                       onChange={(e) => setProviderSecretInput(e.target.value)}
@@ -1524,6 +1542,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                     />
                     <div className="flex gap-2">
                       <button
+                        data-testid="provider-config-save"
                         onClick={() => void handleSaveProviderConfiguration()}
                         disabled={isSavingProviderConfig || Boolean(saveProviderDisabledReason)}
                         title={saveProviderDisabledReason || undefined}
@@ -1532,6 +1551,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                         {isSavingProviderConfig ? '保存中...' : '設定を保存'}
                       </button>
                       <button
+                        data-testid="provider-config-test"
                         onClick={() => void handleTestProviderConnection()}
                         disabled={isTestingConnection || Boolean(testProviderDisabledReason)}
                         title={testProviderDisabledReason || undefined}
@@ -1632,6 +1652,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                      <div>
                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">トーンガイド</label>
                        <textarea
+                         data-testid="brandkit-tone-guide"
                          value={toneGuideInput}
                          onChange={(e) => setToneGuideInput(e.target.value)}
                          rows={3}
@@ -1642,6 +1663,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                      <div>
                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">NGワード（カンマ/改行区切り）</label>
                        <textarea
+                         data-testid="brandkit-banned-words"
                          value={bannedWordsInput}
                          onChange={(e) => setBannedWordsInput(e.target.value)}
                          rows={3}
@@ -1652,6 +1674,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                      <div>
                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">推奨ハッシュタグ（カンマ/改行区切り）</label>
                        <textarea
+                         data-testid="brandkit-recommended-hashtags"
                          value={recommendedHashtagsInput}
                          onChange={(e) => setRecommendedHashtagsInput(e.target.value)}
                          rows={3}
@@ -1662,6 +1685,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                      <div>
                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">デフォルト署名</label>
                        <textarea
+                         data-testid="brandkit-signature"
                          value={signatureInput}
                          onChange={(e) => setSignatureInput(e.target.value)}
                          rows={2}
@@ -1671,6 +1695,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                      </div>
                    </div>
                    <button
+                     data-testid="brandkit-save"
                      type="button"
                      onClick={() => void handleSaveBrandKit()}
                      disabled={isSavingBrandKit || Boolean(brandAssetDisabledReason)}
@@ -1694,6 +1719,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                    </p>
                    <div className="space-y-3">
                      <input
+                       data-testid="template-title"
                        type="text"
                        value={templateTitleInput}
                        onChange={(e) => setTemplateTitleInput(e.target.value)}
@@ -1701,6 +1727,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                        className="w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
                      />
                      <textarea
+                       data-testid="template-body"
                        value={templateBodyInput}
                        onChange={(e) => setTemplateBodyInput(e.target.value)}
                        rows={4}
@@ -1712,14 +1739,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                          <label key={platform} className="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg">
                            <input
                              type="checkbox"
-                             checked={templatePlatforms.includes(platform)}
-                             onChange={() => toggleTemplatePlatform(platform)}
-                           />
+                            checked={templatePlatforms.includes(platform)}
+                            onChange={() => toggleTemplatePlatform(platform)}
+                            data-testid={`template-platform-${platform}`}
+                          />
                            {TEMPLATE_PLATFORM_LABELS[platform]}
                          </label>
                        ))}
                      </div>
                      <button
+                       data-testid="template-create"
                        type="button"
                        onClick={() => void handleCreateTemplate()}
                        disabled={isCreatingTemplate || Boolean(brandAssetDisabledReason)}
@@ -1755,6 +1784,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                              </div>
                            </div>
                            <button
+                             data-testid={`template-remove-${template.id}`}
                              type="button"
                              onClick={() => void handleRemoveTemplate(template.id)}
                              disabled={removingTemplateId === template.id}
@@ -1782,7 +1812,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
 
           {isOAuthModalOpen && (
             <ModalPortal>
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+              <div data-testid="oauth-modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
                 <div className="w-full max-w-xl rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-xl p-6 space-y-4">
                   <div>
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white">OAuth連携: {oauthProviderLabel}</h3>
@@ -1793,6 +1823,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                   <div className="space-y-2">
                     <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">認可URL</label>
                     <a
+                      data-testid="oauth-auth-url"
                       href={oauthAuthorizationUrl}
                       target="_blank"
                       rel="noreferrer"
@@ -1805,6 +1836,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                   <div className="space-y-2">
                     <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">認可コード</label>
                     <input
+                      data-testid="oauth-auth-code"
                       type="text"
                       value={oauthAuthCode}
                       onChange={(e) => setOauthAuthCode(e.target.value)}
@@ -1814,6 +1846,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                   </div>
                   <div className="flex justify-end gap-2 pt-2">
                     <button
+                      data-testid="oauth-cancel"
                       type="button"
                       onClick={closeOAuthModal}
                       disabled={isCompletingOAuth}
@@ -1822,6 +1855,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       キャンセル
                     </button>
                     <button
+                      data-testid="oauth-complete"
                       type="button"
                       onClick={() => void handleCompleteOAuth()}
                       disabled={isCompletingOAuth || !oauthAuthCode.trim()}

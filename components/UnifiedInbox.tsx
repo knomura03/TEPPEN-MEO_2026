@@ -443,6 +443,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
           </div>
           <div className="mt-3">
             <select
+              data-testid="inbox-platform-filter"
               value={platformFilter}
               onChange={(e) => setPlatformFilter(e.target.value as 'ALL' | SocialPlatform)}
               className="w-full px-3 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white"
@@ -466,6 +467,10 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
           {filteredMessages.map((message) => (
             <div
               key={message.id}
+              data-testid="inbox-message-item"
+              data-message-id={message.id}
+              data-platform={message.platform}
+              data-replied={message.isReplied ? '1' : '0'}
               onClick={() => setSelectedMessageId(message.id)}
               className={`p-4 border-b border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
                 selectedMessageId === message.id
@@ -572,6 +577,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
                     <div className="relative">
                       <UserRoundCheck className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
                       <select
+                        data-testid="inbox-workflow-assignee"
                         value={workflowAssignedUserId}
                         onChange={(e) => setWorkflowAssignedUserId(e.target.value)}
                         className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white"
@@ -590,6 +596,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
                     <div className="relative">
                       <CalendarClock className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
                       <input
+                        data-testid="inbox-workflow-due-at"
                         type="datetime-local"
                         value={workflowDueAtInput}
                         onChange={(e) => setWorkflowDueAtInput(e.target.value)}
@@ -603,6 +610,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
                   <div className="relative">
                     <Tag className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
                     <input
+                      data-testid="inbox-workflow-tags"
                       type="text"
                       value={workflowTagsInput}
                       onChange={(e) => setWorkflowTagsInput(e.target.value)}
@@ -616,6 +624,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
                     {isAssignableLoading ? '担当者候補を読み込み中...' : '保存すると一覧とSLA表示に反映されます。'}
                   </p>
                   <button
+                    data-testid="inbox-workflow-save"
                     type="button"
                     onClick={handleSaveWorkflow}
                     disabled={isWorkflowSaving || isSubmitting || isGeneratingDraft}

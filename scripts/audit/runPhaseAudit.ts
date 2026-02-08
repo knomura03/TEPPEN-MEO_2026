@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { ensureAuditUsers } from './bootstrapUsers';
 import { runDbAuditPhase1 } from './dbAuditPhase1';
+import { runDbAuditPhase2 } from './dbAuditPhase2';
 import { ensureDir, formatTimestampForPath, loadDotEnvFile, runCommand, writeJsonFile, writeTextFile } from './lib';
 import { appendPhaseAuditLog, PhaseAuditE2eResult, PhaseAuditSummary } from './report';
 import { runStaticAudit } from './staticAudit';
@@ -64,7 +65,7 @@ const getGitSha = async (repoRoot: string): Promise<string> => {
 
 const commitAndPushAuditLog = async (params: {
   repoRoot: string;
-  phase: 'phase1';
+  phase: 'phase1' | 'phase2';
   ok: boolean;
 }): Promise<void> => {
   const filePath = path.join('docs', '14_PHASE_AUDIT_LOG.md');
@@ -94,8 +95,9 @@ const commitAndPushAuditLog = async (params: {
   }
 };
 
-const runE2ePhase1 = async (params: {
+const runE2ePhase = async (params: {
   repoRoot: string;
+  phase: 'phase1' | 'phase2';
   baseUrl: string;
   outputDir: string;
 }): Promise<PhaseAuditE2eResult> => {
@@ -125,7 +127,7 @@ const runE2ePhase1 = async (params: {
     runCommand({
       cwd: params.repoRoot,
       command: 'npm',
-      args: ['run', 'audit:e2e:phase1', '--', '--max-failures=1'],
+      args: ['run', `audit:e2e:${params.phase}`, '--', '--max-failures=1'],
       env: {
         AUDIT_BASE_URL: params.baseUrl,
         AUDIT_OUTPUT_DIR: artifactsDir,
@@ -165,9 +167,9 @@ const runE2ePhase1 = async (params: {
 const main = async (): Promise<void> => {
   const repoRoot = process.cwd();
   const phaseArg = process.argv[2] || '';
-  const phase = phaseArg === 'phase1' ? 'phase1' : null;
+  const phase = phaseArg === 'phase1' || phaseArg === 'phase2' ? phaseArg : null;
   if (!phase) {
-    throw new Error(`Usage: tsx scripts/audit/runPhaseAudit.ts phase1`);
+    throw new Error(`Usage: tsx scripts/audit/runPhaseAudit.ts <phase1|phase2>`);
   }
 
   const startedAt = new Date();
@@ -196,10 +198,16 @@ const main = async (): Promise<void> => {
   let dbAudit: PhaseAuditSummary['dbAudit'] = null;
   if (staticAudit.ok) {
     try {
-      dbAudit = await runDbAuditPhase1({
-        repoRoot,
-        outputDir: path.join(outputDir, 'B_db'),
-      });
+      dbAudit =
+        phase === 'phase1'
+          ? await runDbAuditPhase1({
+              repoRoot,
+              outputDir: path.join(outputDir, 'B_db'),
+            })
+          : await runDbAuditPhase2({
+              repoRoot,
+              outputDir: path.join(outputDir, 'B_db'),
+            });
     } catch (error) {
       await writeTextFile(path.join(outputDir, 'B_db', 'dbAudit.exception.log'), String(error));
       dbAudit = null;
@@ -236,7 +244,7 @@ const main = async (): Promise<void> => {
     }
 
     try {
-      e2eAudit = await runE2ePhase1({ repoRoot, baseUrl, outputDir });
+      e2eAudit = await runE2ePhase({ repoRoot, phase, baseUrl, outputDir });
     } finally {
       if (devStdout) devStdout.end();
       if (devStderr) devStderr.end();

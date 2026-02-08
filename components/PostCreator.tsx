@@ -479,6 +479,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
                 <div className="space-y-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <select
+                      data-testid="post-template-select"
                       value={selectedTemplateId}
                       onChange={(e) => setSelectedTemplateId(e.target.value)}
                       disabled={isLoadingBrandAssets || templates.length === 0}
@@ -492,6 +493,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
                       ))}
                     </select>
                     <button
+                      data-testid="post-template-apply"
                       type="button"
                       onClick={handleApplyTemplate}
                       disabled={!selectedTemplate || isLoadingBrandAssets}
@@ -516,6 +518,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
                         {brandKit.recommendedHashtags.map((tag) => (
                           <button
                             key={tag}
+                            data-testid={`post-recommended-tag-${tag.replace('#', '')}`}
                             type="button"
                             onClick={() => handleAppendRecommendedHashtag(tag)}
                             className="text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800"
@@ -537,6 +540,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
                 <div className="flex flex-wrap gap-3">
                 {MOCK_ACCOUNTS.map(account => (
                     <button
+                    data-testid={`post-platform-${account.platform}`}
                     key={account.id}
                     type="button"
                     onClick={() => togglePlatform(account.platform)}

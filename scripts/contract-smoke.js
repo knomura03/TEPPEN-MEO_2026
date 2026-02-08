@@ -58,6 +58,7 @@ assertIncludes('services/brandKitService.ts', 'createTemplate');
 assertIncludes('services/rankKeywordService.ts', 'rank_keywords');
 assertIncludes('services/rankCollectionService.ts', 'rank_collection_runs');
 assertIncludes('services/rankCollectionService.ts', 'collectByFunction');
+assertIncludes('services/rankCollectionService.ts', 'listRunDetailsByStore');
 assertIncludes('services/competitorService.ts', 'competitor_targets');
 assertIncludes('services/competitorService.ts', 'listSnapshotsByRun');
 assertIncludes('services/inboxService.ts', 'listAssignableUsersByStore');
@@ -68,6 +69,7 @@ assertIncludes('components/PostCreator.tsx', 'テンプレート / ブランド�
 assertIncludes('components/RankTrackerView.tsx', '順位計測');
 assertIncludes('components/RankTrackerView.tsx', '収集実行（MOCK）');
 assertIncludes('components/RankTrackerView.tsx', '競合ターゲット（P3-03）');
+assertIncludes('components/RankTrackerView.tsx', '順位/競合ダッシュボード（P3-04）');
 assertIncludes('components/UnifiedInbox.tsx', 'messageReplyService.replyFacebookMessage');
 assertIncludes('components/UnifiedInbox.tsx', 'ワークフローを保存');
 assertIncludes('components/SettingsView.tsx', 'ブランドキット');

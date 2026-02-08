@@ -1,6 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PlusCircle, Save, Trash2, Pencil, X, Play, RefreshCcw } from 'lucide-react';
-import { CompetitorMetricSnapshot, CompetitorTarget, RankCollectionResult, RankCollectionRun, RankKeyword, User } from '../types';
+import {
+  CompetitorMetricSnapshot,
+  CompetitorTarget,
+  RankCollectionResult,
+  RankCollectionRun,
+  RankCollectionRunDetail,
+  RankKeyword,
+  User,
+} from '../types';
+import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useStore } from '../contexts/StoreContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
@@ -35,11 +44,27 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
   const [newCompetitorNote, setNewCompetitorNote] = useState('');
   const [isCompetitorLoading, setIsCompetitorLoading] = useState(false);
   const [isCompetitorSubmitting, setIsCompetitorSubmitting] = useState(false);
+  const [dashboardRunDetails, setDashboardRunDetails] = useState<RankCollectionRunDetail[]>([]);
+  const [dashboardWarning, setDashboardWarning] = useState<string | null>(null);
+  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
 
   const activeStore = useMemo(() => {
     if (!activeStoreId) return null;
     return stores.find((store) => store.id === activeStoreId) || null;
   }, [activeStoreId, stores]);
+
+  const chartPalette = ['#2563EB', '#059669', '#D97706', '#7C3AED'];
+
+  const average = (numbers: number[]): number | null => {
+    if (numbers.length === 0) return null;
+    return Number((numbers.reduce((sum, value) => sum + value, 0) / numbers.length).toFixed(1));
+  };
+
+  const formatRunLabel = (date: Date): string => {
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${month}/${day}`;
+  };
 
   const loadKeywords = async () => {
     if (!activeStoreId) {
@@ -156,10 +181,38 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
     }
   };
 
+  const loadDashboard = async () => {
+    if (!activeStoreId || !isSupabaseConfigured) {
+      setDashboardRunDetails([]);
+      setDashboardWarning(null);
+      return;
+    }
+
+    setIsDashboardLoading(true);
+    try {
+      const details = await rankCollectionService.listRunDetailsByStore(activeStoreId, 14);
+      setDashboardRunDetails(details);
+      const warning = details.find((detail) => detail.competitorSkippedReason)?.competitorSkippedReason || null;
+      setDashboardWarning(warning);
+    } catch (error) {
+      console.error('[RankTrackerView] Failed to load rank dashboard data:', error);
+      addNotification(
+        '読み込みエラー',
+        `ダッシュボードデータの取得に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`,
+        'ERROR'
+      );
+      setDashboardRunDetails([]);
+      setDashboardWarning(null);
+    } finally {
+      setIsDashboardLoading(false);
+    }
+  };
+
   useEffect(() => {
     void loadKeywords();
     void loadCollectionRuns();
     void loadCompetitors();
+    void loadDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStoreId]);
 
@@ -272,7 +325,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
           `順位${result.collectedCount}件 / 競合${result.collectedCompetitorCount || 0}件の収集を実行しました。`,
         'SUCCESS'
       );
-      await loadCollectionRuns();
+      await Promise.all([loadCollectionRuns(), loadDashboard()]);
     } catch (error) {
       console.error('[RankTrackerView] Failed to run rank collection:', error);
       addNotification('収集エラー', getErrorMessage(error) || '順位収集の実行に失敗しました。', 'ERROR');
@@ -349,6 +402,102 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
     return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200';
   };
 
+  const latestDashboardRun = useMemo(() => {
+    if (dashboardRunDetails.length === 0) return null;
+    return dashboardRunDetails[dashboardRunDetails.length - 1];
+  }, [dashboardRunDetails]);
+
+  const latestRunKeywordAverage = useMemo(() => {
+    if (!latestDashboardRun) return null;
+    return average(
+      latestDashboardRun.results
+        .map((result) => result.position)
+        .filter((position): position is number => typeof position === 'number')
+    );
+  }, [latestDashboardRun]);
+
+  const latestRunBestKeyword = useMemo(() => {
+    if (!latestDashboardRun) return null;
+    const candidates = latestDashboardRun.results.filter(
+      (result): result is RankCollectionResult & { position: number } => typeof result.position === 'number'
+    );
+    if (candidates.length === 0) return null;
+    return candidates.reduce((best, current) => (current.position < best.position ? current : best));
+  }, [latestDashboardRun]);
+
+  const latestRunCompetitorAverage = useMemo(() => {
+    if (!latestDashboardRun) return null;
+    return average(
+      latestDashboardRun.competitorSnapshots
+        .map((snapshot) => snapshot.mapRank)
+        .filter((rank): rank is number => typeof rank === 'number')
+    );
+  }, [latestDashboardRun]);
+
+  const topKeywordKeys = useMemo(() => {
+    const counts = new Map<string, number>();
+    dashboardRunDetails.forEach((detail) => {
+      detail.results.forEach((result) => {
+        counts.set(result.keyword, (counts.get(result.keyword) || 0) + 1);
+      });
+    });
+    return [...counts.entries()]
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 4)
+      .map(([keyword]) => keyword);
+  }, [dashboardRunDetails]);
+
+  const keywordTrendData = useMemo(() => {
+    return dashboardRunDetails.map((detail) => {
+      const row: Record<string, string | number | null> = {
+        runLabel: formatRunLabel(detail.run.startedAt),
+      };
+      topKeywordKeys.forEach((keyword) => {
+        const item = detail.results.find((result) => result.keyword === keyword);
+        row[keyword] = typeof item?.position === 'number' ? item.position : null;
+      });
+      row.averageRank = average(
+        detail.results.map((result) => result.position).filter((position): position is number => typeof position === 'number')
+      );
+      return row;
+    });
+  }, [dashboardRunDetails, topKeywordKeys]);
+
+  const latestCompetitorBars = useMemo(() => {
+    if (!latestDashboardRun) return [];
+    return [...latestDashboardRun.competitorSnapshots]
+      .filter((snapshot): snapshot is CompetitorMetricSnapshot & { mapRank: number } => typeof snapshot.mapRank === 'number')
+      .sort((left, right) => left.mapRank - right.mapRank)
+      .slice(0, 8)
+      .map((snapshot) => ({
+        name: snapshot.competitorName,
+        mapRank: snapshot.mapRank,
+        reviewCount: snapshot.reviewCount,
+        rating: typeof snapshot.rating === 'number' ? snapshot.rating : null,
+      }));
+  }, [latestDashboardRun]);
+
+  const trendRows = useMemo(() => {
+    return dashboardRunDetails.map((detail) => {
+      const rankAverage = average(
+        detail.results.map((result) => result.position).filter((position): position is number => typeof position === 'number')
+      );
+      const competitorAverage = average(
+        detail.competitorSnapshots
+          .map((snapshot) => snapshot.mapRank)
+          .filter((position): position is number => typeof position === 'number')
+      );
+      return {
+        runId: detail.run.id,
+        startedAt: detail.run.startedAt,
+        rankAverage,
+        competitorAverage,
+        keywordCount: detail.results.length,
+        competitorCount: detail.competitorSnapshots.length,
+      };
+    });
+  }, [dashboardRunDetails]);
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-start justify-between gap-4">
@@ -371,6 +520,149 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
           Supabase未設定のため、順位キーワードは保存できません（デモ表示のみ）。
         </div>
       )}
+
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white">順位/競合ダッシュボード（P3-04）</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              直近runの推移と競合比較を可視化します（MOCK/REALの保存データ共通）。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadDashboard()}
+            disabled={isDashboardLoading || !activeStoreId || !isSupabaseConfigured}
+            className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <RefreshCcw size={14} />
+            ダッシュボード再読込
+          </button>
+        </div>
+
+        {dashboardWarning && (
+          <div className="p-3 rounded-xl bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 text-xs text-yellow-800 dark:text-yellow-200">
+            {dashboardWarning}
+          </div>
+        )}
+
+        {isDashboardLoading ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">ダッシュボードを読み込み中...</p>
+        ) : dashboardRunDetails.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            収集データがまだありません。まず「収集実行（MOCK）」を実行してください。
+          </p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
+                <p className="text-xs text-gray-500 dark:text-gray-400">最新run 平均順位</p>
+                <p className="text-xl font-bold text-gray-800 dark:text-white mt-1">
+                  {typeof latestRunKeywordAverage === 'number' ? `${latestRunKeywordAverage}位` : '-'}
+                </p>
+              </div>
+              <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
+                <p className="text-xs text-gray-500 dark:text-gray-400">最新run 最上位キーワード</p>
+                <p className="text-sm font-semibold text-gray-800 dark:text-white mt-1 break-words">
+                  {latestRunBestKeyword ? `${latestRunBestKeyword.keyword}（${latestRunBestKeyword.position}位）` : '-'}
+                </p>
+              </div>
+              <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
+                <p className="text-xs text-gray-500 dark:text-gray-400">最新run 競合平均順位</p>
+                <p className="text-xl font-bold text-gray-800 dark:text-white mt-1">
+                  {typeof latestRunCompetitorAverage === 'number' ? `${latestRunCompetitorAverage}位` : '-'}
+                </p>
+              </div>
+              <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
+                <p className="text-xs text-gray-500 dark:text-gray-400">可視化対象run</p>
+                <p className="text-xl font-bold text-gray-800 dark:text-white mt-1">{dashboardRunDetails.length}件</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/20">
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">順位推移（主要キーワード）</p>
+                {topKeywordKeys.length > 0 ? (
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={keywordTrendData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="runLabel" />
+                        <YAxis reversed domain={['auto', 'auto']} allowDecimals={false} />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="averageRank" stroke="#334155" strokeWidth={2} name="平均順位" dot={false} />
+                        {topKeywordKeys.map((keyword, index) => (
+                          <Line
+                            key={keyword}
+                            type="monotone"
+                            dataKey={keyword}
+                            stroke={chartPalette[index % chartPalette.length]}
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                            name={keyword}
+                          />
+                        ))}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">表示できるキーワードデータがありません。</p>
+                )}
+              </div>
+
+              <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/20">
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">最新run 競合比較（順位）</p>
+                {latestCompetitorBars.length > 0 ? (
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={latestCompetitorBars}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis reversed allowDecimals={false} />
+                        <Tooltip />
+                        <Bar dataKey="mapRank" fill="#2563EB" name="順位" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">競合比較データがありません。</p>
+                )}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-xs border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                <thead className="bg-gray-50 dark:bg-gray-900/40">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300">run日時</th>
+                    <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300">順位平均</th>
+                    <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300">競合平均</th>
+                    <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300">キーワード件数</th>
+                    <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300">競合件数</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trendRows.map((row) => (
+                    <tr key={row.runId} className="border-t border-gray-200 dark:border-gray-700">
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{row.startedAt.toLocaleString('ja-JP')}</td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
+                        {typeof row.rankAverage === 'number' ? `${row.rankAverage}位` : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
+                        {typeof row.competitorAverage === 'number' ? `${row.competitorAverage}位` : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{row.keywordCount}</td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{row.competitorCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
         <div className="flex items-center justify-between gap-3">

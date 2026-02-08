@@ -2,6 +2,7 @@ import {
   CompetitorMetricSnapshot,
   RankCollectionExecutionResult,
   RankCollectionMode,
+  RankCollectionRunDetail,
   RankCollectionResult,
   RankCollectionRun,
 } from '../types';
@@ -58,6 +59,7 @@ type FunctionInvokeResult = {
 };
 
 const MIGRATION_ERROR_MESSAGE = 'P3-02 migration（rank daily collection）の適用後に再試行してください。';
+const COMPETITOR_MIGRATION_ERROR_MESSAGE = 'P3-03 migration（competitor collection）の適用後に再試行してください。';
 
 const requireSupabase = () => {
   if (!isSupabaseConfigured || !supabase) {
@@ -71,6 +73,13 @@ const isMissingRelationError = (error: unknown): boolean => {
   const code = 'code' in error ? String((error as { code?: string }).code || '') : '';
   const message = 'message' in error ? String((error as { message?: string }).message || '') : '';
   return code === '42P01' || message.includes('does not exist');
+};
+
+const toErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (!error || typeof error !== 'object') return '';
+  if ('message' in error) return String((error as { message?: string }).message || '');
+  return '';
 };
 
 const requireFunctionRequestContext = async (client: ReturnType<typeof requireSupabase>) => {
@@ -197,9 +206,34 @@ export const rankCollectionService = {
       )
       .eq('run_id', runId)
       .order('created_at', { ascending: true });
-    if (error && isMissingRelationError(error)) throw new Error(MIGRATION_ERROR_MESSAGE);
+    if (error && isMissingRelationError(error)) throw new Error(COMPETITOR_MIGRATION_ERROR_MESSAGE);
     if (error) throw error;
     return ((data || []) as DbCompetitorMetricSnapshotRow[]).map(mapCompetitorSnapshot);
+  },
+
+  async listRunDetailsByStore(storeId: string, limit = 14): Promise<RankCollectionRunDetail[]> {
+    const runs = await this.listRunsByStore(storeId, limit);
+    const details = await Promise.all(
+      runs.map(async (run): Promise<RankCollectionRunDetail> => {
+        const results = await this.listResultsByRun(run.id);
+        try {
+          const competitorSnapshots = await this.listCompetitorSnapshotsByRun(run.id);
+          return { run, results, competitorSnapshots };
+        } catch (error) {
+          const message = toErrorMessage(error);
+          if (message.includes('P3-03 migration')) {
+            return {
+              run,
+              results,
+              competitorSnapshots: [],
+              competitorSkippedReason: message,
+            };
+          }
+          throw error;
+        }
+      })
+    );
+    return details.sort((left, right) => left.run.startedAt.getTime() - right.run.startedAt.getTime());
   },
 
   async collectByFunction(params: { storeId: string; mode?: RankCollectionMode }): Promise<RankCollectionExecutionResult> {

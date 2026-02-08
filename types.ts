@@ -92,6 +92,13 @@ export interface RankCollectionExecutionResult {
   message?: string;
 }
 
+export interface RankCollectionRunDetail {
+  run: RankCollectionRun;
+  results: RankCollectionResult[];
+  competitorSnapshots: CompetitorMetricSnapshot[];
+  competitorSkippedReason?: string;
+}
+
 export interface CompetitorTarget {
   id: string;
   storeId: string;

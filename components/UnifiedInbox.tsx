@@ -666,6 +666,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <p className="text-xs text-gray-500 dark:text-gray-400">AI返信案は送信前に編集できます。</p>
                     <button
+                      data-testid="inbox-generate-draft"
                       type="button"
                       onClick={handleGenerateReplyDraft}
                       disabled={isGeneratingDraft || isSubmitting || isWorkflowSaving}
@@ -676,6 +677,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
                     </button>
                   </div>
                   <textarea
+                    data-testid="inbox-reply-text"
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
                     placeholder={`${selectedMessage.senderName} さんへ返信...`}
@@ -683,6 +685,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
                   />
                   <div className="flex justify-end">
                     <button
+                      data-testid="inbox-send-reply"
                       type="submit"
                       disabled={!replyText.trim() || isSubmitting || isGeneratingDraft || isWorkflowSaving}
                       className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

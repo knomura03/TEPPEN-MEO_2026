@@ -190,7 +190,9 @@ test('Phase1: Survey create/publish/respond/assets', async ({ page }, testInfo) 
   await page.getByRole('button', { name: '回答を送信する' }).click();
   await expect(page.getByText('ご回答ありがとうございました')).toBeVisible();
 
-  await page.goto(publicUrl, { waitUntil: 'domcontentloaded' });
+  // Re-answer on the same public URL. `page.goto()` to the same hash URL can be a no-op in SPA state,
+  // so force a full reload to reset the page state.
+  await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: '3' }).click();
   await page.getByRole('button', { name: '回答を送信する' }).click();
   await expect(page.getByText('ご回答ありがとうございました')).toBeVisible();

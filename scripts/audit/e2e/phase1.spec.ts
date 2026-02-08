@@ -322,7 +322,13 @@ test('Phase1: Approval workflow (USER -> MANAGER approve/reject)', async ({ page
   // Ensure history opens (P1-07) and is not empty.
   await approveRow.getByRole('button', { name: '履歴' }).click();
   await expect(page.getByText('差し戻しコメント履歴')).toBeVisible();
+  // Wait until history finishes loading, then assert it is non-empty.
+  await expect(page.getByText('履歴を読み込み中...')).not.toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('履歴はまだありません。')).not.toBeVisible();
+
+  // Close modal before logout to avoid the overlay intercepting clicks.
+  await page.getByRole('button', { name: '閉じる' }).click();
+  await expect(page.getByText('差し戻しコメント履歴')).not.toBeVisible();
 
   await logout(page);
 });

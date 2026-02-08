@@ -49,3 +49,15 @@
   - logs: `output/audit/phase1/20260209_033242/preflight_users`
 - C(e2e): SKIPPED
 
+## 2026-02-08T18:35:01.619Z PHASE1 FAIL
+
+- command: `npm run audit:phase1`
+- commit: `ccbd24e6eef04d538a989264d4f7510638772459`
+- output: `output/audit/phase1/20260209_033501`
+- A(static): PASS (run typecheck=OK(2.3s), run build=OK(3.3s), run smoke:contracts=OK(166ms))
+- B(db): PASS (13 checks)
+  - logs: `output/audit/phase1/20260209_033501/B_db`
+- preflight(users): FAIL: Failed to provision manager: {"code":401,"message":"Invalid JWT"} (status=401)
+  - logs: `output/audit/phase1/20260209_033501/preflight_users`
+- C(e2e): SKIPPED
+

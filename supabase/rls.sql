@@ -1204,6 +1204,29 @@ with check (public.user_has_store_access(store_id));
 
 grant select, insert on public.nap_consistency_results to authenticated;
 
+alter table public.nap_alerts enable row level security;
+
+drop policy if exists nap_alerts_select_by_store_scope on public.nap_alerts;
+create policy nap_alerts_select_by_store_scope
+on public.nap_alerts
+for select
+using (public.user_has_store_access(store_id));
+
+drop policy if exists nap_alerts_insert_by_store_scope on public.nap_alerts;
+create policy nap_alerts_insert_by_store_scope
+on public.nap_alerts
+for insert
+with check (public.user_has_store_access(store_id));
+
+drop policy if exists nap_alerts_update_by_store_scope on public.nap_alerts;
+create policy nap_alerts_update_by_store_scope
+on public.nap_alerts
+for update
+using (public.user_has_store_access(store_id))
+with check (public.user_has_store_access(store_id));
+
+grant select, insert, update on public.nap_alerts to authenticated;
+
 -- ------------------------------------------------------------
 -- Storage: post-media bucket
 -- ------------------------------------------------------------

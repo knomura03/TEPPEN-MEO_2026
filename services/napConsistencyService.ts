@@ -8,6 +8,7 @@ import {
 import { isSupabaseConfigured, supabase } from './supabaseClient';
 import { providerCatalogService } from './providerCatalogService';
 import { storesService } from './storesService';
+import { napAlertService } from './napAlertService';
 
 type DbNapRunRow = {
   id: string;
@@ -374,6 +375,27 @@ export const napConsistencyService = {
         const { error: insertResultError } = await client.from('nap_consistency_results').insert(resultPayload);
         if (insertResultError && isMissingRelationError(insertResultError)) throw new Error(MIGRATION_ERROR_MESSAGE);
         if (insertResultError) throw insertResultError;
+      }
+
+      // Best-effort: P3-06（NAPアラート）へ同期。migration未適用でもP3-05は成功させる。
+      try {
+        const createdResults = await napConsistencyService.listResultsByRun(run.id);
+        await napAlertService.syncFromRunResults({
+          storeId: params.storeId,
+          runId: run.id,
+          checkedAt: new Date(),
+          requestedByUserId: params.requestedByUserId,
+          results: createdResults.map((item) => ({
+            id: item.id,
+            providerCatalogId: item.providerCatalogId,
+            providerKey: item.providerKey,
+            providerName: item.providerName,
+            status: item.status,
+            mismatchFields: item.mismatchFields,
+          })),
+        });
+      } catch (error) {
+        console.warn('[napConsistencyService] Failed to sync NAP alerts:', error);
       }
 
       const summary: NapConsistencySummary = {

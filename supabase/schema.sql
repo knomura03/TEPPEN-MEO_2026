@@ -457,6 +457,42 @@ create index if not exists nap_consistency_results_created_at_idx on public.nap_
 create unique index if not exists nap_consistency_results_run_provider_unique_idx
   on public.nap_consistency_results(run_id, provider_key);
 
+create table if not exists public.nap_alerts (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores(id) on delete cascade,
+  provider_catalog_id uuid references public.provider_catalog(id) on delete set null,
+  provider_key text not null,
+  provider_name text not null,
+  status text not null default 'OPEN' check (status in ('OPEN', 'ACKED', 'RESOLVED')),
+  last_result_status text not null default 'MISSING' check (last_result_status in ('MATCH', 'MISMATCH', 'MISSING')),
+  mismatch_fields text[] not null default '{}'::text[],
+  last_run_id uuid references public.nap_consistency_runs(id) on delete set null,
+  last_result_id uuid references public.nap_consistency_results(id) on delete set null,
+  first_detected_at timestamptz not null default now(),
+  opened_at timestamptz not null default now(),
+  last_detected_at timestamptz not null default now(),
+  last_checked_at timestamptz not null default now(),
+  acknowledged_at timestamptz,
+  acknowledged_by_user_id uuid references auth.users(id) on delete set null,
+  resolved_at timestamptz,
+  resolved_by_user_id uuid references auth.users(id) on delete set null,
+  note text,
+  updated_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (store_id, provider_key)
+);
+
+create index if not exists nap_alerts_store_id_idx on public.nap_alerts(store_id);
+create index if not exists nap_alerts_status_idx on public.nap_alerts(status);
+create index if not exists nap_alerts_last_detected_at_idx on public.nap_alerts(last_detected_at);
+create index if not exists nap_alerts_updated_at_idx on public.nap_alerts(updated_at);
+
+drop trigger if exists nap_alerts_set_updated_at on public.nap_alerts;
+create trigger nap_alerts_set_updated_at
+before update on public.nap_alerts
+for each row execute function public.set_updated_at();
+
 create table if not exists public.post_media (
   id uuid primary key default gen_random_uuid(),
   post_id uuid not null references public.posts(id) on delete cascade,

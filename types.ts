@@ -182,6 +182,33 @@ export interface NapConsistencyExecutionResult {
   message?: string;
 }
 
+export type NapAlertStatus = 'OPEN' | 'ACKED' | 'RESOLVED';
+
+export interface NapAlert {
+  id: string;
+  storeId: string;
+  providerCatalogId?: string;
+  providerKey: string;
+  providerName: string;
+  status: NapAlertStatus;
+  lastResultStatus: NapConsistencyResultStatus;
+  mismatchFields: string[];
+  lastRunId?: string;
+  lastResultId?: string;
+  firstDetectedAt: Date;
+  openedAt: Date;
+  lastDetectedAt: Date;
+  lastCheckedAt: Date;
+  acknowledgedAt?: Date;
+  acknowledgedByUserId?: string;
+  resolvedAt?: Date;
+  resolvedByUserId?: string;
+  note?: string;
+  updatedBy?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface OrgStorePolicy {
   orgId: string;
   defaultUserStoreLimit: number;

@@ -3,6 +3,7 @@ import { PlusCircle, Save, Trash2, Pencil, X, Play, RefreshCcw } from 'lucide-re
 import {
   CompetitorMetricSnapshot,
   CompetitorTarget,
+  NapAlert,
   NapConsistencyResult,
   NapConsistencyRun,
   RankCollectionResult,
@@ -19,6 +20,7 @@ import { rankKeywordService } from '../services/rankKeywordService';
 import { rankCollectionService } from '../services/rankCollectionService';
 import { competitorService } from '../services/competitorService';
 import { napConsistencyService } from '../services/napConsistencyService';
+import { napAlertService } from '../services/napAlertService';
 import { getErrorMessage } from '../services/errorMessage';
 
 interface RankTrackerViewProps {
@@ -52,6 +54,9 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
   const [selectedNapResults, setSelectedNapResults] = useState<NapConsistencyResult[]>([]);
   const [isNapLoading, setIsNapLoading] = useState(false);
   const [isNapSubmitting, setIsNapSubmitting] = useState(false);
+  const [napAlerts, setNapAlerts] = useState<NapAlert[]>([]);
+  const [isNapAlertLoading, setIsNapAlertLoading] = useState(false);
+  const [napAlertUpdatingId, setNapAlertUpdatingId] = useState<string | null>(null);
   const [dashboardRunDetails, setDashboardRunDetails] = useState<RankCollectionRunDetail[]>([]);
   const [dashboardWarning, setDashboardWarning] = useState<string | null>(null);
   const [isDashboardLoading, setIsDashboardLoading] = useState(false);
@@ -226,6 +231,29 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
     }
   };
 
+  const loadNapAlerts = async () => {
+    if (!activeStoreId || !isSupabaseConfigured) {
+      setNapAlerts([]);
+      return;
+    }
+
+    setIsNapAlertLoading(true);
+    try {
+      const alerts = await napAlertService.listActiveByStore(activeStoreId);
+      setNapAlerts(alerts);
+    } catch (error) {
+      console.error('[RankTrackerView] Failed to load NAP alerts:', error);
+      addNotification(
+        '読み込みエラー',
+        `NAPアラートの取得に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`,
+        'ERROR'
+      );
+      setNapAlerts([]);
+    } finally {
+      setIsNapAlertLoading(false);
+    }
+  };
+
   const loadNapResults = async (runId: string) => {
     if (!isSupabaseConfigured) {
       setSelectedNapResults([]);
@@ -277,6 +305,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
     void loadCollectionRuns();
     void loadCompetitors();
     void loadNapRuns();
+    void loadNapAlerts();
     void loadDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStoreId]);
@@ -466,13 +495,37 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
         storeId: activeStoreId,
         requestedByUserId: currentUser.id,
       });
-      addNotification('NAPチェック完了', result.message || 'NAP整合性チェックを実行しました。', 'SUCCESS');
+      const hasIssues = result.summary.mismatch + result.summary.missing > 0;
+      addNotification(
+        hasIssues ? 'NAPチェック（注意）' : 'NAPチェック完了',
+        result.message || 'NAP整合性チェックを実行しました。',
+        hasIssues ? 'WARNING' : 'SUCCESS'
+      );
       await loadNapRuns();
+      await loadNapAlerts();
     } catch (error) {
       console.error('[RankTrackerView] Failed to run NAP consistency check:', error);
       addNotification('NAPチェックエラー', getErrorMessage(error) || 'NAP整合性チェックの実行に失敗しました。', 'ERROR');
     } finally {
       setIsNapSubmitting(false);
+    }
+  };
+
+  const handleUpdateNapAlertStatus = async (alert: NapAlert, nextStatus: NapAlert['status']) => {
+    if (!isSupabaseConfigured) {
+      addNotification('未設定', 'Supabase未設定のため更新できません。', 'WARNING');
+      return;
+    }
+    setNapAlertUpdatingId(alert.id);
+    try {
+      await napAlertService.updateStatus({ id: alert.id, status: nextStatus, updatedBy: currentUser.id });
+      addNotification('更新', 'NAPアラート状態を更新しました。', 'SUCCESS');
+      await loadNapAlerts();
+    } catch (error) {
+      console.error('[RankTrackerView] Failed to update NAP alert status:', error);
+      addNotification('更新エラー', getErrorMessage(error) || 'NAPアラート状態の更新に失敗しました。', 'ERROR');
+    } finally {
+      setNapAlertUpdatingId(null);
     }
   };
 
@@ -911,6 +964,103 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                 <p className="text-sm text-gray-500 dark:text-gray-400">runを選択すると詳細を表示します。</p>
               )}
             </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white">NAPアラート（P3-06）</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              NAP不整合（MISMATCH）/未設定（MISSING）をアラートとして永続化し、ACK/解消で運用します。
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void loadNapAlerts()}
+              disabled={isNapAlertLoading || !activeStoreId || !isSupabaseConfigured}
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <RefreshCcw size={14} />
+              再読込
+            </button>
+          </div>
+        </div>
+
+        {!activeStoreId ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">店舗を選択するとアラートを表示します。</p>
+        ) : !isSupabaseConfigured ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">Supabase未設定のため表示できません。</p>
+        ) : isNapAlertLoading ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">アラートを読み込み中...</p>
+        ) : napAlerts.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">未対応アラートはありません。</p>
+        ) : (
+          <div className="space-y-2">
+            {napAlerts.map((alert) => {
+              const statusClassName =
+                alert.status === 'OPEN'
+                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-200'
+                  : alert.status === 'ACKED'
+                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200'
+                    : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200';
+              const disabled = napAlertUpdatingId === alert.id;
+
+              return (
+                <div
+                  key={alert.id}
+                  className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-white">{alert.providerName}</p>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                        last: {alert.lastResultStatus}
+                        {alert.mismatchFields.length > 0 ? ` / 不一致: ${alert.mismatchFields.join(', ')}` : ''}
+                      </p>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                        最終検知: {alert.lastDetectedAt.toLocaleString('ja-JP')} / 初回検知: {alert.firstDetectedAt.toLocaleString('ja-JP')}
+                      </p>
+                      {alert.note && <p className="text-[11px] text-gray-600 dark:text-gray-300 mt-1">メモ: {alert.note}</p>}
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${statusClassName}`}>{alert.status}</span>
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {alert.status === 'OPEN' ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleUpdateNapAlertStatus(alert, 'ACKED')}
+                        disabled={disabled}
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        ACK
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void handleUpdateNapAlertStatus(alert, 'OPEN')}
+                        disabled={disabled}
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        未対応に戻す
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => void handleUpdateNapAlertStatus(alert, 'RESOLVED')}
+                      disabled={disabled}
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      解消
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

@@ -1111,6 +1111,51 @@ with check (public.user_has_store_access(store_id));
 
 grant select, insert on public.rank_collection_results to authenticated;
 
+alter table public.competitor_targets enable row level security;
+
+drop policy if exists competitor_targets_select_by_store_scope on public.competitor_targets;
+create policy competitor_targets_select_by_store_scope
+on public.competitor_targets
+for select
+using (public.user_has_store_access(store_id));
+
+drop policy if exists competitor_targets_insert_by_store_scope on public.competitor_targets;
+create policy competitor_targets_insert_by_store_scope
+on public.competitor_targets
+for insert
+with check (public.user_has_store_access(store_id));
+
+drop policy if exists competitor_targets_update_by_store_scope on public.competitor_targets;
+create policy competitor_targets_update_by_store_scope
+on public.competitor_targets
+for update
+using (public.user_has_store_access(store_id))
+with check (public.user_has_store_access(store_id));
+
+drop policy if exists competitor_targets_delete_by_store_scope on public.competitor_targets;
+create policy competitor_targets_delete_by_store_scope
+on public.competitor_targets
+for delete
+using (public.user_has_store_access(store_id));
+
+grant select, insert, update, delete on public.competitor_targets to authenticated;
+
+alter table public.competitor_metric_snapshots enable row level security;
+
+drop policy if exists competitor_metric_snapshots_select_by_store_scope on public.competitor_metric_snapshots;
+create policy competitor_metric_snapshots_select_by_store_scope
+on public.competitor_metric_snapshots
+for select
+using (public.user_has_store_access(store_id));
+
+drop policy if exists competitor_metric_snapshots_insert_by_store_scope on public.competitor_metric_snapshots;
+create policy competitor_metric_snapshots_insert_by_store_scope
+on public.competitor_metric_snapshots
+for insert
+with check (public.user_has_store_access(store_id));
+
+grant select, insert on public.competitor_metric_snapshots to authenticated;
+
 -- ------------------------------------------------------------
 -- Storage: post-media bucket
 -- ------------------------------------------------------------

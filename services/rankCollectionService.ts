@@ -1,4 +1,5 @@
 import {
+  CompetitorMetricSnapshot,
   RankCollectionExecutionResult,
   RankCollectionMode,
   RankCollectionResult,
@@ -30,6 +31,23 @@ type DbRankCollectionResultRow = {
   status: 'SUCCESS' | 'FAILED';
   message: string | null;
   raw: Record<string, unknown> | null;
+  created_at: string;
+};
+
+type DbCompetitorMetricSnapshotRow = {
+  id: string;
+  run_id: string;
+  store_id: string;
+  competitor_target_id: string;
+  competitor_name: string;
+  map_rank: number | null;
+  review_count: number;
+  rating: number | null;
+  mode: RankCollectionMode;
+  status: 'SUCCESS' | 'FAILED';
+  message: string | null;
+  raw: Record<string, unknown> | null;
+  collected_at: string;
   created_at: string;
 };
 
@@ -127,6 +145,23 @@ const mapResult = (row: DbRankCollectionResultRow): RankCollectionResult => ({
   createdAt: new Date(row.created_at),
 });
 
+const mapCompetitorSnapshot = (row: DbCompetitorMetricSnapshotRow): CompetitorMetricSnapshot => ({
+  id: row.id,
+  runId: row.run_id,
+  storeId: row.store_id,
+  competitorTargetId: row.competitor_target_id,
+  competitorName: row.competitor_name,
+  mapRank: row.map_rank || undefined,
+  reviewCount: row.review_count,
+  rating: typeof row.rating === 'number' ? row.rating : undefined,
+  mode: row.mode,
+  status: row.status,
+  message: row.message || undefined,
+  raw: row.raw || {},
+  collectedAt: new Date(row.collected_at),
+  createdAt: new Date(row.created_at),
+});
+
 export const rankCollectionService = {
   async listRunsByStore(storeId: string, limit = 20): Promise<RankCollectionRun[]> {
     const client = requireSupabase();
@@ -153,6 +188,20 @@ export const rankCollectionService = {
     return ((data || []) as DbRankCollectionResultRow[]).map(mapResult);
   },
 
+  async listCompetitorSnapshotsByRun(runId: string): Promise<CompetitorMetricSnapshot[]> {
+    const client = requireSupabase();
+    const { data, error } = await client
+      .from('competitor_metric_snapshots')
+      .select(
+        'id, run_id, store_id, competitor_target_id, competitor_name, map_rank, review_count, rating, mode, status, message, raw, collected_at, created_at'
+      )
+      .eq('run_id', runId)
+      .order('created_at', { ascending: true });
+    if (error && isMissingRelationError(error)) throw new Error(MIGRATION_ERROR_MESSAGE);
+    if (error) throw error;
+    return ((data || []) as DbCompetitorMetricSnapshotRow[]).map(mapCompetitorSnapshot);
+  },
+
   async collectByFunction(params: { storeId: string; mode?: RankCollectionMode }): Promise<RankCollectionExecutionResult> {
     const client = requireSupabase();
     const result = await invokeFunctionByHttp(client, 'rank-collect', {
@@ -176,6 +225,10 @@ export const rankCollectionService = {
       mode: (String(mappedBody.mode || 'MOCK').toUpperCase() as RankCollectionMode) || 'MOCK',
       status: (String(mappedBody.status || 'FAILED').toUpperCase() as RankCollectionRun['status']) || 'FAILED',
       collectedCount: Number(mappedBody.collectedCount || 0),
+      collectedCompetitorCount: Number(mappedBody.collectedCompetitorCount || 0),
+      competitorSkippedReason: mappedBody.competitorSkippedReason
+        ? String(mappedBody.competitorSkippedReason)
+        : undefined,
       message: mappedBody.message ? String(mappedBody.message) : undefined,
     };
   },

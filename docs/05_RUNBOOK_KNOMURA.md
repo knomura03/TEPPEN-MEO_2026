@@ -1,6 +1,6 @@
 # knomura向け手順書（最小作業で進める）
 
-最終更新: 2026-02-08（P3-02追記）
+最終更新: 2026-02-08（P3-03追記）
 
 ## この手順書の読み方
 - 「どこをクリックするか」をそのまま書いています。
@@ -483,6 +483,42 @@ OAuthの「連携する/連携解除」ボタンを使うには、P2-01 migratio
 - `rank-collect` が未Deploy、または `Verify JWT=OFF` が未設定
 - 店舗未選択（右上セレクタ未選択）
 - 実施ユーザーに対象店舗アクセス権限がない
+
+## （P3-03）競合比較収集を有効化する手順
+「順位計測」画面で競合ターゲット管理と、runごとの競合比較結果保存を使うには migration 適用と `rank-collect` の再Deploy が必要です。
+
+### 手順1: migration適用
+1. Supabaseの「SQL Editor」を開く
+2. `supabase/migrations/202602060017_p3_competitor_comparison_collection.sql` を貼り付けて実行
+3. `Success. No rows returned` を確認する
+
+### 手順2: rank-collectを最新コードで再Deploy
+1. Supabaseの「Functions」を開く
+2. `rank-collect` を開く
+3. `supabase/functions/rank-collect/index.ts` を全コピーして貼り替える
+4. `Save` → `Deploy` を実行する
+5. `Details` タブで `Verify JWT` が `OFF` になっていることを確認する
+
+### 手順3: GUIで動作確認
+1. TEPPEN MEOでログインする（ADMIN/MANAGER推奨）
+2. 右上の店舗セレクタで対象店舗を選ぶ
+3. 左メニューの「順位計測」を開く
+4. 「競合ターゲット（P3-03）」で競合名を1件以上追加する
+5. 「収集実行（MOCK）」を押す
+6. 実行履歴から最新runを選ぶ
+7. 「競合比較」に、競合ごとの順位/口コミ/評価が表示されることを確認する
+
+期待結果:
+- 競合ターゲットの追加/削除（論理削除）が成功する
+- 収集完了トーストで「順位◯件 / 競合◯件」が表示される
+- run詳細で「順位キーワード」「競合比較」の両方が表示される
+
+### 失敗時の確認ポイント
+- migration `202602060017` が未適用
+- `rank-collect` が旧コードのまま（P3-02版）
+- `rank-collect` の `Verify JWT` がONに戻っている
+- 店舗未選択（右上セレクタ未選択）
+- 競合0件の場合、競合結果は0件表示になる（正常）
 
 ## よくある詰まりポイント
 ### A) 作成できない（支払い/制限が出る）

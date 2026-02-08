@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PlusCircle, Save, Trash2, Pencil, X, Play, RefreshCcw } from 'lucide-react';
-import { RankCollectionResult, RankCollectionRun, RankKeyword, User } from '../types';
+import { CompetitorMetricSnapshot, CompetitorTarget, RankCollectionResult, RankCollectionRun, RankKeyword, User } from '../types';
 import { useStore } from '../contexts/StoreContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { rankKeywordService } from '../services/rankKeywordService';
 import { rankCollectionService } from '../services/rankCollectionService';
+import { competitorService } from '../services/competitorService';
 import { getErrorMessage } from '../services/errorMessage';
 
 interface RankTrackerViewProps {
@@ -26,8 +27,14 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
   const [collectionRuns, setCollectionRuns] = useState<RankCollectionRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedRunResults, setSelectedRunResults] = useState<RankCollectionResult[]>([]);
+  const [selectedRunCompetitorSnapshots, setSelectedRunCompetitorSnapshots] = useState<CompetitorMetricSnapshot[]>([]);
   const [isRunLoading, setIsRunLoading] = useState(false);
   const [isRunSubmitting, setIsRunSubmitting] = useState(false);
+  const [competitors, setCompetitors] = useState<CompetitorTarget[]>([]);
+  const [newCompetitorName, setNewCompetitorName] = useState('');
+  const [newCompetitorNote, setNewCompetitorNote] = useState('');
+  const [isCompetitorLoading, setIsCompetitorLoading] = useState(false);
+  const [isCompetitorSubmitting, setIsCompetitorSubmitting] = useState(false);
 
   const activeStore = useMemo(() => {
     if (!activeStoreId) return null;
@@ -63,6 +70,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
       setCollectionRuns([]);
       setSelectedRunId(null);
       setSelectedRunResults([]);
+      setSelectedRunCompetitorSnapshots([]);
       return;
     }
 
@@ -73,13 +81,18 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
       if (runs.length === 0) {
         setSelectedRunId(null);
         setSelectedRunResults([]);
+        setSelectedRunCompetitorSnapshots([]);
         return;
       }
 
       const nextSelectedRunId = selectedRunId && runs.some((run) => run.id === selectedRunId) ? selectedRunId : runs[0].id;
       setSelectedRunId(nextSelectedRunId);
-      const results = await rankCollectionService.listResultsByRun(nextSelectedRunId);
+      const [results, competitorSnapshots] = await Promise.all([
+        rankCollectionService.listResultsByRun(nextSelectedRunId),
+        rankCollectionService.listCompetitorSnapshotsByRun(nextSelectedRunId),
+      ]);
       setSelectedRunResults(results);
+      setSelectedRunCompetitorSnapshots(competitorSnapshots);
     } catch (error) {
       console.error('[RankTrackerView] Failed to load rank collection runs:', error);
       addNotification(
@@ -89,19 +102,25 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
       );
       setCollectionRuns([]);
       setSelectedRunResults([]);
+      setSelectedRunCompetitorSnapshots([]);
     } finally {
       setIsRunLoading(false);
     }
   };
 
-  const loadRunResults = async (runId: string) => {
+  const loadRunDetails = async (runId: string) => {
     if (!isSupabaseConfigured) {
       setSelectedRunResults([]);
+      setSelectedRunCompetitorSnapshots([]);
       return;
     }
     try {
-      const results = await rankCollectionService.listResultsByRun(runId);
+      const [results, competitorSnapshots] = await Promise.all([
+        rankCollectionService.listResultsByRun(runId),
+        rankCollectionService.listCompetitorSnapshotsByRun(runId),
+      ]);
       setSelectedRunResults(results);
+      setSelectedRunCompetitorSnapshots(competitorSnapshots);
     } catch (error) {
       console.error('[RankTrackerView] Failed to load rank collection results:', error);
       addNotification(
@@ -110,12 +129,37 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
         'ERROR'
       );
       setSelectedRunResults([]);
+      setSelectedRunCompetitorSnapshots([]);
+    }
+  };
+
+  const loadCompetitors = async () => {
+    if (!activeStoreId || !isSupabaseConfigured) {
+      setCompetitors([]);
+      return;
+    }
+
+    setIsCompetitorLoading(true);
+    try {
+      const rows = await competitorService.listActiveByStore(activeStoreId);
+      setCompetitors(rows);
+    } catch (error) {
+      console.error('[RankTrackerView] Failed to load competitor targets:', error);
+      addNotification(
+        '読み込みエラー',
+        `競合ターゲットの取得に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`,
+        'ERROR'
+      );
+      setCompetitors([]);
+    } finally {
+      setIsCompetitorLoading(false);
     }
   };
 
   useEffect(() => {
     void loadKeywords();
     void loadCollectionRuns();
+    void loadCompetitors();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStoreId]);
 
@@ -224,7 +268,8 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
       const result = await rankCollectionService.collectByFunction({ storeId: activeStoreId, mode: 'MOCK' });
       addNotification(
         '収集完了',
-        result.message || `順位収集を実行しました。（${result.collectedCount}件）`,
+        result.message ||
+          `順位${result.collectedCount}件 / 競合${result.collectedCompetitorCount || 0}件の収集を実行しました。`,
         'SUCCESS'
       );
       await loadCollectionRuns();
@@ -236,9 +281,60 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
     }
   };
 
+  const handleCreateCompetitor = async () => {
+    if (!activeStoreId) {
+      addNotification('店舗未選択', '店舗を選択してから追加してください。', 'WARNING');
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      addNotification('未設定', 'Supabase未設定のため追加できません。', 'WARNING');
+      return;
+    }
+
+    setIsCompetitorSubmitting(true);
+    try {
+      await competitorService.create({
+        storeId: activeStoreId,
+        name: newCompetitorName,
+        note: newCompetitorNote,
+        createdBy: currentUser.id,
+      });
+      setNewCompetitorName('');
+      setNewCompetitorNote('');
+      addNotification('追加完了', '競合ターゲットを追加しました。', 'SUCCESS');
+      await loadCompetitors();
+    } catch (error) {
+      console.error('[RankTrackerView] Failed to create competitor target:', error);
+      addNotification('追加エラー', getErrorMessage(error) || '競合ターゲットの追加に失敗しました。', 'ERROR');
+    } finally {
+      setIsCompetitorSubmitting(false);
+    }
+  };
+
+  const handleArchiveCompetitor = async (target: CompetitorTarget) => {
+    if (!isSupabaseConfigured) {
+      addNotification('未設定', 'Supabase未設定のため削除できません。', 'WARNING');
+      return;
+    }
+    const ok = window.confirm(`「${target.name}」を削除しますか？（論理削除）`);
+    if (!ok) return;
+
+    setIsCompetitorSubmitting(true);
+    try {
+      await competitorService.archive({ id: target.id, updatedBy: currentUser.id });
+      addNotification('削除', '競合ターゲットを削除しました。', 'INFO');
+      await loadCompetitors();
+    } catch (error) {
+      console.error('[RankTrackerView] Failed to archive competitor target:', error);
+      addNotification('削除エラー', getErrorMessage(error) || '競合ターゲットの削除に失敗しました。', 'ERROR');
+    } finally {
+      setIsCompetitorSubmitting(false);
+    }
+  };
+
   const handleSelectRun = async (runId: string) => {
     setSelectedRunId(runId);
-    await loadRunResults(runId);
+    await loadRunDetails(runId);
   };
 
   const runStatusLabel = (status: RankCollectionRun['status']) => {
@@ -259,7 +355,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
         <div>
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">順位計測（キーワード管理）</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            店舗ごとの順位計測に使うキーワードを管理します。順位の自動収集は P3-02 で追加します。
+            店舗ごとの順位計測キーワードと競合ターゲットを管理します。収集結果はrun単位で履歴化されます。
           </p>
         </div>
       </div>
@@ -343,27 +439,70 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
 
             <div className="space-y-2">
               <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">選択中runの収集結果</p>
-              {selectedRunId && selectedRunResults.length > 0 ? (
-                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                  {selectedRunResults.map((result) => (
-                    <div
-                      key={result.id}
-                      className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-gray-800 dark:text-white break-words">{result.keyword}</p>
-                        <span className="text-xs font-semibold text-primary-700 dark:text-primary-300">
-                          {typeof result.position === 'number' ? `${result.position}位` : '-'}
-                        </span>
+              {selectedRunId && (selectedRunResults.length > 0 || selectedRunCompetitorSnapshots.length > 0) ? (
+                <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">順位キーワード</p>
+                    {selectedRunResults.length > 0 ? (
+                      <div className="space-y-2">
+                        {selectedRunResults.map((result) => (
+                          <div
+                            key={result.id}
+                            className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-gray-800 dark:text-white break-words">{result.keyword}</p>
+                              <span className="text-xs font-semibold text-primary-700 dark:text-primary-300">
+                                {typeof result.position === 'number' ? `${result.position}位` : '-'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                              mode: {result.mode} / status: {result.status}
+                            </p>
+                            {result.message && (
+                              <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 break-words">{result.message}</p>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                        mode: {result.mode} / status: {result.status}
-                      </p>
-                      {result.message && (
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 break-words">{result.message}</p>
-                      )}
-                    </div>
-                  ))}
+                    ) : (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">順位キーワード結果はありません。</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">競合比較</p>
+                    {selectedRunCompetitorSnapshots.length > 0 ? (
+                      <div className="space-y-2">
+                        {selectedRunCompetitorSnapshots.map((snapshot) => (
+                          <div
+                            key={snapshot.id}
+                            className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-gray-800 dark:text-white break-words">
+                                {snapshot.competitorName}
+                              </p>
+                              <span className="text-xs font-semibold text-primary-700 dark:text-primary-300">
+                                {typeof snapshot.mapRank === 'number' ? `${snapshot.mapRank}位` : '-'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                              口コミ: {snapshot.reviewCount}件 / 評価: {typeof snapshot.rating === 'number' ? snapshot.rating.toFixed(1) : '-'}
+                            </p>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                              mode: {snapshot.mode} / status: {snapshot.status}
+                            </p>
+                            {snapshot.message && (
+                              <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 break-words">{snapshot.message}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">競合結果はありません。</p>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <p className="text-sm text-gray-500 dark:text-gray-400">runを選択すると結果を表示します。</p>
@@ -371,6 +510,75 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
             </div>
           </div>
         )}
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-gray-800 dark:text-white">競合ターゲット（P3-03）</h2>
+          <span className="text-xs text-gray-500 dark:text-gray-400">収集実行時に競合指標を同時保存します</span>
+        </div>
+
+        {isCompetitorLoading ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">競合ターゲットを読み込み中...</p>
+        ) : competitors.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">競合ターゲットはまだありません。</p>
+        ) : (
+          <div className="space-y-2">
+            {competitors.map((competitor) => (
+              <div
+                key={competitor.id}
+                className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 flex items-start justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 dark:text-white break-words">{competitor.name}</p>
+                  {competitor.note && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 break-words">{competitor.note}</p>
+                  )}
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2">
+                    更新: {competitor.updatedAt.toLocaleString('ja-JP')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleArchiveCompetitor(competitor)}
+                  disabled={isCompetitorSubmitting}
+                  className="inline-flex items-center gap-1 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-200 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-lg disabled:opacity-60"
+                >
+                  <Trash2 size={14} />
+                  削除
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <input
+            type="text"
+            value={newCompetitorName}
+            onChange={(e) => setNewCompetitorName(e.target.value)}
+            placeholder="競合名（例: 渋谷ラーメン本店）"
+            className="md:col-span-2 w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+            disabled={isCompetitorSubmitting}
+          />
+          <input
+            type="text"
+            value={newCompetitorNote}
+            onChange={(e) => setNewCompetitorNote(e.target.value)}
+            placeholder="メモ（任意）"
+            className="w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+            disabled={isCompetitorSubmitting}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleCreateCompetitor()}
+          disabled={isCompetitorSubmitting || !activeStoreId || !isSupabaseConfigured}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          <PlusCircle size={16} />
+          競合を追加
+        </button>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">

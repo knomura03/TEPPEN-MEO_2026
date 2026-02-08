@@ -18,6 +18,11 @@ type RankKeywordRow = {
   keyword: string;
 };
 
+type CompetitorTargetRow = {
+  id: string;
+  name: string;
+};
+
 const jsonResponse = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), {
     status,
@@ -71,6 +76,13 @@ const buildSeededPosition = (seed: string): number => {
     hash = (hash * 33 + seed.charCodeAt(i)) % 1000003;
   }
   return (hash % 50) + 1;
+};
+
+const isMissingRelationError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const code = 'code' in error ? String((error as { code?: string }).code || '') : '';
+  const message = 'message' in error ? String((error as { message?: string }).message || '') : '';
+  return code === '42P01' || message.includes('does not exist');
 };
 
 Deno.serve(async (req) => {
@@ -186,18 +198,6 @@ Deno.serve(async (req) => {
   }
 
   const keywordRows = (keywords || []) as RankKeywordRow[];
-  if (keywordRows.length === 0) {
-    await finalizeRun('SUCCESS', '有効なキーワードがないため結果0件で完了しました。');
-    return jsonResponse(200, {
-      ok: true,
-      runId,
-      mode,
-      status: 'SUCCESS',
-      collectedCount: 0,
-      message: '有効なキーワードがないため結果0件で完了しました。',
-    });
-  }
-
   const dateSeed = new Date().toISOString().slice(0, 10);
   const resultPayload = keywordRows.map((row) => {
     const seed = `${dateSeed}|${storeId}|${row.keyword}`;
@@ -218,13 +218,80 @@ Deno.serve(async (req) => {
     };
   });
 
-  const { error: resultInsertError } = await supabaseAdmin.from('rank_collection_results').insert(resultPayload);
-  if (resultInsertError) {
-    await finalizeRun('FAILED', `収集結果の保存に失敗しました: ${resultInsertError.message}`);
-    return jsonResponse(400, { error: resultInsertError.message, runId });
+  if (resultPayload.length > 0) {
+    const { error: resultInsertError } = await supabaseAdmin.from('rank_collection_results').insert(resultPayload);
+    if (resultInsertError) {
+      await finalizeRun('FAILED', `収集結果の保存に失敗しました: ${resultInsertError.message}`);
+      return jsonResponse(400, { error: resultInsertError.message, runId });
+    }
   }
 
-  const successMessage = `${resultPayload.length}件の順位収集を完了しました。（MOCK）`;
+  let competitorCollectedCount = 0;
+  let competitorSkippedReason: string | undefined;
+
+  const { data: competitorTargets, error: competitorTargetsError } = await supabaseAdmin
+    .from('competitor_targets')
+    .select('id, name')
+    .eq('store_id', storeId)
+    .eq('is_active', true)
+    .order('updated_at', { ascending: false });
+
+  if (competitorTargetsError) {
+    if (isMissingRelationError(competitorTargetsError)) {
+      competitorSkippedReason = 'P3-03 migration未適用のため競合収集をスキップしました。';
+    } else {
+      await finalizeRun('FAILED', `競合ターゲット取得に失敗しました: ${competitorTargetsError.message}`);
+      return jsonResponse(400, { error: competitorTargetsError.message, runId });
+    }
+  } else {
+    const competitorRows = (competitorTargets || []) as CompetitorTargetRow[];
+    const competitorPayload = competitorRows.map((row) => {
+      const seed = `${dateSeed}|${storeId}|competitor|${row.name}`;
+      const mapRank = (buildSeededPosition(seed) % 20) + 1;
+      const reviewCount = (buildSeededPosition(`${seed}|reviews`) % 500) + 10;
+      const ratingRaw = 3 + (buildSeededPosition(`${seed}|rating`) % 21) / 10;
+      const rating = Number(ratingRaw.toFixed(1));
+
+      return {
+        run_id: runId,
+        store_id: storeId,
+        competitor_target_id: row.id,
+        competitor_name: row.name,
+        map_rank: mapRank,
+        review_count: reviewCount,
+        rating,
+        mode: 'MOCK',
+        status: 'SUCCESS',
+        raw: {
+          source: 'mock-generator',
+          seed,
+          generated_at: new Date().toISOString(),
+        },
+      };
+    });
+
+    if (competitorPayload.length > 0) {
+      const { error: competitorInsertError } = await supabaseAdmin
+        .from('competitor_metric_snapshots')
+        .insert(competitorPayload);
+      if (competitorInsertError) {
+        if (isMissingRelationError(competitorInsertError)) {
+          competitorSkippedReason = 'P3-03 migration未適用のため競合収集をスキップしました。';
+        } else {
+          await finalizeRun('FAILED', `競合収集結果の保存に失敗しました: ${competitorInsertError.message}`);
+          return jsonResponse(400, { error: competitorInsertError.message, runId });
+        }
+      } else {
+        competitorCollectedCount = competitorPayload.length;
+      }
+    }
+  }
+
+  const successMessageParts = [`順位${resultPayload.length}件`, `競合${competitorCollectedCount}件`];
+  if (competitorSkippedReason) {
+    successMessageParts.push(competitorSkippedReason);
+  }
+  const successMessage = `${successMessageParts.join(' / ')} を完了しました。（MOCK）`;
   await finalizeRun('SUCCESS', successMessage);
 
   await supabaseAdmin.from('audit_logs').insert({
@@ -238,6 +305,8 @@ Deno.serve(async (req) => {
       mode,
       trigger_type: triggerType,
       collected_count: resultPayload.length,
+      collected_competitor_count: competitorCollectedCount,
+      competitor_skipped_reason: competitorSkippedReason || null,
     },
   });
 
@@ -247,6 +316,8 @@ Deno.serve(async (req) => {
     mode,
     status: 'SUCCESS',
     collectedCount: resultPayload.length,
+    collectedCompetitorCount: competitorCollectedCount,
+    competitorSkippedReason,
     message: successMessage,
   });
 });

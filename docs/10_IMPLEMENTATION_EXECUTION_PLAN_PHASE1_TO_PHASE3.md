@@ -1,6 +1,6 @@
 # TEPPEN MEO：Phase1〜Phase3 実装実行計画（再監査版）
 
-最終更新: 2026-02-08（P3-02追記）
+最終更新: 2026-02-08（P3-03追記）
 
 この計画書は、Phase1〜Phase3の機能を「作り直しなし」で進めるための実装設計書です。  
 方針は「Phase0基盤 → Phase1 → Phase2 → Phase3 → Step2集中テスト → 修正 → デプロイ」で固定します。
@@ -580,6 +580,48 @@ provider追加時に次のチェックリストを自動生成し、PRに添付�
 ### 19.5 完了条件（P3-02）
 - 順位計測画面から手動収集（MOCK）を実行できる
 - 実行履歴/結果が画面で参照できる
+- `docs/13` / `docs/05` / `docs/12` / `docs/11` が同時更新される
+
+## 20. P3-03 競合比較収集 実装方針
+### 20.1 目的
+- 店舗ごとの競合ターゲットをGUI管理できるようにする
+- 日次収集runに紐づけて、競合の順位/口コミ数/評価を時系列保存する
+
+### 20.2 DB変更（migration）
+- 対象: `supabase/migrations/202602060017_p3_competitor_comparison_collection.sql`
+- 追加テーブル:
+  - `competitor_targets`
+    - `store_id`, `name`, `note`, `is_active`
+    - 重複防止: `unique(store_id, lower(name))`
+  - `competitor_metric_snapshots`
+    - `run_id`, `competitor_target_id`, `competitor_name`
+    - 指標: `map_rank`, `review_count`, `rating`, `mode`, `status`
+    - 重複防止: `unique(run_id, competitor_target_id)`
+- RLS:
+  - `user_has_store_access(store_id)` で閲覧/更新を制御
+
+### 20.3 Function/Service/UI変更
+- `supabase/functions/rank-collect/index.ts`
+  - P3-02の収集時に競合指標スナップショットも同時作成
+  - migration未適用時は競合収集のみスキップし、順位収集自体は成功継続
+- `services/competitorService.ts`
+  - `listActiveByStore` / `create` / `archive` / `listSnapshotsByRun`
+- `services/rankCollectionService.ts`
+  - `listCompetitorSnapshotsByRun` を追加
+  - 収集実行結果に `collectedCompetitorCount` を返す
+- `components/RankTrackerView.tsx`
+  - 競合ターゲット一覧/追加/削除
+  - run選択時に競合結果を表示
+
+### 20.4 実装ルール（固定）
+- 競合削除は物理削除ではなく `is_active=false`（論理削除）
+- `MOCK` 収集値は seedベースで再現可能に生成する
+- `review_count >= 0` / `rating 0..5` / `map_rank >= 1` の制約をDBで担保する
+- 競合テーブル未適用時は関数全体を失敗させず、スキップ理由をrunメッセージへ残す
+
+### 20.5 完了条件（P3-03）
+- 順位計測画面で競合ターゲットのCRUD（論理削除）が成立する
+- 収集runごとに競合スナップショットが保存・表示される
 - `docs/13` / `docs/05` / `docs/12` / `docs/11` が同時更新される
 
 ---

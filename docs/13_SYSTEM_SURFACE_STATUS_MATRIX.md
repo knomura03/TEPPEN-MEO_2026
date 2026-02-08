@@ -1,6 +1,6 @@
 # TEPPEN MEO：画面/ボタン/機能/DB接続 状態台帳（正本）
 
-最終更新: 2026-02-08（P3-02追記）
+最終更新: 2026-02-08（P3-03追記）
 
 ## 0. 運用ルール（必須）
 - この台帳は、実装・修正・設定変更のたびに**同一作業内で更新**する。
@@ -40,6 +40,7 @@
 | INBOX-04 | 統合受信箱 | タグ/担当/SLA管理 | CONNECTED | `inbox_messages.tags`, `assigned_user_id`, `due_at`, `sla_status`, `inboxService.updateWorkflow` | `202602060013` 未適用環境では保存不可（専用エラー） | P2-04 |
 | RANK-01 | 順位計測 | キーワードCRUD | CONDITIONAL | `rankKeywordService`, `rank_keywords` | `202602060015` 未適用環境では保存不可（専用エラー）。`rank_tracker` が `HIDDEN/ADMIN_ONLY` の場合は非表示 | P3-01 |
 | RANK-02 | 順位計測 | 日次順位収集（手動実行/履歴/結果） | CONDITIONAL | `rankCollectionService`, Edge Function `rank-collect`, `rank_collection_runs`, `rank_collection_results` | `202602060016` 未適用環境では実行不可。現時点はMOCK収集のみ、REAL指定は明示FAILED | P3-02 |
+| RANK-03 | 順位計測 | 競合ターゲット管理/競合比較収集 | CONDITIONAL | `competitorService`, `competitor_targets`, `competitor_metric_snapshots`, Edge Function `rank-collect` | `202602060017` 未適用環境では実行不可。現時点はMOCK収集のみ、REAL指定は明示FAILED | P3-03 |
 | SURVEY-01 | アンケート管理 | 作成/下書き保存/公開/アーカイブ | CONNECTED | `surveys` | 店舗未選択時は操作不可 | P1-01 |
 | SURVEY-02 | アンケート管理 | 分岐しきい値 | CONNECTED | `surveys.positive_threshold`, `survey_responses.branch_type` | migration未適用時は失敗 | P1-02 |
 | SURVEY-03 | アンケート管理 | 指標カード/CSV出力 | CONNECTED | `survey_events`, `survey_responses` | - | P1-03 |
@@ -71,7 +72,7 @@
 | `instagram-publish-post` | `supabase/functions/instagram-publish-post/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |
 | `facebook-publish-post` | `supabase/functions/facebook-publish-post/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |
 | `facebook-reply-message` | `supabase/functions/facebook-reply-message/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |
-| `rank-collect` | `supabase/functions/rank-collect/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 実装済み（2026-02-08）。Deploy後に有効化、`Verify JWT=OFF` 前提で関数内認証 |
+| `rank-collect` | `supabase/functions/rank-collect/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 実装済み（2026-02-08）。P3-02/P3-03の収集処理を担当。Deploy後に有効化、`Verify JWT=OFF` 前提で関数内認証 |
 
 ## 4. DB migration適用台帳（P1/P2/P3）
 | migrationファイル | 目的 | 状態 |
@@ -91,6 +92,7 @@
 | `supabase/migrations/202602060014_p2_template_brand_kit.sql` | P2-05 テンプレ/ブランドキット | 実装済み。未適用環境ではテンプレ/ブランド設定を保存できない |
 | `supabase/migrations/202602060015_p3_rank_keyword_management.sql` | P3-01 順位キーワード管理 | 実装済み。未適用環境ではキーワードCRUDが実行できない |
 | `supabase/migrations/202602060016_p3_rank_daily_collection.sql` | P3-02 日次順位収集ジョブ | 実装済み。未適用環境では収集実行/履歴参照が実行できない |
+| `supabase/migrations/202602060017_p3_competitor_comparison_collection.sql` | P3-03 競合比較収集 | 実装済み。未適用環境では競合ターゲット管理/競合収集が実行できない |
 
 ## 5. 現時点のモック/未接続残件（優先順）
 1. ダッシュボードKPIが固定値（実データ未接続）

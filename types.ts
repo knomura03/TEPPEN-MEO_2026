@@ -87,7 +87,38 @@ export interface RankCollectionExecutionResult {
   mode: RankCollectionMode;
   status: RankCollectionRunStatus;
   collectedCount: number;
+  collectedCompetitorCount?: number;
+  competitorSkippedReason?: string;
   message?: string;
+}
+
+export interface CompetitorTarget {
+  id: string;
+  storeId: string;
+  name: string;
+  note?: string;
+  isActive: boolean;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CompetitorMetricSnapshot {
+  id: string;
+  runId: string;
+  storeId: string;
+  competitorTargetId: string;
+  competitorName: string;
+  mapRank?: number;
+  reviewCount: number;
+  rating?: number;
+  mode: RankCollectionMode;
+  status: RankCollectionResultStatus;
+  message?: string;
+  raw: Record<string, unknown>;
+  collectedAt: Date;
+  createdAt: Date;
 }
 
 export interface OrgStorePolicy {

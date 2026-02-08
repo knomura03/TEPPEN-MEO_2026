@@ -24,6 +24,56 @@ type InvokeErrorInfo = {
   body?: string;
 };
 
+const ensureAuditFeatureFlags = async (params: {
+  supabase: any;
+  orgId: string;
+  storeId: string;
+  actorUserId: string;
+}): Promise<void> => {
+  const requiredFeatureKeys = ['survey', 'create_post', 'post_list', 'inbox', 'user_management'];
+  for (const featureKey of requiredFeatureKeys) {
+    const normalizedFeatureKey = featureKey.toLowerCase();
+    const { data: existingRows, error: existingError } = await params.supabase
+      .from('feature_flags')
+      .select('id')
+      .eq('org_id', params.orgId)
+      .eq('store_id', params.storeId)
+      .eq('feature_key', normalizedFeatureKey)
+      .limit(1);
+    if (existingError) {
+      throw new Error(`Failed to load feature flag (${normalizedFeatureKey}): ${existingError.message}`);
+    }
+
+    if (existingRows && existingRows.length > 0) {
+      const { error: updateError } = await params.supabase
+        .from('feature_flags')
+        .update({
+          state: 'ENABLED',
+          note: '[AUDIT] normalized by bootstrapUsers',
+          updated_by: params.actorUserId,
+        })
+        .eq('org_id', params.orgId)
+        .eq('store_id', params.storeId)
+        .eq('feature_key', normalizedFeatureKey);
+      if (updateError) {
+        throw new Error(`Failed to update feature flag (${normalizedFeatureKey}): ${updateError.message}`);
+      }
+    } else {
+      const { error: insertError } = await params.supabase.from('feature_flags').insert({
+        org_id: params.orgId,
+        store_id: params.storeId,
+        feature_key: normalizedFeatureKey,
+        state: 'ENABLED',
+        note: '[AUDIT] normalized by bootstrapUsers',
+        updated_by: params.actorUserId,
+      });
+      if (insertError) {
+        throw new Error(`Failed to insert feature flag (${normalizedFeatureKey}): ${insertError.message}`);
+      }
+    }
+  }
+};
+
 const requireValue = (map: Record<string, string>, key: string): string => {
   const value = map[key];
   if (!value) throw new Error(`Missing required env in .env.audit.local: ${key}`);
@@ -176,6 +226,13 @@ export const ensureAuditUsers = async (params: {
       throw new Error('No stores found for the audit org. Create at least 1 store before running audit.');
     }
     out.storeId = storeId;
+
+    await ensureAuditFeatureFlags({
+      supabase,
+      orgId,
+      storeId,
+      actorUserId,
+    });
 
     // Ensure MANAGER exists and can sign in (deterministic password provisioning via Edge Function).
     const managerInvoke = await invokeEdgeFunctionJson({

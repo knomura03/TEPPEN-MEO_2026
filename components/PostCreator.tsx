@@ -1,10 +1,12 @@
-import React, { useState, useRef } from 'react';
-import { User, SocialPlatform } from '../types';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { BrandKit, PostContentTemplate, Role, SocialPlatform, StoreGroup, User } from '../types';
 import { MOCK_ACCOUNTS } from '../constants';
 import { geminiService } from '../services/geminiService';
 import { postsService } from '../services/postsService';
 import { postMediaService } from '../services/postMediaService';
 import { isSupabaseConfigured } from '../services/supabaseClient';
+import { storeGroupsService } from '../services/storeGroupsService';
+import { brandKitService } from '../services/brandKitService';
 import { Send, Calendar, Image as ImageIcon, Sparkles, Loader2, X, Eye, MonitorSmartphone, UploadCloud } from 'lucide-react';
 import { useNotification } from '../contexts/NotificationContext';
 import { useStore } from '../contexts/StoreContext';
@@ -15,7 +17,9 @@ interface PostCreatorProps {
 
 export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
-  const { activeStoreId } = useStore();
+  const { activeStoreId, stores } = useStore();
+  const isApprovalRequester = currentUser.role === Role.USER;
+  const canUseStoreGroupTarget = currentUser.role === Role.ADMIN || currentUser.role === Role.MANAGER;
   const [content, setContent] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>([]);
   const [scheduledDate, setScheduledDate] = useState('');
@@ -29,9 +33,100 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
   const [topic, setTopic] = useState('');
   const [tone, setTone] = useState('親しみやすい');
   const [showAiModal, setShowAiModal] = useState(false);
+  const [targetMode, setTargetMode] = useState<'ACTIVE_STORE' | 'STORE_GROUP'>('ACTIVE_STORE');
+  const [storeGroups, setStoreGroups] = useState<StoreGroup[]>([]);
+  const [selectedStoreGroupId, setSelectedStoreGroupId] = useState('');
+  const [isLoadingStoreGroups, setIsLoadingStoreGroups] = useState(false);
+  const [brandKit, setBrandKit] = useState<BrandKit | null>(null);
+  const [templates, setTemplates] = useState<PostContentTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [isLoadingBrandAssets, setIsLoadingBrandAssets] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const maxFileSizeBytes = 10 * 1024 * 1024;
+
+  const activeOrgId = useMemo(() => {
+    if (!activeStoreId) return null;
+    const store = stores.find((item) => item.id === activeStoreId);
+    return store?.orgId || null;
+  }, [activeStoreId, stores]);
+
+  const selectedStoreGroup = useMemo(
+    () => storeGroups.find((group) => group.id === selectedStoreGroupId) || null,
+    [selectedStoreGroupId, storeGroups]
+  );
+
+  const selectedTemplate = useMemo(
+    () => templates.find((template) => template.id === selectedTemplateId) || null,
+    [selectedTemplateId, templates]
+  );
+
+  const contentLint = useMemo(() => {
+    return brandKitService.lintContent(content, brandKit || undefined);
+  }, [content, brandKit]);
+
+  useEffect(() => {
+    if (!canUseStoreGroupTarget || !isSupabaseConfigured || !activeOrgId) {
+      setStoreGroups([]);
+      setSelectedStoreGroupId('');
+      setTargetMode('ACTIVE_STORE');
+      return;
+    }
+
+    setIsLoadingStoreGroups(true);
+    storeGroupsService
+      .listByOrg(activeOrgId)
+      .then((groups) => {
+        setStoreGroups(groups);
+        if (groups.length === 0) {
+          setSelectedStoreGroupId('');
+          setTargetMode('ACTIVE_STORE');
+          return;
+        }
+        setSelectedStoreGroupId((prev) => (groups.some((group) => group.id === prev) ? prev : groups[0].id));
+      })
+      .catch((error) => {
+        console.error('[PostCreator] Failed to load store groups:', error);
+        addNotification('読み込みエラー', '店舗グループの取得に失敗しました。', 'ERROR');
+        setStoreGroups([]);
+        setSelectedStoreGroupId('');
+        setTargetMode('ACTIVE_STORE');
+      })
+      .finally(() => {
+        setIsLoadingStoreGroups(false);
+      });
+  }, [addNotification, canUseStoreGroupTarget, activeOrgId]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !activeOrgId) {
+      setBrandKit(null);
+      setTemplates([]);
+      setSelectedTemplateId('');
+      return;
+    }
+
+    setIsLoadingBrandAssets(true);
+    Promise.all([brandKitService.getBrandKit(activeOrgId), brandKitService.listTemplates(activeOrgId)])
+      .then(([kit, templateRows]) => {
+        setBrandKit(kit);
+        setTemplates(templateRows);
+        setSelectedTemplateId((prev) => {
+          if (templateRows.length === 0) return '';
+          if (prev && templateRows.some((template) => template.id === prev)) return prev;
+          return templateRows[0].id;
+        });
+      })
+      .catch((error) => {
+        console.error('[PostCreator] Failed to load brand assets:', error);
+        addNotification('読み込みエラー', 'テンプレート/ブランドキットの取得に失敗しました。', 'ERROR');
+        setBrandKit(null);
+        setTemplates([]);
+        setSelectedTemplateId('');
+      })
+      .finally(() => {
+        setIsLoadingBrandAssets(false);
+      });
+  }, [addNotification, activeOrgId]);
 
   const togglePlatform = (platform: SocialPlatform) => {
     setSelectedPlatforms(prev => 
@@ -59,55 +154,114 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
     }
   };
 
+  const handleApplyTemplate = () => {
+    if (!selectedTemplate) {
+      addNotification('テンプレート未選択', '適用するテンプレートを選択してください。', 'WARNING');
+      return;
+    }
+    let nextContent = selectedTemplate.body.trim();
+    if (brandKit?.defaultSignature) {
+      const signature = brandKit.defaultSignature.trim();
+      if (signature && !nextContent.includes(signature)) {
+        nextContent = `${nextContent}\n\n${signature}`;
+      }
+    }
+    setContent(nextContent);
+    if (selectedTemplate.defaultPlatforms.length > 0) {
+      setSelectedPlatforms(selectedTemplate.defaultPlatforms);
+    }
+    addNotification('テンプレート適用', `「${selectedTemplate.title}」を適用しました。`, 'SUCCESS');
+  };
+
+  const handleAppendRecommendedHashtag = (rawTag: string) => {
+    const normalizedTag = rawTag.startsWith('#') ? rawTag : `#${rawTag}`;
+    if (content.toLowerCase().includes(normalizedTag.toLowerCase())) return;
+    const delimiter = content.trim().length === 0 ? '' : '\n';
+    setContent((prev) => `${prev}${delimiter}${normalizedTag}`);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const targetStoreIds =
+      targetMode === 'STORE_GROUP'
+        ? selectedStoreGroup?.storeIds || []
+        : activeStoreId
+          ? [activeStoreId]
+          : [];
 
     if (isSupabaseConfigured) {
-      if (!activeStoreId) {
+      if (targetMode === 'STORE_GROUP') {
+        if (!canUseStoreGroupTarget) {
+          addNotification('権限エラー', '一括投稿はADMIN/MANAGERのみ実行できます。', 'ERROR');
+          return;
+        }
+        if (!selectedStoreGroup) {
+          addNotification('対象未選択', '店舗グループを選択してください。', 'WARNING');
+          return;
+        }
+      }
+
+      if (targetStoreIds.length === 0) {
         addNotification('店舗未設定', '店舗が未設定のため投稿を保存できません。', 'ERROR');
         return;
       }
 
       setIsSubmitting(true);
       try {
-        const created = await postsService.create({
-          storeId: activeStoreId,
+        const { createdPosts, targetStoreCount } = await postsService.createBulk({
+          storeIds: targetStoreIds,
           authorUserId: currentUser.id,
           content,
           platforms: selectedPlatforms,
           scheduledAt: scheduledDate ? new Date(scheduledDate) : null,
+          approvalStatus: isApprovalRequester ? 'PENDING' : 'APPROVED',
         });
 
-        if (images.length > 0) {
-          try {
-            const result = await postMediaService.uploadForPost({
-              storeId: activeStoreId,
-              postId: created.id,
-              files: images,
-            });
-            if (result.failedCount > 0) {
-              addNotification(
-                '画像アップロード一部失敗',
-                `${result.failedCount}件の画像アップロードに失敗しました。`,
-                'WARNING'
-              );
+        if (images.length > 0 && createdPosts.length > 0) {
+          let failedCount = 0;
+          for (const post of createdPosts) {
+            if (!post.storeId) continue;
+            try {
+              const result = await postMediaService.uploadForPost({
+                storeId: post.storeId,
+                postId: post.id,
+                files: images,
+              });
+              failedCount += result.failedCount;
+            } catch {
+              failedCount += images.length;
             }
-          } catch (error: any) {
-            addNotification(
-              '画像アップロード失敗',
-              `投稿は保存されましたが、画像のアップロードに失敗しました。${error?.message ? `（${error.message}）` : ''}`,
-              'WARNING'
-            );
+          }
+          if (failedCount > 0) {
+            addNotification('画像アップロード一部失敗', `${failedCount}件の画像アップロードに失敗しました。`, 'WARNING');
           }
         }
 
-        addNotification(
-          scheduledDate ? '予約作成完了' : '下書き保存完了',
-          scheduledDate
-            ? `予約投稿を作成しました（${selectedPlatforms.length}プラットフォーム）`
-            : `下書きを保存しました（${selectedPlatforms.length}プラットフォーム）`,
-          'SUCCESS'
-        );
+        if (isApprovalRequester) {
+          addNotification(
+            targetMode === 'STORE_GROUP' ? '一括承認申請を作成' : '承認申請を作成',
+            targetMode === 'STORE_GROUP'
+              ? `${selectedStoreGroup?.name || '店舗グループ'} の${targetStoreCount}店舗へ承認待ち投稿を保存しました。`
+              : `承認待ちとして保存しました（${selectedPlatforms.length}プラットフォーム）`,
+            'SUCCESS'
+          );
+        } else {
+          addNotification(
+            targetMode === 'STORE_GROUP'
+              ? scheduledDate
+                ? '一括予約作成完了'
+                : '一括下書き保存完了'
+              : scheduledDate
+                ? '予約作成完了'
+                : '下書き保存完了',
+            targetMode === 'STORE_GROUP'
+              ? `${selectedStoreGroup?.name || '店舗グループ'} の${targetStoreCount}店舗へ${scheduledDate ? '予約投稿' : '下書き'}を作成しました。`
+              : scheduledDate
+                ? `予約投稿を作成しました（${selectedPlatforms.length}プラットフォーム）`
+                : `下書きを保存しました（${selectedPlatforms.length}プラットフォーム）`,
+            'SUCCESS'
+          );
+        }
 
         setContent('');
         setImages([]);
@@ -125,8 +279,10 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
     // Simulate API call
     setTimeout(() => {
       addNotification(
-        scheduledDate ? '予約投稿完了' : '投稿完了',
-        `${selectedPlatforms.length}つのプラットフォームへ${scheduledDate ? '予約' : ''}投稿しました！`,
+        targetMode === 'STORE_GROUP' ? (scheduledDate ? '一括予約投稿完了' : '一括投稿完了') : (scheduledDate ? '予約投稿完了' : '投稿完了'),
+        targetMode === 'STORE_GROUP'
+          ? `${selectedStoreGroup?.storeIds.length || 0}店舗へ${scheduledDate ? '予約' : ''}投稿しました。`
+          : `${selectedPlatforms.length}つのプラットフォームへ${scheduledDate ? '予約' : ''}投稿しました！`,
         'SUCCESS'
       );
       
@@ -182,6 +338,15 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
     setImages(prev => prev.filter((_, i) => i !== index));
     setImagePreviewUrls(prev => prev.filter((_, i) => i !== index));
   };
+
+  const isSubmitDisabled =
+    selectedPlatforms.length === 0 ||
+    !content ||
+    isSubmitting ||
+    (isSupabaseConfigured &&
+      (targetMode === 'STORE_GROUP'
+        ? !selectedStoreGroup || selectedStoreGroup.storeIds.length === 0
+        : !activeStoreId));
 
   // ----------------------------------------------------------------------
   // Preview Components
@@ -262,6 +427,112 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
             <form onSubmit={handleSubmit} className="space-y-6">
             {/* Platform Selection */}
             <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">投稿対象</label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                    <input
+                      type="radio"
+                      checked={targetMode === 'ACTIVE_STORE'}
+                      onChange={() => setTargetMode('ACTIVE_STORE')}
+                    />
+                    選択中の店舗
+                  </label>
+                  {canUseStoreGroupTarget && (
+                    <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                      <input
+                        type="radio"
+                        checked={targetMode === 'STORE_GROUP'}
+                        onChange={() => setTargetMode('STORE_GROUP')}
+                        disabled={storeGroups.length === 0}
+                      />
+                      店舗グループ（ADMIN / MANAGER）
+                    </label>
+                  )}
+                </div>
+                {canUseStoreGroupTarget && targetMode === 'STORE_GROUP' && (
+                  <div className="mt-3 pl-6 space-y-2">
+                    <select
+                      value={selectedStoreGroupId}
+                      onChange={(e) => setSelectedStoreGroupId(e.target.value)}
+                      className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 text-sm"
+                    >
+                      {storeGroups.length === 0 && <option value="">店舗グループがありません</option>}
+                      {storeGroups.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.name}（{group.storeIds.length}店舗）
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {isLoadingStoreGroups
+                        ? '店舗グループを読み込み中...'
+                        : selectedStoreGroup
+                          ? `${selectedStoreGroup.storeIds.length}店舗へ同じ内容を一括反映します。`
+                          : '対象グループを選択してください。'}
+                    </p>
+                  </div>
+                )}
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">テンプレート / ブランドキット</label>
+                <div className="space-y-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <select
+                      value={selectedTemplateId}
+                      onChange={(e) => setSelectedTemplateId(e.target.value)}
+                      disabled={isLoadingBrandAssets || templates.length === 0}
+                      className="md:col-span-2 w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 text-sm disabled:opacity-60"
+                    >
+                      {templates.length === 0 && <option value="">テンプレート未登録</option>}
+                      {templates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.title}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleApplyTemplate}
+                      disabled={!selectedTemplate || isLoadingBrandAssets}
+                      className="px-3 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      テンプレート適用
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {isLoadingBrandAssets
+                      ? 'ブランド設定を読み込み中...'
+                      : templates.length > 0
+                        ? `${templates.length}件のテンプレートが利用可能です。`
+                        : 'テンプレート未登録です。設定 > システム管理で追加してください。'}
+                  </p>
+                  {brandKit && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-600 dark:text-gray-300">
+                        推奨ハッシュタグ: {brandKit.recommendedHashtags.length > 0 ? 'クリックで本文に追加できます。' : '未設定'}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {brandKit.recommendedHashtags.map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => handleAppendRecommendedHashtag(tag)}
+                            className="text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800"
+                          >
+                            {tag.startsWith('#') ? tag : `#${tag}`}
+                          </button>
+                        ))}
+                        {brandKit.recommendedHashtags.length === 0 && (
+                          <span className="text-xs text-gray-500 dark:text-gray-400">推奨ハッシュタグは未設定です。</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+            </div>
+
+            <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">投稿先を選択</label>
                 <div className="flex flex-wrap gap-3">
                 {MOCK_ACCOUNTS.map(account => (
@@ -291,6 +562,16 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
                 placeholder="ここに投稿内容を入力してください..."
                 required
                 />
+                {contentLint.matchedBannedWords.length > 0 && (
+                  <div className="mt-2 p-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
+                    NGワードを検知: {contentLint.matchedBannedWords.join(', ')}
+                  </div>
+                )}
+                {contentLint.missingRecommendedHashtags.length > 0 && (
+                  <div className="mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs">
+                    推奨ハッシュタグ未使用: {contentLint.missingRecommendedHashtags.map((tag) => (tag.startsWith('#') ? tag : `#${tag}`)).join(', ')}
+                  </div>
+                )}
             </div>
 
             {/* Media & Schedule */}
@@ -354,13 +635,18 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Calendar className="h-4 w-4 text-gray-400" />
                     </div>
-                    <input
+                <input
                     type="datetime-local"
                     value={scheduledDate}
                     onChange={(e) => setScheduledDate(e.target.value)}
                     className="pl-9 block w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg p-2.5 text-sm focus:ring-indigo-500 focus:border-indigo-500"
                     />
                 </div>
+                {isApprovalRequester && (
+                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                    保存すると承認待ちになります。承認後に予約投稿として実行されます。
+                  </p>
+                )}
                 </div>
             </div>
 
@@ -368,11 +654,19 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
             <div className="flex items-center justify-end space-x-4 pt-4 border-t border-gray-100 dark:border-gray-700">
                 <button
                 type="submit"
-                disabled={selectedPlatforms.length === 0 || !content || isSubmitting}
+                disabled={isSubmitDisabled}
                 className="flex items-center space-x-2 px-6 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md w-full justify-center"
                 >
                 {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
-                <span>{isSubmitting ? '保存中...' : scheduledDate ? '予約投稿する' : '投稿する'}</span>
+                <span>
+                  {isSubmitting
+                    ? '保存中...'
+                    : isApprovalRequester
+                    ? '承認申請を作成'
+                    : scheduledDate
+                    ? '予約投稿する'
+                    : '投稿する'}
+                </span>
                 </button>
             </div>
             </form>

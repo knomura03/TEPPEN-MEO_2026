@@ -32,7 +32,47 @@ const requireSupabase = () => {
   return supabase;
 };
 
+const isMissingSchemaError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const code = 'code' in error ? String((error as { code?: string }).code || '') : '';
+  const message = 'message' in error ? String((error as { message?: string }).message || '') : '';
+  return code === '42P01' || code === '42883' || message.includes('does not exist');
+};
+
 export const storesService = {
+  async createStore(payload: {
+    name: string;
+    address?: string;
+    phone?: string;
+    website?: string;
+    category?: string;
+    businessHours?: string;
+    orgId?: string;
+    orgName?: string;
+  }): Promise<Store> {
+    const client = requireSupabase();
+    const { data, error } = await client.rpc('create_store_for_actor', {
+      p_store_name: payload.name,
+      p_address: payload.address || null,
+      p_phone: payload.phone || null,
+      p_category: payload.category || null,
+      p_business_hours: payload.businessHours || null,
+      p_website: payload.website || null,
+      p_org_id: payload.orgId || null,
+      p_org_name: payload.orgName || null,
+    });
+    if (error && !isMissingSchemaError(error)) throw error;
+    if (error && isMissingSchemaError(error)) {
+      throw new Error('P1-08拡張 migration（202602060009）の適用後に再試行してください。');
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) {
+      throw new Error('店舗作成結果の取得に失敗しました。');
+    }
+    return mapDbStore(row as DbStoreRow);
+  },
+
   async listAccessible(): Promise<Store[]> {
     const client = requireSupabase();
     const { data, error } = await client

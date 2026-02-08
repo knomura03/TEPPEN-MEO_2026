@@ -1,5 +1,4 @@
 import { isSupabaseConfigured, supabase } from './supabaseClient';
-import { SocialPlatform } from '../types';
 
 type DbIntegrationRow = {
   id: string;
@@ -17,21 +16,8 @@ const requireSupabase = () => {
   return supabase;
 };
 
-const providerFromPlatform = (platform: SocialPlatform): string => {
-  if (platform === 'GOOGLE_BUSINESS') return 'GBP';
-  return platform;
-};
-
-const platformFromProvider = (provider: string): SocialPlatform => {
-  if (provider === 'GBP') return 'GOOGLE_BUSINESS';
-  if (provider === 'INSTAGRAM') return 'INSTAGRAM';
-  if (provider === 'FACEBOOK') return 'FACEBOOK';
-  if (provider === 'TIKTOK') return 'TIKTOK';
-  return 'GOOGLE_BUSINESS';
-};
-
 export type IntegrationStatus = {
-  platform: SocialPlatform;
+  providerKey: string;
   isConnected: boolean;
   lastSyncAt?: Date;
   lastError?: string;
@@ -39,7 +25,7 @@ export type IntegrationStatus = {
 
 const mapDbIntegration = (row: DbIntegrationRow): IntegrationStatus => {
   return {
-    platform: platformFromProvider(row.provider),
+    providerKey: row.provider,
     isConnected: row.status === 'CONNECTED',
     lastSyncAt: row.last_sync_at ? new Date(row.last_sync_at) : undefined,
     lastError: row.last_error || undefined,
@@ -59,17 +45,16 @@ export const integrationsService = {
 
   async setConnection(
     storeId: string,
-    platform: SocialPlatform,
+    providerKey: string,
     isConnected: boolean
   ): Promise<IntegrationStatus> {
     const client = requireSupabase();
-    const provider = providerFromPlatform(platform);
     const { data, error } = await client
       .from('integrations')
       .upsert(
         {
           store_id: storeId,
-          provider,
+          provider: providerKey.toUpperCase(),
           status: isConnected ? 'CONNECTED' : 'DISCONNECTED',
           last_error: null,
         },

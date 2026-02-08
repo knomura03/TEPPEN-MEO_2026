@@ -5,7 +5,16 @@ import { isSupabaseConfigured } from '../services/supabaseClient';
 export const StoreSelector: React.FC = () => {
   const { stores, activeStoreId, setActiveStoreId, isLoadingStores, storesError, reloadStores } = useStore();
 
-  if (!isSupabaseConfigured) return null;
+  if (!isSupabaseConfigured) {
+    return (
+      <div
+        className="px-3 py-2 text-sm bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-full text-red-700 dark:text-red-200"
+        title="Supabase未接続です。VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY を設定してください。"
+      >
+        Supabase未設定
+      </div>
+    );
+  }
 
   if (isLoadingStores) {
     return (

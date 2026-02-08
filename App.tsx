@@ -10,14 +10,30 @@ import { UserManagement } from './components/UserManagement';
 import { CalendarView } from './components/CalendarView';
 import { UnifiedInbox } from './components/UnifiedInbox';
 import { SettingsView } from './components/SettingsView';
+import { SurveyManagerView } from './components/SurveyManagerView';
+import { PublicSurveyPage } from './components/PublicSurveyPage';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ToastContainer } from './components/Toast';
 import { StoreProvider } from './contexts/StoreContext';
+import './services/registerBuiltinProviderAdapters';
+
+const resolvePublicSurveyToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+
+  const pathMatch = window.location.pathname.match(/^\/survey\/([A-Za-z0-9_-]+)$/);
+  if (pathMatch?.[1]) return pathMatch[1];
+
+  const hashMatch = window.location.hash.match(/^#\/survey\/([A-Za-z0-9_-]+)$/);
+  if (hashMatch?.[1]) return hashMatch[1];
+
+  return null;
+};
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [publicSurveyToken, setPublicSurveyToken] = useState<string | null>(() => resolvePublicSurveyToken());
   
   // Theme State
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -40,15 +56,29 @@ const App: React.FC = () => {
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
+  useEffect(() => {
+    const handleRouteChange = () => setPublicSurveyToken(resolvePublicSurveyToken());
+    window.addEventListener('hashchange', handleRouteChange);
+    window.addEventListener('popstate', handleRouteChange);
+    return () => {
+      window.removeEventListener('hashchange', handleRouteChange);
+      window.removeEventListener('popstate', handleRouteChange);
+    };
+  }, []);
+
   // 初回ロード時にセッションチェック（モック）
   useEffect(() => {
     const checkAuth = async () => {
+      if (publicSurveyToken) {
+        setIsLoading(false);
+        return;
+      }
       const user = await authService.getCurrentUser();
       setCurrentUser(user);
       setIsLoading(false);
     };
-    checkAuth();
-  }, []);
+    void checkAuth();
+  }, [publicSurveyToken]);
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
@@ -59,6 +89,10 @@ const App: React.FC = () => {
     void authService.logout();
     setCurrentUser(null);
   };
+
+  if (publicSurveyToken) {
+    return <PublicSurveyPage publicToken={publicSurveyToken} />;
+  }
 
   if (isLoading) {
     return (
@@ -82,9 +116,11 @@ const App: React.FC = () => {
       case 'CREATE_POST':
         return <PostCreator currentUser={currentUser} />;
       case 'POST_LIST':
-        return <PostList />;
+        return <PostList currentUser={currentUser} />;
       case 'INBOX':
-        return <UnifiedInbox />;
+        return <UnifiedInbox currentUser={currentUser} />;
+      case 'SURVEY':
+        return <SurveyManagerView currentUser={currentUser} />;
       case 'SETTINGS':
         return <SettingsView currentUser={currentUser} onProfileUpdated={setCurrentUser} />;
       case 'USER_MANAGEMENT':

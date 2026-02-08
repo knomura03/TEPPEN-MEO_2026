@@ -26,5 +26,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Contract Smoke
+        run: npm run smoke:contracts
+
       - name: Build
         run: npm run build

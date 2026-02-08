@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { User, Role, ViewState } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { User, Role, ViewState, FeatureFlag, VisibilityState } from '../types';
 import { 
   LayoutDashboard, 
   PenSquare, 
@@ -7,9 +7,9 @@ import {
   Users, 
   LogOut, 
   Menu,
-  Share2,
   Calendar,
   MessageSquare,
+  ClipboardList,
   Moon,
   Sun,
   HelpCircle,
@@ -22,6 +22,7 @@ import { NotificationCenter } from './NotificationCenter';
 import { StoreSelector } from './StoreSelector';
 import { useStore } from '../contexts/StoreContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
+import { featureFlagsService, resolveFeatureState } from '../services/featureFlagsService';
 
 interface LayoutProps {
   currentUser: User;
@@ -39,6 +40,7 @@ interface NavItemProps {
     label: string;
     icon: React.ElementType;
     allowed: Role[];
+    featureKey: string;
   };
   currentView: ViewState;
   onNavigate: (view: ViewState) => void;
@@ -77,9 +79,18 @@ export const Layout: React.FC<LayoutProps> = ({
   toggleTheme,
   children 
 }) => {
-  const { stores, isLoadingStores, storesError, reloadStores } = useStore();
+  const { stores, activeStoreId, isLoadingStores, storesError, reloadStores } = useStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showTour, setShowTour] = useState(false);
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlag[]>([]);
+  const [isLoadingFlags, setIsLoadingFlags] = useState(false);
+
+  const activeStore = useMemo(() => {
+    if (!activeStoreId) return null;
+    return stores.find((store) => store.id === activeStoreId) || null;
+  }, [activeStoreId, stores]);
+
+  const activeOrgId = activeStore?.orgId || null;
 
   useEffect(() => {
     const hasSeenTour = localStorage.getItem('hasSeenTour');
@@ -95,20 +106,51 @@ export const Layout: React.FC<LayoutProps> = ({
 
   const startTour = () => setShowTour(true);
 
+  useEffect(() => {
+    const loadFlags = async () => {
+      if (!isSupabaseConfigured || !activeOrgId) {
+        setFeatureFlags([]);
+        return;
+      }
+      setIsLoadingFlags(true);
+      try {
+        const rows = await featureFlagsService.listByOrg(activeOrgId, activeStore?.id);
+        setFeatureFlags(rows);
+      } catch (error) {
+        console.error('[Layout] Failed to load feature flags:', error);
+      } finally {
+        setIsLoadingFlags(false);
+      }
+    };
+    void loadFlags();
+  }, [activeOrgId, activeStore?.id]);
+
   const menuItems = [
-    { id: 'DASHBOARD', label: 'ダッシュボード', icon: LayoutDashboard, allowed: [Role.ADMIN, Role.MANAGER, Role.USER] },
-    { id: 'CALENDAR', label: 'カレンダー', icon: Calendar, allowed: [Role.ADMIN, Role.MANAGER, Role.USER] },
-    { id: 'CREATE_POST', label: '新規投稿', icon: PenSquare, allowed: [Role.ADMIN, Role.MANAGER, Role.USER] },
-    { id: 'POST_LIST', label: '投稿一覧', icon: List, allowed: [Role.ADMIN, Role.MANAGER, Role.USER] },
-    { id: 'INBOX', label: '統合受信箱', icon: MessageSquare, allowed: [Role.ADMIN, Role.MANAGER, Role.USER] },
-    { id: 'USER_MANAGEMENT', label: 'ユーザー・契約管理', icon: Users, allowed: [Role.ADMIN, Role.MANAGER] },
+    { id: 'DASHBOARD', label: 'ダッシュボード', icon: LayoutDashboard, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'dashboard' },
+    { id: 'CALENDAR', label: 'カレンダー', icon: Calendar, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'calendar' },
+    { id: 'SURVEY', label: 'アンケート', icon: ClipboardList, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'survey' },
+    { id: 'CREATE_POST', label: '新規投稿', icon: PenSquare, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'create_post' },
+    { id: 'POST_LIST', label: '投稿一覧', icon: List, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'post_list' },
+    { id: 'INBOX', label: '統合受信箱', icon: MessageSquare, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'inbox' },
+    { id: 'USER_MANAGEMENT', label: 'ユーザー・契約管理', icon: Users, allowed: [Role.ADMIN, Role.MANAGER], featureKey: 'user_management' },
   ];
 
   const canAccess = (allowedRoles: Role[]) => allowedRoles.includes(currentUser.role);
+  const getFeatureVisibility = (featureKey: string): VisibilityState => {
+    if (!isSupabaseConfigured || isLoadingFlags) return 'ENABLED';
+    return resolveFeatureState(featureFlags, featureKey, activeStore?.id);
+  };
+  const canUseFeature = (featureKey: string) => {
+    const visibility = getFeatureVisibility(featureKey);
+    if (visibility === 'HIDDEN') return false;
+    if (visibility === 'ADMIN_ONLY') return currentUser.role === Role.ADMIN;
+    return true;
+  };
 
   const viewLabels: Record<string, string> = {
     'DASHBOARD': 'ダッシュボード',
     'CALENDAR': 'カレンダー',
+    'SURVEY': 'アンケート',
     'CREATE_POST': '新規投稿',
     'POST_LIST': '投稿一覧',
     'INBOX': '統合受信箱',
@@ -118,6 +160,12 @@ export const Layout: React.FC<LayoutProps> = ({
 
   const hasStoresError = isSupabaseConfigured && !isLoadingStores && Boolean(storesError);
   const needsStoreBootstrap = isSupabaseConfigured && !isLoadingStores && stores.length === 0 && !storesError;
+  const visibleMenuItems = menuItems.filter((item) => canAccess(item.allowed) && canUseFeature(item.featureKey));
+  const canOpenSettings =
+    canUseFeature('settings_profile') ||
+    canUseFeature('settings_store') ||
+    canUseFeature('settings_integrations') ||
+    (currentUser.role === Role.ADMIN && canUseFeature('settings_system'));
 
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden transition-colors duration-200`}>
@@ -136,16 +184,14 @@ export const Layout: React.FC<LayoutProps> = ({
         </div>
 
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto py-4">
-          {menuItems.map((item) => (
-            canAccess(item.allowed) && (
-              <NavItem 
-                key={item.id} 
-                item={item} 
-                currentView={currentView}
-                onNavigate={onNavigate}
-                onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
-              />
-            )
+          {visibleMenuItems.map((item) => (
+            <NavItem
+              key={item.id}
+              item={item}
+              currentView={currentView}
+              onNavigate={onNavigate}
+              onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
+            />
           ))}
         </nav>
 
@@ -168,26 +214,28 @@ export const Layout: React.FC<LayoutProps> = ({
             </button>
           </div>
 
-          <button
-            onClick={() => onNavigate('SETTINGS')}
-            className="w-full flex items-center space-x-3 px-4 py-3 bg-white dark:bg-gray-700/50 rounded-xl border border-gray-100 dark:border-gray-600 hover:border-primary-300 hover:shadow-sm transition-all group text-left"
-          >
-            <img 
-              src={currentUser.avatarUrl || 'https://via.placeholder.com/40'} 
-              alt={currentUser.name} 
-              className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-600 object-cover"
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-gray-800 dark:text-white truncate group-hover:text-primary-600 transition-colors">{currentUser.name}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate capitalize flex items-center gap-1">
-                 {currentUser.role === Role.ADMIN && <span className="w-2 h-2 rounded-full bg-red-500"></span>}
-                 {currentUser.role === Role.MANAGER && <span className="w-2 h-2 rounded-full bg-blue-500"></span>}
-                 {currentUser.role === Role.USER && <span className="w-2 h-2 rounded-full bg-green-500"></span>}
-                 {currentUser.role.toLowerCase()}
-              </p>
-            </div>
-            <Settings size={16} className="text-gray-400 group-hover:text-primary-500" />
-          </button>
+          {canOpenSettings && (
+            <button
+              onClick={() => onNavigate('SETTINGS')}
+              className="w-full flex items-center space-x-3 px-4 py-3 bg-white dark:bg-gray-700/50 rounded-xl border border-gray-100 dark:border-gray-600 hover:border-primary-300 hover:shadow-sm transition-all group text-left"
+            >
+              <img 
+                src={currentUser.avatarUrl || 'https://via.placeholder.com/40'} 
+                alt={currentUser.name} 
+                className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-600 object-cover"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-gray-800 dark:text-white truncate group-hover:text-primary-600 transition-colors">{currentUser.name}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate capitalize flex items-center gap-1">
+                   {currentUser.role === Role.ADMIN && <span className="w-2 h-2 rounded-full bg-red-500"></span>}
+                   {currentUser.role === Role.MANAGER && <span className="w-2 h-2 rounded-full bg-blue-500"></span>}
+                   {currentUser.role === Role.USER && <span className="w-2 h-2 rounded-full bg-green-500"></span>}
+                   {currentUser.role.toLowerCase()}
+                </p>
+              </div>
+              <Settings size={16} className="text-gray-400 group-hover:text-primary-500" />
+            </button>
+          )}
           
           <button
             onClick={onLogout}
@@ -241,32 +289,32 @@ export const Layout: React.FC<LayoutProps> = ({
         {isMobileMenuOpen && (
           <div className="md:hidden absolute inset-0 bg-white dark:bg-gray-900 z-10 flex flex-col pt-20 p-4 animate-fade-in">
              <nav className="space-y-2">
-              {menuItems.map((item) => (
-                canAccess(item.allowed) && (
-                  <NavItem 
-                    key={item.id} 
-                    item={item} 
-                    currentView={currentView}
-                    onNavigate={onNavigate}
-                    onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
-                  />
-                )
+              {visibleMenuItems.map((item) => (
+                <NavItem
+                  key={item.id}
+                  item={item}
+                  currentView={currentView}
+                  onNavigate={onNavigate}
+                  onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
+                />
               ))}
               <div className="border-t border-gray-100 dark:border-gray-700 my-4 pt-4">
-                <button
-                    onClick={() => {
-                        onNavigate('SETTINGS');
-                        setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full flex items-center space-x-3 px-4 py-3 mb-4 rounded-xl bg-gray-50 dark:bg-gray-800"
-                >
-                    <img 
-                    src={currentUser.avatarUrl || 'https://via.placeholder.com/40'} 
-                    alt={currentUser.name} 
-                    className="w-8 h-8 rounded-full"
-                    />
-                    <span className="text-sm font-bold text-gray-800 dark:text-white">設定・プロフィール</span>
-                </button>
+                {canOpenSettings && (
+                  <button
+                      onClick={() => {
+                          onNavigate('SETTINGS');
+                          setIsMobileMenuOpen(false);
+                      }}
+                      className="w-full flex items-center space-x-3 px-4 py-3 mb-4 rounded-xl bg-gray-50 dark:bg-gray-800"
+                  >
+                      <img 
+                      src={currentUser.avatarUrl || 'https://via.placeholder.com/40'} 
+                      alt={currentUser.name} 
+                      className="w-8 h-8 rounded-full"
+                      />
+                      <span className="text-sm font-bold text-gray-800 dark:text-white">設定・プロフィール</span>
+                  </button>
+                )}
 
                 <div className="flex justify-between mb-4">
                    <button onClick={toggleTheme} className="flex items-center gap-2 text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-4 py-2 rounded-lg w-full justify-center">
@@ -328,19 +376,19 @@ export const Layout: React.FC<LayoutProps> = ({
               <div className="mb-6 p-4 md:p-5 rounded-2xl border border-yellow-200 dark:border-yellow-900/50 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100">
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                   <div className="space-y-2">
-                    <div className="font-bold text-sm md:text-base">店舗が未設定です（初期データ作成が必要）</div>
+                    <div className="font-bold text-sm md:text-base">店舗が未設定です（設定画面から作成できます）</div>
                     <div className="text-xs md:text-sm opacity-90 leading-relaxed">
-                      SupabaseのRLS有効化後は「所属（membership）が無いユーザー」は店舗が見えません。
-                      まずは Supabase の SQL Editor で <code className="px-1 py-0.5 rounded bg-white/70 dark:bg-gray-900/40">supabase/bootstrap.sql</code> を実行してください。
+                      現在のバージョンでは、SQL Editorを使わずにGUIから初回店舗を作成できます。
+                      「設定」→「店舗情報 (MEO)」へ進み、店舗名を入力して「店舗を作成」を押してください。
                     </div>
                     <ol className="text-xs md:text-sm list-decimal list-inside space-y-1 opacity-95">
-                      <li>Supabase → SQL Editor を開く</li>
-                      <li><code className="px-1 py-0.5 rounded bg-white/70 dark:bg-gray-900/40">supabase/bootstrap.sql</code> を開いてコピペする</li>
-                      <li><code className="px-1 py-0.5 rounded bg-white/70 dark:bg-gray-900/40">YOUR_EMAIL_HERE</code> を、今ログイン中のメール（<code className="px-1 py-0.5 rounded bg-white/70 dark:bg-gray-900/40">{currentUser.email || '（メールが取得できません）'}</code>）に置換する</li>
-                      <li>実行 → 右上の「店舗一覧を再読み込み」を押す</li>
+                      <li>「設定」を開く</li>
+                      <li>「店舗情報 (MEO)」タブを開く</li>
+                      <li>店舗情報を入力して「店舗を作成」を押す</li>
+                      <li>作成後に「店舗一覧を再読み込み」を押す</li>
                     </ol>
                     <div className="text-xs md:text-sm opacity-90">
-                      店舗が表示されたのに権限（ADMINなど）が反映されない場合は、ブラウザの再読み込み（リロード）を1回してください。
+                      それでも作成できない場合は、エラーメッセージを添えて管理者へ連絡してください。
                     </div>
                   </div>
                   <div className="flex gap-2 md:flex-col md:items-stretch">

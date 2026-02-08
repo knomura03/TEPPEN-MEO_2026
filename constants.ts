@@ -1,5 +1,15 @@
 
-import { User, Role, SocialAccount, Post, PostStatus, InboxMessage } from './types';
+import {
+  User,
+  Role,
+  SocialAccount,
+  Post,
+  PostStatus,
+  InboxMessage,
+  ProviderCatalog,
+  ProviderCapability,
+  VisibilityState,
+} from './types';
 
 export const MOCK_USERS: User[] = [
   {
@@ -65,6 +75,8 @@ export const MOCK_POSTS: Post[] = [
     platforms: ['INSTAGRAM', 'FACEBOOK'],
     publishedDate: new Date('2023-04-01T10:00:00'),
     status: PostStatus.PUBLISHED,
+    approvalStatus: 'APPROVED',
+    approvedAt: new Date('2023-03-31T12:00:00'),
     authorId: 'u1'
   },
   {
@@ -74,6 +86,8 @@ export const MOCK_POSTS: Post[] = [
     platforms: ['GOOGLE_BUSINESS'],
     scheduledDate: new Date('2023-04-25T09:00:00'),
     status: PostStatus.SCHEDULED,
+    approvalStatus: 'PENDING',
+    submittedForApprovalAt: new Date('2023-04-24T18:00:00'),
     authorId: 'u2'
   },
   {
@@ -83,6 +97,8 @@ export const MOCK_POSTS: Post[] = [
     platforms: ['INSTAGRAM'],
     scheduledDate: new Date(new Date().setDate(new Date().getDate() + 2)), // 2日後
     status: PostStatus.SCHEDULED,
+    approvalStatus: 'APPROVED',
+    approvedAt: new Date(),
     authorId: 'u1'
   }
 ];
@@ -95,6 +111,12 @@ export const MOCK_MESSAGES: InboxMessage[] = [
     content: 'このメニューはディナータイムでも注文できますか？',
     receivedAt: new Date(new Date().setHours(new Date().getHours() - 2)),
     isReplied: false,
+    replyDraftContent: 'お問い合わせありがとうございます。ディナータイムでもご注文いただけます。ご来店を心よりお待ちしております。',
+    replyDraftStatus: 'PENDING_APPROVAL',
+    replyDraftGeneratedAt: new Date(new Date().setHours(new Date().getHours() - 1)),
+    tags: ['要返信', 'メニュー'],
+    dueAt: new Date(new Date().setHours(new Date().getHours() + 6)),
+    slaStatus: 'AT_RISK',
     senderAvatar: 'https://picsum.photos/50/50?random=20'
   },
   {
@@ -105,6 +127,8 @@ export const MOCK_MESSAGES: InboxMessage[] = [
     receivedAt: new Date(new Date().setHours(new Date().getHours() - 5)),
     isReplied: true,
     replyContent: 'はい、店舗裏に3台分の駐車スペースがございます。',
+    tags: ['完了'],
+    slaStatus: 'COMPLETED',
     senderAvatar: 'https://picsum.photos/50/50?random=21'
   },
   {
@@ -114,6 +138,9 @@ export const MOCK_MESSAGES: InboxMessage[] = [
     content: '素晴らしい雰囲気ですね！また行きます。',
     receivedAt: new Date(new Date().setDate(new Date().getDate() - 1)),
     isReplied: false,
+    tags: ['好意的'],
+    dueAt: new Date(new Date().setHours(new Date().getHours() - 2)),
+    slaStatus: 'OVERDUE',
     senderAvatar: 'https://picsum.photos/50/50?random=22'
   }
 ];
@@ -135,4 +162,82 @@ export const HOLIDAYS: Record<string, string> = {
   '10/14': 'スポーツの日',
   '11/3': '文化の日',
   '11/23': '勤労感謝の日',
+};
+
+export const DEFAULT_PROVIDER_CATALOGS: ProviderCatalog[] = [
+  {
+    id: 'builtin-gbp',
+    orgId: '',
+    providerKey: 'GBP',
+    displayName: 'Google Business Profile',
+    providerKind: 'NATIVE',
+    authKind: 'OAUTH2',
+    defaultVisibility: 'ADMIN_ONLY',
+    isActive: true,
+  },
+  {
+    id: 'builtin-instagram',
+    orgId: '',
+    providerKey: 'INSTAGRAM',
+    displayName: 'Instagram',
+    providerKind: 'NATIVE',
+    authKind: 'OAUTH2',
+    defaultVisibility: 'ADMIN_ONLY',
+    isActive: true,
+  },
+  {
+    id: 'builtin-facebook',
+    orgId: '',
+    providerKey: 'FACEBOOK',
+    displayName: 'Facebook',
+    providerKind: 'NATIVE',
+    authKind: 'OAUTH2',
+    defaultVisibility: 'ADMIN_ONLY',
+    isActive: true,
+  },
+];
+
+export const DEFAULT_PROVIDER_CAPABILITIES: ProviderCapability[] = [
+  {
+    id: 'cap-gbp',
+    providerCatalogId: 'builtin-gbp',
+    canConnect: true,
+    canSyncInbox: true,
+    canPublish: false,
+    canReply: true,
+    canFetchMetrics: true,
+  },
+  {
+    id: 'cap-instagram',
+    providerCatalogId: 'builtin-instagram',
+    canConnect: true,
+    canSyncInbox: true,
+    canPublish: true,
+    canReply: false,
+    canFetchMetrics: true,
+  },
+  {
+    id: 'cap-facebook',
+    providerCatalogId: 'builtin-facebook',
+    canConnect: true,
+    canSyncInbox: true,
+    canPublish: true,
+    canReply: true,
+    canFetchMetrics: true,
+  },
+];
+
+export const DEFAULT_FEATURE_VISIBILITY: Record<string, VisibilityState> = {
+  dashboard: 'ENABLED',
+  calendar: 'ENABLED',
+  survey: 'ENABLED',
+  create_post: 'ENABLED',
+  post_list: 'ENABLED',
+  inbox: 'ENABLED',
+  user_management: 'ENABLED',
+  settings_profile: 'ENABLED',
+  settings_store: 'ENABLED',
+  settings_integrations: 'ENABLED',
+  settings_system: 'ADMIN_ONLY',
+  provider_management: 'ADMIN_ONLY',
 };

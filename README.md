@@ -32,6 +32,9 @@ MVPの定義・設計・手順書は `docs/` に集約しています。
 - `docs/06_RELEASE_CHECKLIST.md`
 - `docs/07_GITHUB_WORKFLOW.md`
 - `docs/08_GITHUB_SETUP_KNOMURA.md`
+- `docs/09_AUTONOMOUS_DEV_CYCLE.md`
+- `docs/10_IMPLEMENTATION_EXECUTION_PLAN_PHASE1_TO_PHASE3.md`
+- `docs/11_TEST_STRATEGY_AND_QUALITY_RULES.md`
 
 ## 今後の改善
 MVP完了後のロードマップは `IMPROVEMENTS.md` を参照してください。

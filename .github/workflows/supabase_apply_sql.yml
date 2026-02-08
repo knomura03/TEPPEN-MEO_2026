@@ -13,6 +13,7 @@ on:
           - schema
           - storage
           - rls
+          - migrations
 
 jobs:
   apply:
@@ -50,6 +51,7 @@ jobs:
               run_sql supabase/schema.sql
               run_sql supabase/storage.sql
               run_sql supabase/rls.sql
+              bash supabase/apply_migrations.sh
               ;;
             schema)
               run_sql supabase/schema.sql
@@ -60,9 +62,11 @@ jobs:
             rls)
               run_sql supabase/rls.sql
               ;;
+            migrations)
+              bash supabase/apply_migrations.sh
+              ;;
             *)
               echo "Unknown target: ${TARGET}"
               exit 1
               ;;
           esac
-

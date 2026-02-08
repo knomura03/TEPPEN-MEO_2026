@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { MOCK_POSTS, HOLIDAYS, MOCK_ACCOUNTS } from '../constants';
-import { Post, PostStatus, SocialPlatform, User } from '../types';
-import { ChevronLeft, ChevronRight, Clock, CheckCircle, Calendar as CalendarIcon, Filter, Plus, X, Image as ImageIcon, Sparkles, Loader2 } from 'lucide-react';
+import { Post, PostStatus, Role, SocialPlatform, User } from '../types';
+import { ChevronLeft, ChevronRight, Clock, CheckCircle, AlertCircle, Calendar as CalendarIcon, Filter, Plus, X, Image as ImageIcon, Sparkles, Loader2 } from 'lucide-react';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { postsService } from '../services/postsService';
 import { useNotification } from '../contexts/NotificationContext';
@@ -114,6 +114,7 @@ interface CalendarViewProps {
 export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
   const { activeStoreId } = useStore();
+  const isApprovalRequester = currentUser.role === Role.USER;
   const [currentDate, setCurrentDate] = useState(new Date());
   const [filterPlatform, setFilterPlatform] = useState<SocialPlatform | 'ALL'>('ALL');
   const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
@@ -192,7 +193,14 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
     setIsCreateModalOpen(true);
   };
 
-  const statusColor = (status: PostStatus) => {
+  const statusColor = (post: Post) => {
+    if (post.approvalStatus === 'PENDING') {
+      return 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 border-amber-200 dark:border-amber-800';
+    }
+    if (post.approvalStatus === 'REJECTED') {
+      return 'bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-200 border-rose-200 dark:border-rose-800';
+    }
+    const status = post.status;
     switch (status) {
       case PostStatus.PUBLISHED: return 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 border-green-200 dark:border-green-800';
       case PostStatus.SCHEDULED: return 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-800';
@@ -305,6 +313,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
         content: createContent,
         platforms: createPlatforms,
         scheduledAt: new Date(createDateTime),
+        approvalStatus: isApprovalRequester ? 'PENDING' : 'APPROVED',
       });
 
       if (createImages.length > 0) {
@@ -326,7 +335,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
         }
       }
 
-      addNotification('予約作成完了', 'カレンダーに投稿を追加しました。', 'SUCCESS');
+      addNotification(
+        isApprovalRequester ? '承認申請を作成' : '予約作成完了',
+        isApprovalRequester ? '承認待ちとしてカレンダーに追加しました。' : 'カレンダーに投稿を追加しました。',
+        'SUCCESS'
+      );
       setIsCreateModalOpen(false);
       await reload();
     } catch {
@@ -424,7 +437,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
                     {dayPosts.map(post => (
                       <div 
                         key={post.id}
-                        className={`text-[10px] p-1.5 rounded-md border mb-1 truncate shadow-sm transition-transform hover:scale-[1.02] ${statusColor(post.status)}`}
+                        className={`text-[10px] p-1.5 rounded-md border mb-1 truncate shadow-sm transition-transform hover:scale-[1.02] ${statusColor(post)}`}
                         title={post.content}
                         onClick={(e) => {
                             e.stopPropagation();
@@ -432,7 +445,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
                         }}
                       >
                         <div className="flex items-center gap-1 mb-0.5">
-                          {post.status === PostStatus.PUBLISHED ? <CheckCircle size={10} /> : <Clock size={10} />}
+                          {post.approvalStatus === 'PENDING' ? <AlertCircle size={10} /> : post.status === PostStatus.PUBLISHED ? <CheckCircle size={10} /> : <Clock size={10} />}
                           <span className="truncate font-bold">{formatTime(post.scheduledDate || post.publishedDate || new Date())}</span>
                           <div className="flex gap-0.5 ml-auto">
                              {(post.platforms || []).map(p => (

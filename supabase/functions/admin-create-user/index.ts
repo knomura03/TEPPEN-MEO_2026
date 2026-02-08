@@ -12,6 +12,39 @@ const jsonResponse = (status: number, body: Record<string, unknown>) => {
   });
 };
 
+const extractBearerToken = (headerValue: string | null): string => {
+  if (!headerValue) return '';
+  const matched = headerValue.match(/Bearer\s+([^,\s]+)/i);
+  if (matched?.[1]) {
+    return matched[1].trim();
+  }
+  return headerValue.trim();
+};
+
+const resolveAuthenticatedUserId = async (
+  req: Request,
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<{ userId: string | null; error: string | null }> => {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader || authHeader.trim().length === 0) {
+    return { userId: null, error: 'Missing auth token' };
+  }
+  const token = extractBearerToken(authHeader);
+  if (!token) {
+    return { userId: null, error: 'Missing auth token' };
+  }
+
+  const authClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data, error } = await authClient.auth.getUser(token);
+  if (error || !data?.user?.id) {
+    return { userId: null, error: error?.message || 'Invalid auth token' };
+  }
+  return { userId: data.user.id, error: null };
+};
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -27,22 +60,17 @@ Deno.serve(async (req) => {
     return jsonResponse(500, { error: 'Missing Supabase env vars' });
   }
 
-  const authHeader = req.headers.get('Authorization') || '';
-  const token = authHeader.replace('Bearer ', '');
-  if (!token) {
-    return jsonResponse(401, { error: 'Missing auth token' });
+  const authResult = await resolveAuthenticatedUserId(req, supabaseUrl, serviceRoleKey);
+  if (!authResult.userId) {
+    return jsonResponse(401, { error: authResult.error || 'Invalid auth token' });
   }
+  const actorUserId = authResult.userId;
 
   const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
 
-  const { data: authUserData, error: authUserError } = await supabaseAdmin.auth.getUser(token);
-  if (authUserError || !authUserData?.user) {
-    return jsonResponse(401, { error: 'Invalid auth token' });
-  }
-
-  let payload: { email?: string; name?: string; role?: string; storeId?: string };
+  let payload: { email?: string; name?: string; role?: string; storeId?: string; orgId?: string };
   try {
     payload = await req.json();
   } catch {
@@ -53,8 +81,9 @@ Deno.serve(async (req) => {
   const name = payload.name?.trim();
   const role = payload.role?.toUpperCase();
   const storeId = payload.storeId?.trim();
+  const orgId = payload.orgId?.trim();
 
-  if (!email || !name || !role || !storeId) {
+  if (!email || !name || !role) {
     return jsonResponse(400, { error: 'Missing required fields' });
   }
 
@@ -63,20 +92,28 @@ Deno.serve(async (req) => {
     return jsonResponse(400, { error: 'Invalid role' });
   }
 
-  const { data: storeRow, error: storeError } = await supabaseAdmin
-    .from('stores')
-    .select('id, org_id')
-    .eq('id', storeId)
-    .maybeSingle();
-  if (storeError || !storeRow) {
-    return jsonResponse(400, { error: 'Store not found' });
+  let targetOrgId = orgId || null;
+  if (storeId) {
+    const { data: storeRow, error: storeError } = await supabaseAdmin
+      .from('stores')
+      .select('id, org_id')
+      .eq('id', storeId)
+      .maybeSingle();
+    if (storeError || !storeRow) {
+      return jsonResponse(400, { error: 'Store not found' });
+    }
+    targetOrgId = storeRow.org_id;
+  }
+
+  if (!targetOrgId) {
+    return jsonResponse(400, { error: 'orgId is required when storeId is omitted' });
   }
 
   const { data: actorMemberships, error: actorMembershipError } = await supabaseAdmin
     .from('memberships')
     .select('role, org_id')
-    .eq('user_id', authUserData.user.id)
-    .eq('org_id', storeRow.org_id);
+    .eq('user_id', actorUserId)
+    .eq('org_id', targetOrgId);
   if (actorMembershipError || !actorMemberships || actorMemberships.length === 0) {
     return jsonResponse(403, { error: 'Not allowed' });
   }
@@ -113,10 +150,10 @@ Deno.serve(async (req) => {
     return jsonResponse(400, { error: profileError.message });
   }
 
-  const membershipStoreId = role === 'USER' ? storeId : null;
+  const membershipStoreId = role === 'USER' ? storeId || null : null;
   const { error: membershipError } = await supabaseAdmin.from('memberships').insert({
     user_id: newUserId,
-    org_id: storeRow.org_id,
+    org_id: targetOrgId,
     store_id: membershipStoreId,
     role,
   });

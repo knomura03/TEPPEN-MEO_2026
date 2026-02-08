@@ -34,6 +34,7 @@ GitHubを「コードの変更・レビュー・履歴」の中心として使�
   - `supabase/schema.sql`
   - `supabase/storage.sql`
   - `supabase/rls.sql`
+  - `supabase/migrations/*.sql`（versioned, forward-only）
 
 ## 秘密情報（重要）
 - `.env*` やOAuthシークレット等は **絶対にコミットしない**

@@ -7,16 +7,18 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke:contracts": "node scripts/contract-smoke.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.49.1",
-    "react-dom": "^19.2.3",
     "@google/genai": "^1.38.0",
-    "recharts": "^3.7.0",
+    "@supabase/supabase-js": "^2.49.1",
+    "date-fns": "^4.1.0",
     "lucide-react": "^0.563.0",
+    "qrcode": "^1.5.4",
     "react": "^19.2.3",
-    "date-fns": "^4.1.0"
+    "react-dom": "^19.2.3",
+    "recharts": "^3.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

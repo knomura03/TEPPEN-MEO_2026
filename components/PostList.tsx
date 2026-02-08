@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { MOCK_POSTS } from '../constants';
-import { Post, PostStatus } from '../types';
-import { Clock, CheckCircle, AlertCircle, Calendar, X, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Post, PostApprovalActionType, PostApprovalComment, PostStatus, Role, User } from '../types';
+import { Clock, CheckCircle, AlertCircle, Calendar, X, Image as ImageIcon, Loader2, MessageSquare } from 'lucide-react';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { postsService } from '../services/postsService';
+import { postPublishService } from '../services/postPublishService';
+import { getErrorMessage } from '../services/errorMessage';
 import { useNotification } from '../contexts/NotificationContext';
 import { useStore } from '../contexts/StoreContext';
 import { postMediaService } from '../services/postMediaService';
@@ -18,6 +20,15 @@ const formatDate = (date: Date) => {
   return `${y}/${m}/${d} ${h}:${min}`;
 };
 
+const formatCommentDate = (date: Date) => {
+  const y = date.getFullYear();
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  const h = ('0' + date.getHours()).slice(-2);
+  const min = ('0' + date.getMinutes()).slice(-2);
+  return `${y}年${m}月${d}日 ${h}:${min}`;
+};
+
 const toDatetimeLocalValue = (date: Date) => {
   const y = date.getFullYear();
   const m = ('0' + (date.getMonth() + 1)).slice(-2);
@@ -27,14 +38,28 @@ const toDatetimeLocalValue = (date: Date) => {
   return `${y}-${m}-${d}T${h}:${min}`;
 };
 
-export const PostList: React.FC = () => {
+interface PostListProps {
+  currentUser: User;
+}
+
+export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
   const { activeStoreId } = useStore();
+  const canApprove = currentUser.role === Role.ADMIN || currentUser.role === Role.MANAGER;
+  const isRequester = currentUser.role === Role.USER;
   const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [editContent, setEditContent] = useState('');
   const [editScheduledDate, setEditScheduledDate] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [approvalProcessingPostId, setApprovalProcessingPostId] = useState<string | null>(null);
+  const [publishingInstagramPostId, setPublishingInstagramPostId] = useState<string | null>(null);
+  const [publishingFacebookPostId, setPublishingFacebookPostId] = useState<string | null>(null);
+  const [historyPost, setHistoryPost] = useState<Post | null>(null);
+  const [approvalComments, setApprovalComments] = useState<PostApprovalComment[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [newApprovalComment, setNewApprovalComment] = useState('');
+  const [isAddingApprovalComment, setIsAddingApprovalComment] = useState(false);
   const [existingMedia, setExistingMedia] = useState<{ id: string; storagePath: string; signedUrl?: string }[]>([]);
   const [isLoadingMedia, setIsLoadingMedia] = useState(false);
   const [newImages, setNewImages] = useState<File[]>([]);
@@ -77,6 +102,175 @@ export const PostList: React.FC = () => {
       await reload();
     } catch {
       addNotification('削除エラー', '投稿の削除に失敗しました。', 'ERROR');
+    }
+  };
+
+  const handleApprove = async (postId: string) => {
+    if (!isSupabaseConfigured) {
+      addNotification('モック', 'デモでは承認できません。', 'INFO');
+      return;
+    }
+    setApprovalProcessingPostId(postId);
+    try {
+      await postsService.approve(postId, currentUser.id);
+      addNotification('承認完了', '投稿を承認しました。', 'SUCCESS');
+      await reload();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '投稿の承認に失敗しました。';
+      addNotification('承認エラー', message, 'ERROR');
+    } finally {
+      setApprovalProcessingPostId(null);
+    }
+  };
+
+  const handleReject = async (postId: string) => {
+    const reason = window.prompt('差し戻し理由（任意）を入力してください。', '');
+    if (reason === null) return;
+    if (!isSupabaseConfigured) {
+      addNotification('モック', 'デモでは差し戻しできません。', 'INFO');
+      return;
+    }
+    setApprovalProcessingPostId(postId);
+    try {
+      await postsService.reject(postId, currentUser.id, reason);
+      addNotification('差し戻し完了', '投稿を差し戻しました。', 'SUCCESS');
+      await reload();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '差し戻しに失敗しました。';
+      addNotification('差し戻しエラー', message, 'ERROR');
+    } finally {
+      setApprovalProcessingPostId(null);
+    }
+  };
+
+  const handleSubmitForApproval = async (postId: string) => {
+    if (!isSupabaseConfigured) {
+      addNotification('モック', 'デモでは承認申請できません。', 'INFO');
+      return;
+    }
+    setApprovalProcessingPostId(postId);
+    try {
+      await postsService.submitForApproval(postId, currentUser.id);
+      addNotification('申請完了', '承認申請を送信しました。', 'SUCCESS');
+      await reload();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '承認申請に失敗しました。';
+      addNotification('申請エラー', message, 'ERROR');
+    } finally {
+      setApprovalProcessingPostId(null);
+    }
+  };
+
+  const handlePublishInstagram = async (postId: string) => {
+    if (!isSupabaseConfigured) {
+      addNotification('モック', 'デモではInstagram投稿を実行できません。', 'INFO');
+      return;
+    }
+    setPublishingInstagramPostId(postId);
+    try {
+      const result = await postPublishService.publishInstagramPost({
+        postId,
+        actorUserId: currentUser.id,
+      });
+      addNotification(
+        'Instagram投稿完了',
+        result.mode === 'REAL'
+          ? 'Instagramへの投稿が完了しました。'
+          : 'MOCK投稿として完了しました（GUI設定未完了のため）。',
+        'SUCCESS'
+      );
+      await reload();
+    } catch (error) {
+      addNotification(
+        'Instagram投稿エラー',
+        getErrorMessage(error) || 'Instagram投稿の実行に失敗しました。',
+        'ERROR'
+      );
+      await reload();
+    } finally {
+      setPublishingInstagramPostId(null);
+    }
+  };
+
+  const handlePublishFacebook = async (postId: string) => {
+    if (!isSupabaseConfigured) {
+      addNotification('モック', 'デモではFacebook投稿を実行できません。', 'INFO');
+      return;
+    }
+    setPublishingFacebookPostId(postId);
+    try {
+      const result = await postPublishService.publishFacebookPost({
+        postId,
+        actorUserId: currentUser.id,
+      });
+      addNotification(
+        'Facebook投稿完了',
+        result.mode === 'REAL'
+          ? 'Facebookへの投稿が完了しました。'
+          : 'MOCK投稿として完了しました（GUI設定未完了のため）。',
+        'SUCCESS'
+      );
+      await reload();
+    } catch (error) {
+      addNotification(
+        'Facebook投稿エラー',
+        getErrorMessage(error) || 'Facebook投稿の実行に失敗しました。',
+        'ERROR'
+      );
+      await reload();
+    } finally {
+      setPublishingFacebookPostId(null);
+    }
+  };
+
+  const loadApprovalComments = async (postId: string) => {
+    if (!isSupabaseConfigured) {
+      setApprovalComments([]);
+      return;
+    }
+    setIsLoadingHistory(true);
+    try {
+      const comments = await postsService.listApprovalComments(postId);
+      setApprovalComments(comments);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '履歴の取得に失敗しました。';
+      addNotification('履歴取得エラー', message, 'ERROR');
+      setApprovalComments([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const openHistory = (post: Post) => {
+    setHistoryPost(post);
+    setNewApprovalComment('');
+    void loadApprovalComments(post.id);
+  };
+
+  const closeHistory = () => {
+    if (isAddingApprovalComment) return;
+    setHistoryPost(null);
+    setApprovalComments([]);
+    setNewApprovalComment('');
+  };
+
+  const handleAddApprovalComment = async () => {
+    if (!historyPost || !newApprovalComment.trim()) return;
+    if (!isSupabaseConfigured) {
+      addNotification('モック', 'デモでは履歴コメントを追加できません。', 'INFO');
+      return;
+    }
+    setIsAddingApprovalComment(true);
+    try {
+      await postsService.addApprovalComment(historyPost.id, currentUser.id, newApprovalComment.trim());
+      addNotification('コメント追加完了', '履歴コメントを追加しました。', 'SUCCESS');
+      setNewApprovalComment('');
+      await loadApprovalComments(historyPost.id);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '履歴コメントの追加に失敗しました。';
+      addNotification('コメント追加エラー', message, 'ERROR');
+    } finally {
+      setIsAddingApprovalComment(false);
     }
   };
 
@@ -213,6 +407,111 @@ export const PostList: React.FC = () => {
     }
   };
 
+  const getApprovalBadge = (post: Post) => {
+    if (post.approvalStatus === 'PENDING') {
+      return <span className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">承認待ち</span>;
+    }
+    if (post.approvalStatus === 'REJECTED') {
+      return <span className="text-xs px-2 py-1 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200">差し戻し</span>;
+    }
+    if (post.approvalStatus === 'APPROVED') {
+      return <span className="text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">承認済み</span>;
+    }
+    return null;
+  };
+
+  const getActionDisabled = (postId: string) => {
+    return (
+      approvalProcessingPostId === postId ||
+      publishingInstagramPostId === postId ||
+      publishingFacebookPostId === postId ||
+      isSaving
+    );
+  };
+
+  const getStatusWithApproval = (post: Post) => {
+    const statusBadge = getStatusBadge(post.status);
+    const approvalBadge = getApprovalBadge(post);
+    return (
+      <div className="flex flex-col gap-1">
+        {statusBadge}
+        {approvalBadge}
+      </div>
+    );
+  };
+
+  const getPostDateText = (post: Post) => {
+    if (post.scheduledDate) return formatDate(post.scheduledDate);
+    if (post.publishedDate) return formatDate(post.publishedDate);
+    return '-';
+  };
+
+  const getCanShowSubmitApproval = (post: Post) => {
+    return isRequester && post.authorId === currentUser.id && (post.approvalStatus === 'NONE' || post.approvalStatus === 'REJECTED');
+  };
+
+  const getCanShowApproveReject = (post: Post) => {
+    return canApprove && post.approvalStatus === 'PENDING';
+  };
+
+  const getCanEdit = (post: Post) => {
+    if (canApprove) return true;
+    return post.authorId === currentUser.id;
+  };
+
+  const getCanDelete = (post: Post) => {
+    if (canApprove) return true;
+    return post.authorId === currentUser.id;
+  };
+
+  const getCanPublishInstagram = (post: Post) => {
+    if (!canApprove) return false;
+    if (!post.platforms.includes('INSTAGRAM')) return false;
+    if (post.approvalStatus !== 'APPROVED') return false;
+    if (post.status === PostStatus.PUBLISHED) return false;
+    if (post.scheduledDate && post.scheduledDate.getTime() > Date.now()) return false;
+    return true;
+  };
+
+  const getCanPublishFacebook = (post: Post) => {
+    if (!canApprove) return false;
+    if (!post.platforms.includes('FACEBOOK')) return false;
+    if (post.approvalStatus !== 'APPROVED') return false;
+    if (post.status === PostStatus.PUBLISHED) return false;
+    if (post.scheduledDate && post.scheduledDate.getTime() > Date.now()) return false;
+    return true;
+  };
+
+  const getStatusLabel = (post: Post) => {
+    if (post.approvalStatus === 'PENDING') return '承認待ち';
+    if (post.approvalStatus === 'REJECTED') return '差し戻し';
+    if (post.approvalStatus === 'APPROVED' && post.status === PostStatus.DRAFT) return '承認済み下書き';
+    switch (post.status) {
+      case PostStatus.PUBLISHED:
+        return '公開済み';
+      case PostStatus.SCHEDULED:
+        return '予約済み';
+      case PostStatus.FAILED:
+        return 'エラー';
+      default:
+        return '下書き';
+    }
+  };
+
+  const getActionLabel = (action: PostApprovalActionType) => {
+    if (action === 'SUBMIT') return '承認申請';
+    if (action === 'APPROVE') return '承認';
+    if (action === 'REJECT') return '差し戻し';
+    return 'コメント';
+  };
+
+  const getActionBadgeClass = (action: PostApprovalActionType) => {
+    if (action === 'SUBMIT') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200';
+    if (action === 'APPROVE') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200';
+    if (action === 'REJECT') return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-200';
+    return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200';
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -222,6 +521,8 @@ export const PostList: React.FC = () => {
                 <option>すべてのステータス</option>
                 <option>公開済み</option>
                 <option>予約済み</option>
+                <option>承認待ち</option>
+                <option>差し戻し</option>
             </select>
         </div>
       </div>
@@ -242,10 +543,15 @@ export const PostList: React.FC = () => {
               {posts.map((post) => (
                 <tr key={post.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(post.status)}
+                    {getStatusWithApproval(post)}
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-sm text-gray-900 dark:text-white line-clamp-2">{post.content}</p>
+                    {post.rejectionReason && (
+                      <p className="mt-1 text-xs text-rose-600 dark:text-rose-300">
+                        差し戻し理由: {post.rejectionReason}
+                      </p>
+                    )}
                     {(post.imageUrls || []).length > 0 && (
                         <div className="mt-2 flex gap-1">
                             {(post.imageUrls || []).map((url, i) => (
@@ -266,24 +572,84 @@ export const PostList: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                     <div className="flex items-center gap-2">
                         <Calendar size={14} />
-                        {post.scheduledDate 
-                            ? formatDate(post.scheduledDate) 
-                            : post.publishedDate ? formatDate(post.publishedDate) : '-'}
+                        {getPostDateText(post)}
                     </div>
+                    <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{getStatusLabel(post)}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => openEdit(post)}
-                      className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 mr-3"
-                    >
-                      編集
-                    </button>
-                    <button
-                      onClick={() => handleDelete(post.id)}
-                      className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
-                    >
-                      削除
-                    </button>
+                    <div className="flex flex-wrap gap-3 items-center">
+                      {getCanEdit(post) && (
+                        <button
+                          onClick={() => openEdit(post)}
+                          className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 disabled:opacity-60"
+                          disabled={getActionDisabled(post.id)}
+                        >
+                          編集
+                        </button>
+                      )}
+                      {getCanDelete(post) && (
+                        <button
+                          onClick={() => handleDelete(post.id)}
+                          className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300 disabled:opacity-60"
+                          disabled={getActionDisabled(post.id)}
+                        >
+                          削除
+                        </button>
+                      )}
+                      {getCanShowSubmitApproval(post) && (
+                        <button
+                          onClick={() => void handleSubmitForApproval(post.id)}
+                          className="text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-200 disabled:opacity-60"
+                          disabled={getActionDisabled(post.id)}
+                        >
+                          承認申請
+                        </button>
+                      )}
+                      {getCanPublishInstagram(post) && (
+                        <button
+                          onClick={() => void handlePublishInstagram(post.id)}
+                          className="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-200 disabled:opacity-60"
+                          disabled={getActionDisabled(post.id)}
+                        >
+                          {publishingInstagramPostId === post.id ? '投稿中...' : 'Instagram投稿'}
+                        </button>
+                      )}
+                      {getCanPublishFacebook(post) && (
+                        <button
+                          onClick={() => void handlePublishFacebook(post.id)}
+                          className="text-cyan-700 dark:text-cyan-300 hover:text-cyan-900 dark:hover:text-cyan-200 disabled:opacity-60"
+                          disabled={getActionDisabled(post.id)}
+                        >
+                          {publishingFacebookPostId === post.id ? '投稿中...' : 'Facebook投稿'}
+                        </button>
+                      )}
+                      {getCanShowApproveReject(post) && (
+                        <>
+                          <button
+                            onClick={() => void handleApprove(post.id)}
+                            className="text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 dark:hover:text-emerald-200 disabled:opacity-60"
+                            disabled={getActionDisabled(post.id)}
+                          >
+                            承認
+                          </button>
+                          <button
+                            onClick={() => void handleReject(post.id)}
+                            className="text-rose-700 dark:text-rose-300 hover:text-rose-900 dark:hover:text-rose-200 disabled:opacity-60"
+                            disabled={getActionDisabled(post.id)}
+                          >
+                            差し戻し
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => openHistory(post)}
+                        className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white disabled:opacity-60 inline-flex items-center gap-1"
+                        disabled={getActionDisabled(post.id)}
+                      >
+                        <MessageSquare size={14} />
+                        履歴
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -415,6 +781,80 @@ export const PostList: React.FC = () => {
             </div>
           </div>
         </div>
+        </ModalPortal>
+      )}
+
+      {historyPost && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+            <div className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+                <div>
+                  <div className="font-bold text-gray-900 dark:text-white">差し戻しコメント履歴</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-1">{historyPost.content}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeHistory}
+                  disabled={isAddingApprovalComment}
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-300 disabled:opacity-60"
+                  aria-label="閉じる"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+                {isLoadingHistory ? (
+                  <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                    <Loader2 className="animate-spin" size={16} />
+                    履歴を読み込み中...
+                  </div>
+                ) : approvalComments.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">履歴はまだありません。</p>
+                ) : (
+                  <div className="space-y-3">
+                    {approvalComments.map((entry) => (
+                      <div key={entry.id} className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-xs font-semibold px-2 py-1 rounded ${getActionBadgeClass(entry.actionType)}`}>
+                            {getActionLabel(entry.actionType)}
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">{formatCommentDate(entry.createdAt)}</span>
+                        </div>
+                        {entry.comment && (
+                          <p className="text-sm text-gray-800 dark:text-gray-100 mt-2 whitespace-pre-wrap">{entry.comment}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {canApprove && (
+                <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 space-y-2">
+                  <label className="block text-xs font-bold text-gray-600 dark:text-gray-300">修正コメントを追加</label>
+                  <textarea
+                    value={newApprovalComment}
+                    onChange={(e) => setNewApprovalComment(e.target.value)}
+                    rows={3}
+                    placeholder="例: 1行目の表現をもう少し柔らかくしてください。"
+                    className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 text-sm text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => void handleAddApprovalComment()}
+                      disabled={isAddingApprovalComment || !newApprovalComment.trim()}
+                      className="px-4 py-2 text-sm font-bold rounded-xl bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {isAddingApprovalComment ? '追加中...' : 'コメント追加'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </ModalPortal>
       )}
     </div>

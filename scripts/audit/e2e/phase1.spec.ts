@@ -349,7 +349,7 @@ test('Phase1: Store group CRUD + per-user controls + CSV import', async ({ page 
   await page.getByTestId('store-group-name').fill(groupName);
   await groupModal.locator('input[type="checkbox"]').first().check();
   await page.getByTestId('store-group-save').click();
-  await expect(page.getByText(groupName)).toBeVisible();
+  await expect(page.getByText(groupName, { exact: true })).toBeVisible();
 
   // P1-09: bulk apply a visibility setting to the group.
   const bulkGroupSelect = page.getByTestId('store-group-bulk-group-select');

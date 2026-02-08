@@ -360,7 +360,14 @@ test('Phase1: Store group CRUD + per-user controls + CSV import', async ({ page 
   }
   await page.getByTestId('store-group-bulk-state-select').selectOption('ADMIN_ONLY');
   await page.getByTestId('store-group-bulk-apply').click();
-  await expect(page.getByText('一括設定完了')).toBeVisible();
+  const bulkApplySucceeded = page.getByText('一括設定完了');
+  const bulkApplyFailed = page.getByText('一括設定エラー');
+  await Promise.race([
+    bulkApplySucceeded.waitFor({ state: 'visible', timeout: 60_000 }),
+    bulkApplyFailed.waitFor({ state: 'visible', timeout: 60_000 }).then(async () => {
+      throw new Error('Bulk group feature upsert failed (一括設定エラー).');
+    }),
+  ]);
 
   // Prepare CSV target user (first option) and enable CSV + increase store limit.
   const userSelect = page.getByTestId('store-csv-user-select');

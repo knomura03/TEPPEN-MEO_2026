@@ -128,6 +128,60 @@ export interface CompetitorMetricSnapshot {
   createdAt: Date;
 }
 
+export type NapConsistencyRunStatus = 'RUNNING' | 'SUCCESS' | 'FAILED';
+export type NapConsistencyResultStatus = 'MATCH' | 'MISMATCH' | 'MISSING';
+
+export interface NapConsistencySummary {
+  total: number;
+  match: number;
+  mismatch: number;
+  missing: number;
+}
+
+export interface NapConsistencyRun {
+  id: string;
+  storeId: string;
+  triggerType: 'MANUAL' | 'SCHEDULED';
+  status: NapConsistencyRunStatus;
+  message?: string;
+  summary: NapConsistencySummary;
+  requestedByUserId?: string;
+  startedAt: Date;
+  finishedAt?: Date;
+  createdAt: Date;
+}
+
+export interface NapConsistencyResult {
+  id: string;
+  runId: string;
+  storeId: string;
+  providerCatalogId?: string;
+  providerKey: string;
+  providerName: string;
+  expectedName?: string;
+  expectedAddress?: string;
+  expectedPhone?: string;
+  observedName?: string;
+  observedAddress?: string;
+  observedPhone?: string;
+  nameMatch?: boolean;
+  addressMatch?: boolean;
+  phoneMatch?: boolean;
+  status: NapConsistencyResultStatus;
+  mismatchFields: string[];
+  message?: string;
+  details: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export interface NapConsistencyExecutionResult {
+  ok: boolean;
+  runId: string;
+  status: NapConsistencyRunStatus;
+  summary: NapConsistencySummary;
+  message?: string;
+}
+
 export interface OrgStorePolicy {
   orgId: string;
   defaultUserStoreLimit: number;

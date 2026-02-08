@@ -13,6 +13,7 @@ const requiredFiles = [
   'services/rankKeywordService.ts',
   'services/rankCollectionService.ts',
   'services/competitorService.ts',
+  'services/napConsistencyService.ts',
   'components/Layout.tsx',
   'components/SettingsView.tsx',
   'components/PostList.tsx',
@@ -27,6 +28,7 @@ const requiredFiles = [
   'supabase/migrations/202602060015_p3_rank_keyword_management.sql',
   'supabase/migrations/202602060016_p3_rank_daily_collection.sql',
   'supabase/migrations/202602060017_p3_competitor_comparison_collection.sql',
+  'supabase/migrations/202602060018_p3_nap_consistency_check.sql',
 ];
 
 for (const file of requiredFiles) {
@@ -61,6 +63,8 @@ assertIncludes('services/rankCollectionService.ts', 'collectByFunction');
 assertIncludes('services/rankCollectionService.ts', 'listRunDetailsByStore');
 assertIncludes('services/competitorService.ts', 'competitor_targets');
 assertIncludes('services/competitorService.ts', 'listSnapshotsByRun');
+assertIncludes('services/napConsistencyService.ts', 'nap_consistency_runs');
+assertIncludes('services/napConsistencyService.ts', 'runManualCheck');
 assertIncludes('services/inboxService.ts', 'listAssignableUsersByStore');
 assertIncludes('services/inboxService.ts', 'updateWorkflow');
 assertIncludes('components/PostList.tsx', 'Facebook投稿');
@@ -70,6 +74,7 @@ assertIncludes('components/RankTrackerView.tsx', '順位計測');
 assertIncludes('components/RankTrackerView.tsx', '収集実行（MOCK）');
 assertIncludes('components/RankTrackerView.tsx', '競合ターゲット（P3-03）');
 assertIncludes('components/RankTrackerView.tsx', '順位/競合ダッシュボード（P3-04）');
+assertIncludes('components/RankTrackerView.tsx', 'NAP整合性チェック（P3-05）');
 assertIncludes('components/UnifiedInbox.tsx', 'messageReplyService.replyFacebookMessage');
 assertIncludes('components/UnifiedInbox.tsx', 'ワークフローを保存');
 assertIncludes('components/SettingsView.tsx', 'ブランドキット');
@@ -81,5 +86,6 @@ assertIncludes('supabase/functions/rank-collect/index.ts', 'rank_collection_runs
 assertIncludes('supabase/migrations/202602060016_p3_rank_daily_collection.sql', 'create table if not exists public.rank_collection_runs');
 assertIncludes('supabase/functions/rank-collect/index.ts', 'competitor_metric_snapshots');
 assertIncludes('supabase/migrations/202602060017_p3_competitor_comparison_collection.sql', 'create table if not exists public.competitor_targets');
+assertIncludes('supabase/migrations/202602060018_p3_nap_consistency_check.sql', 'create table if not exists public.nap_consistency_runs');
 
 console.log('Contract smoke check passed.');

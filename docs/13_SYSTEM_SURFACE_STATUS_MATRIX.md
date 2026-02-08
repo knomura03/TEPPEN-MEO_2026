@@ -1,6 +1,6 @@
 # TEPPEN MEO：画面/ボタン/機能/DB接続 状態台帳（正本）
 
-最終更新: 2026-02-08（P3-04追記）
+最終更新: 2026-02-08（P3-05追記）
 
 ## 0. 運用ルール（必須）
 - この台帳は、実装・修正・設定変更のたびに**同一作業内で更新**する。
@@ -42,6 +42,7 @@
 | RANK-02 | 順位計測 | 日次順位収集（手動実行/履歴/結果） | CONDITIONAL | `rankCollectionService`, Edge Function `rank-collect`, `rank_collection_runs`, `rank_collection_results` | `202602060016` 未適用環境では実行不可。現時点はMOCK収集のみ、REAL指定は明示FAILED | P3-02 |
 | RANK-03 | 順位計測 | 競合ターゲット管理/競合比較収集 | CONDITIONAL | `competitorService`, `competitor_targets`, `competitor_metric_snapshots`, Edge Function `rank-collect` | `202602060017` 未適用環境では実行不可。現時点はMOCK収集のみ、REAL指定は明示FAILED | P3-03 |
 | RANK-04 | 順位計測 | 順位/競合ダッシュボード（推移可視化） | CONDITIONAL | `rankCollectionService.listRunDetailsByStore`, `rank_collection_runs`, `rank_collection_results`, `competitor_metric_snapshots` | run0件は空状態表示。競合データ未作成でも順位可視化は継続 | P3-04 |
+| RANK-05 | 順位計測 | NAP整合性チェック（run履歴/不一致表示） | CONDITIONAL | `napConsistencyService`, `nap_consistency_runs`, `nap_consistency_results`, `provider_configurations` | `202602060018` 未適用環境では実行不可。provider未設定は `MISSING` として記録 | P3-05 |
 | SURVEY-01 | アンケート管理 | 作成/下書き保存/公開/アーカイブ | CONNECTED | `surveys` | 店舗未選択時は操作不可 | P1-01 |
 | SURVEY-02 | アンケート管理 | 分岐しきい値 | CONNECTED | `surveys.positive_threshold`, `survey_responses.branch_type` | migration未適用時は失敗 | P1-02 |
 | SURVEY-03 | アンケート管理 | 指標カード/CSV出力 | CONNECTED | `survey_events`, `survey_responses` | - | P1-03 |
@@ -94,6 +95,7 @@
 | `supabase/migrations/202602060015_p3_rank_keyword_management.sql` | P3-01 順位キーワード管理 | 実装済み。未適用環境ではキーワードCRUDが実行できない |
 | `supabase/migrations/202602060016_p3_rank_daily_collection.sql` | P3-02 日次順位収集ジョブ | 実装済み。未適用環境では収集実行/履歴参照が実行できない |
 | `supabase/migrations/202602060017_p3_competitor_comparison_collection.sql` | P3-03 競合比較収集 | 実装済み。未適用環境では競合ターゲット管理/競合収集が実行できない |
+| `supabase/migrations/202602060018_p3_nap_consistency_check.sql` | P3-05 NAP整合性チェック | 実装済み。未適用環境ではNAPチェック履歴/結果が実行できない |
 
 ## 5. 現時点のモック/未接続残件（優先順）
 1. ダッシュボードKPIが固定値（実データ未接続）

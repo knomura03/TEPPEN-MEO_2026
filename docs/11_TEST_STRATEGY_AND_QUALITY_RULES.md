@@ -1,6 +1,6 @@
 # TEPPEN MEO：テスト方針と品質ルール（Phase1〜Phase3）
 
-最終更新: 2026-02-08（P3-04追記）
+最終更新: 2026-02-08（P3-05追記）
 
 この方針書は、`Step2集中テスト` を成立させるための品質基準です。  
 実装中の最低限ガードレールを明示し、終盤破綻を防ぎます。
@@ -392,6 +392,29 @@
 - P3-02の手動収集/履歴選択が劣化しない
 - P3-03の競合ターゲット追加/削除と競合結果表示が劣化しない
 - 既存の通知トースト/エラーメッセージ導線が維持される
+
+## 22. P3-05 NAP整合性チェックの品質ルール
+### 22.1 必須シナリオ
+- 順位計測画面で「NAPチェック実行」が実行できる
+- 実行ごとに `nap_consistency_runs` が1件作成される
+- 実行runに紐づく `nap_consistency_results` がprovider件数分保存される
+- run詳細で `MATCH / MISMATCH / MISSING` と不一致項目が表示される
+
+### 22.2 異常系
+- 店舗未選択時はNAPチェック実行を拒否する
+- migration未適用環境では専用エラー（P3-05 migration適用案内）を表示する
+- provider未設定は `MISSING` として記録され、runは失敗にしない
+- NAP項目が未入力（店舗/媒体のどちらか欠損）でも例外にせず `MISSING/MISMATCH` で記録する
+
+### 22.3 記録/可観測性
+- `nap_consistency_runs.status` が `RUNNING -> SUCCESS/FAILED` で遷移する
+- runごとに `summary(total/match/mismatch/missing)` が保存される
+- 結果に `mismatch_fields` と `details.sourceKeys` が保存される
+
+### 22.4 回帰観点
+- P3-04ダッシュボード表示が劣化しない
+- P3-03競合比較収集導線が劣化しない
+- 既存の順位キーワードCRUDと収集実行導線が劣化しない
 
 ---
 ## 明示的前提・デフォルト

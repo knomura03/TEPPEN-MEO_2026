@@ -1156,6 +1156,54 @@ with check (public.user_has_store_access(store_id));
 
 grant select, insert on public.competitor_metric_snapshots to authenticated;
 
+alter table public.nap_consistency_runs enable row level security;
+
+drop policy if exists nap_consistency_runs_select_by_store_scope on public.nap_consistency_runs;
+create policy nap_consistency_runs_select_by_store_scope
+on public.nap_consistency_runs
+for select
+using (public.user_has_store_access(store_id));
+
+drop policy if exists nap_consistency_runs_insert_by_store_scope on public.nap_consistency_runs;
+create policy nap_consistency_runs_insert_by_store_scope
+on public.nap_consistency_runs
+for insert
+with check (
+  public.user_has_store_access(store_id)
+  and (requested_by_user_id is null or requested_by_user_id = auth.uid())
+);
+
+drop policy if exists nap_consistency_runs_update_by_store_scope on public.nap_consistency_runs;
+create policy nap_consistency_runs_update_by_store_scope
+on public.nap_consistency_runs
+for update
+using (
+  public.user_has_store_access(store_id)
+  and (requested_by_user_id is null or requested_by_user_id = auth.uid())
+)
+with check (
+  public.user_has_store_access(store_id)
+  and (requested_by_user_id is null or requested_by_user_id = auth.uid())
+);
+
+grant select, insert, update on public.nap_consistency_runs to authenticated;
+
+alter table public.nap_consistency_results enable row level security;
+
+drop policy if exists nap_consistency_results_select_by_store_scope on public.nap_consistency_results;
+create policy nap_consistency_results_select_by_store_scope
+on public.nap_consistency_results
+for select
+using (public.user_has_store_access(store_id));
+
+drop policy if exists nap_consistency_results_insert_by_store_scope on public.nap_consistency_results;
+create policy nap_consistency_results_insert_by_store_scope
+on public.nap_consistency_results
+for insert
+with check (public.user_has_store_access(store_id));
+
+grant select, insert on public.nap_consistency_results to authenticated;
+
 -- ------------------------------------------------------------
 -- Storage: post-media bucket
 -- ------------------------------------------------------------

@@ -411,6 +411,52 @@ create index if not exists competitor_metric_snapshots_collected_at_idx on publi
 create unique index if not exists competitor_metric_snapshots_run_target_unique_idx
   on public.competitor_metric_snapshots(run_id, competitor_target_id);
 
+create table if not exists public.nap_consistency_runs (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores(id) on delete cascade,
+  trigger_type text not null default 'MANUAL' check (trigger_type in ('MANUAL', 'SCHEDULED')),
+  status text not null default 'RUNNING' check (status in ('RUNNING', 'SUCCESS', 'FAILED')),
+  message text,
+  summary jsonb not null default '{}'::jsonb,
+  requested_by_user_id uuid references auth.users(id) on delete set null,
+  started_at timestamptz not null default now(),
+  finished_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists nap_consistency_runs_store_id_idx on public.nap_consistency_runs(store_id);
+create index if not exists nap_consistency_runs_created_at_idx on public.nap_consistency_runs(created_at);
+
+create table if not exists public.nap_consistency_results (
+  id uuid primary key default gen_random_uuid(),
+  run_id uuid not null references public.nap_consistency_runs(id) on delete cascade,
+  store_id uuid not null references public.stores(id) on delete cascade,
+  provider_catalog_id uuid references public.provider_catalog(id) on delete set null,
+  provider_key text not null,
+  provider_name text not null,
+  expected_name text,
+  expected_address text,
+  expected_phone text,
+  observed_name text,
+  observed_address text,
+  observed_phone text,
+  name_match boolean,
+  address_match boolean,
+  phone_match boolean,
+  status text not null default 'MISSING' check (status in ('MATCH', 'MISMATCH', 'MISSING')),
+  mismatch_fields text[] not null default '{}'::text[],
+  message text,
+  details jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists nap_consistency_results_run_id_idx on public.nap_consistency_results(run_id);
+create index if not exists nap_consistency_results_store_id_idx on public.nap_consistency_results(store_id);
+create index if not exists nap_consistency_results_provider_key_idx on public.nap_consistency_results(provider_key);
+create index if not exists nap_consistency_results_created_at_idx on public.nap_consistency_results(created_at);
+create unique index if not exists nap_consistency_results_run_provider_unique_idx
+  on public.nap_consistency_results(run_id, provider_key);
+
 create table if not exists public.post_media (
   id uuid primary key default gen_random_uuid(),
   post_id uuid not null references public.posts(id) on delete cascade,

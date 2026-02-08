@@ -1,6 +1,6 @@
 # TEPPEN MEO：Phase1〜Phase3 実装実行計画（再監査版）
 
-最終更新: 2026-02-08（P3-04追記）
+最終更新: 2026-02-08（P3-05追記）
 
 この計画書は、Phase1〜Phase3の機能を「作り直しなし」で進めるための実装設計書です。  
 方針は「Phase0基盤 → Phase1 → Phase2 → Phase3 → Step2集中テスト → 修正 → デプロイ」で固定します。
@@ -659,6 +659,47 @@ provider追加時に次のチェックリストを自動生成し、PRに添付�
 - 順位計測画面でrun推移がチャートと表で確認できる
 - 最新runの競合比較がグラフ表示される
 - 既存のP3-02/P3-03導線（収集実行・履歴選択）が劣化しない
+- `docs/13` / `docs/05` / `docs/12` / `docs/11` が同時更新される
+
+## 22. P3-05 NAP整合性チェック 実装方針
+### 22.1 目的
+- 店舗NAP（name/address/phone）と媒体設定値の不一致を、run単位で検知・記録する
+- 「どのproviderの、どの項目がズレているか」をGUIで即確認できる状態にする
+
+### 22.2 DB変更（migration）
+- 対象: `supabase/migrations/202602060018_p3_nap_consistency_check.sql`
+- 追加テーブル:
+  - `nap_consistency_runs`
+    - `store_id`, `trigger_type`, `status`, `summary`, `requested_by_user_id`
+    - 実行開始/終了時刻とメッセージを保持
+  - `nap_consistency_results`
+    - `run_id`, `provider_catalog_id`, `provider_key`, `provider_name`
+    - 店舗NAP期待値と媒体設定値（observed）を保持
+    - `status`: `MATCH | MISMATCH | MISSING`
+    - `mismatch_fields` で不一致項目を保存
+- RLS:
+  - `user_has_store_access(store_id)` で閲覧を許可
+  - insert/updateはストアアクセス + actor整合で制御
+
+### 22.3 Service/UI変更
+- `services/napConsistencyService.ts`
+  - `runManualCheck` / `listRunsByStore` / `listResultsByRun`
+  - provider設定JSONからNAP候補キーを抽出して比較
+  - migration未適用時は専用エラー（P3-05 migration適用案内）を返す
+- `components/RankTrackerView.tsx`
+  - 「NAP整合性チェック（P3-05）」セクション追加
+  - 実行ボタン、履歴、run詳細（MATCH/MISMATCH/MISSING）を表示
+  - 不一致項目を明示して、修正対象を即特定できるUIにする
+
+### 22.4 実装ルール（固定）
+- 判定対象は店舗単位（右上店舗セレクタ依存）
+- provider未設定時は `MISSING` として記録する（失敗ではない）
+- 比較は正規化後に実施（name/address/phoneごとに比較ロジックを分離）
+- run自体は比較処理が完了したら `SUCCESS`、実行例外時のみ `FAILED`
+
+### 22.5 完了条件（P3-05）
+- 順位計測画面からNAPチェックを手動実行できる
+- run履歴/詳細で不一致項目を確認できる
 - `docs/13` / `docs/05` / `docs/12` / `docs/11` が同時更新される
 
 ---

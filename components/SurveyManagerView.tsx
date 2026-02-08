@@ -324,6 +324,10 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
                 key={survey.id}
                 type="button"
                 onClick={() => setSelectedSurveyId(survey.id)}
+                data-testid="survey-list-item"
+                data-survey-id={survey.id}
+                data-survey-status={survey.status}
+                data-survey-title={survey.title}
                 className={`w-full text-left p-4 rounded-xl border transition-all ${
                   selectedSurveyId === survey.id
                     ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20'

@@ -1274,7 +1274,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       {isGroupModalOpen && (
         <ModalPortal>
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-xl p-6">
+            <div
+              data-testid="store-group-modal"
+              className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-xl p-6"
+            >
               <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{editingGroup ? '店舗グループ編集' : '店舗グループ作成'}</h2>
               <div className="space-y-4">
                 <div>

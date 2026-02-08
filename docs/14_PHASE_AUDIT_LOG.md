@@ -25,3 +25,15 @@
   - logs: `output/audit/phase1/20260209_032804/preflight_users`
 - C(e2e): SKIPPED
 
+## 2026-02-08T18:30:43.686Z PHASE1 FAIL
+
+- command: `npm run audit:phase1`
+- commit: `c1b1421c312a80b47306309c3055ce04065dc9f4`
+- output: `output/audit/phase1/20260209_033043`
+- A(static): PASS (run typecheck=OK(2.8s), run build=OK(3.2s), run smoke:contracts=OK(166ms))
+- B(db): PASS (13 checks)
+  - logs: `output/audit/phase1/20260209_033043/B_db`
+- preflight(users): FAIL: Failed to provision manager: Edge Function returned a non-2xx status code (status=401)
+  - logs: `output/audit/phase1/20260209_033043/preflight_users`
+- C(e2e): SKIPPED
+

@@ -1122,6 +1122,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">対象グループ</label>
                 <select
+                  data-testid="store-group-bulk-group-select"
                   value={bulkSettingGroupId}
                   onChange={(e) => setBulkSettingGroupId(e.target.value)}
                   className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm"
@@ -1137,6 +1138,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">設定対象</label>
                 <select
+                  data-testid="store-group-bulk-feature-select"
                   value={bulkSettingFeatureKey}
                   onChange={(e) => setBulkSettingFeatureKey(e.target.value)}
                   className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm"
@@ -1151,6 +1153,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">公開状態</label>
                 <select
+                  data-testid="store-group-bulk-state-select"
                   value={bulkSettingState}
                   onChange={(e) => setBulkSettingState(e.target.value as VisibilityState)}
                   className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm"
@@ -1175,6 +1178,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
 
             <div className="flex justify-end">
               <button
+                data-testid="store-group-bulk-apply"
                 onClick={() => void handleApplyBulkSetting()}
                 disabled={isApplyingBulkSetting || !canApplyBulkSetting || !selectedBulkSettingGroup}
                 className="px-4 py-2 text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"

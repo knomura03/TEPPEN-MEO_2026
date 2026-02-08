@@ -13,6 +13,8 @@ type DbAuditCheck =
   | { kind: 'select'; name: string; table: string; columns: string }
   | { kind: 'rpc'; name: string; fn: string; args: Record<string, unknown> };
 
+type DbAuditRpcCheck = Extract<DbAuditCheck, { kind: 'rpc' }>;
+
 export type DbAuditCheckResult = {
   name: string;
   ok: boolean;
@@ -157,7 +159,7 @@ export const runDbAuditPhase1 = async (params: {
 
     if (!storeError && storeRow?.org_id) {
       const orgId = storeRow.org_id as string;
-      const rpcChecks: DbAuditCheck[] = [
+      const rpcChecks: DbAuditRpcCheck[] = [
         {
           kind: 'rpc',
           name: 'rpc.effective_user_store_limit',
@@ -228,4 +230,3 @@ const main = async (): Promise<void> => {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   void main();
 }
-

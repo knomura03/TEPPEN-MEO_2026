@@ -57,6 +57,7 @@ const FEATURE_FLAG_OPTIONS: { key: string; label: string; description: string }[
   { key: 'create_post', label: '新規投稿', description: 'メニュー: 新規投稿' },
   { key: 'post_list', label: '投稿一覧', description: 'メニュー: 投稿一覧' },
   { key: 'inbox', label: '統合受信箱', description: 'メニュー: 統合受信箱' },
+  { key: 'rank_tracker', label: '順位計測', description: 'メニュー: 順位計測' },
   { key: 'user_management', label: 'ユーザー管理', description: 'メニュー: ユーザー・契約管理' },
   { key: 'settings_system', label: 'システム管理', description: '設定タブ: システム管理' },
   { key: 'provider_management', label: 'Provider管理', description: 'SNS連携設定タブの管理機能' },

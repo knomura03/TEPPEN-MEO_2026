@@ -1027,6 +1027,39 @@ grant select, insert, update on public.brand_kits to authenticated;
 grant select, insert, update, delete on public.post_templates to authenticated;
 
 -- ------------------------------------------------------------
+-- Phase3 foundation: rank keyword management
+-- ------------------------------------------------------------
+
+alter table public.rank_keywords enable row level security;
+
+drop policy if exists rank_keywords_select_by_store_scope on public.rank_keywords;
+create policy rank_keywords_select_by_store_scope
+on public.rank_keywords
+for select
+using (public.user_has_store_access(store_id));
+
+drop policy if exists rank_keywords_insert_by_store_scope on public.rank_keywords;
+create policy rank_keywords_insert_by_store_scope
+on public.rank_keywords
+for insert
+with check (public.user_has_store_access(store_id));
+
+drop policy if exists rank_keywords_update_by_store_scope on public.rank_keywords;
+create policy rank_keywords_update_by_store_scope
+on public.rank_keywords
+for update
+using (public.user_has_store_access(store_id))
+with check (public.user_has_store_access(store_id));
+
+drop policy if exists rank_keywords_delete_by_store_scope on public.rank_keywords;
+create policy rank_keywords_delete_by_store_scope
+on public.rank_keywords
+for delete
+using (public.user_has_store_access(store_id));
+
+grant select, insert, update, delete on public.rank_keywords to authenticated;
+
+-- ------------------------------------------------------------
 -- Storage: post-media bucket
 -- ------------------------------------------------------------
 -- 注: Supabaseの権限上、storage.objects へのALTER/CREATE POLICYは

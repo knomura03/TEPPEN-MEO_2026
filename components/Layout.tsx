@@ -15,7 +15,8 @@ import {
   HelpCircle,
   MapPin,
   Settings,
-  Search
+  Search,
+  TrendingUp
 } from 'lucide-react';
 import { OnboardingTour } from './OnboardingTour';
 import { NotificationCenter } from './NotificationCenter';
@@ -132,6 +133,7 @@ export const Layout: React.FC<LayoutProps> = ({
     { id: 'CREATE_POST', label: '新規投稿', icon: PenSquare, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'create_post' },
     { id: 'POST_LIST', label: '投稿一覧', icon: List, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'post_list' },
     { id: 'INBOX', label: '統合受信箱', icon: MessageSquare, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'inbox' },
+    { id: 'RANK_TRACKER', label: '順位計測', icon: TrendingUp, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'rank_tracker' },
     { id: 'USER_MANAGEMENT', label: 'ユーザー・契約管理', icon: Users, allowed: [Role.ADMIN, Role.MANAGER], featureKey: 'user_management' },
   ];
 
@@ -154,6 +156,7 @@ export const Layout: React.FC<LayoutProps> = ({
     'CREATE_POST': '新規投稿',
     'POST_LIST': '投稿一覧',
     'INBOX': '統合受信箱',
+    'RANK_TRACKER': '順位計測',
     'USER_MANAGEMENT': 'ユーザー・契約管理',
     'SETTINGS': '設定'
   };

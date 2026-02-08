@@ -234,6 +234,7 @@ export const DEFAULT_FEATURE_VISIBILITY: Record<string, VisibilityState> = {
   create_post: 'ENABLED',
   post_list: 'ENABLED',
   inbox: 'ENABLED',
+  rank_tracker: 'ADMIN_ONLY',
   user_management: 'ENABLED',
   settings_profile: 'ENABLED',
   settings_store: 'ENABLED',

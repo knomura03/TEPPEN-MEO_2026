@@ -12,6 +12,7 @@ import { UnifiedInbox } from './components/UnifiedInbox';
 import { SettingsView } from './components/SettingsView';
 import { SurveyManagerView } from './components/SurveyManagerView';
 import { PublicSurveyPage } from './components/PublicSurveyPage';
+import { RankTrackerView } from './components/RankTrackerView';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ToastContainer } from './components/Toast';
 import { StoreProvider } from './contexts/StoreContext';
@@ -121,6 +122,8 @@ const App: React.FC = () => {
         return <UnifiedInbox currentUser={currentUser} />;
       case 'SURVEY':
         return <SurveyManagerView currentUser={currentUser} />;
+      case 'RANK_TRACKER':
+        return <RankTrackerView currentUser={currentUser} />;
       case 'SETTINGS':
         return <SettingsView currentUser={currentUser} onProfileUpdated={setCurrentUser} />;
       case 'USER_MANAGEMENT':

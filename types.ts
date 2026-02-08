@@ -37,6 +37,18 @@ export interface StoreGroup {
   updatedAt: Date;
 }
 
+export interface RankKeyword {
+  id: string;
+  storeId: string;
+  keyword: string;
+  note?: string;
+  isActive: boolean;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface OrgStorePolicy {
   orgId: string;
   defaultUserStoreLimit: number;
@@ -388,7 +400,16 @@ export interface InboxMessage {
   slaStatus?: InboxSlaStatus;
 }
 
-export type ViewState = 'DASHBOARD' | 'CREATE_POST' | 'POST_LIST' | 'USER_MANAGEMENT' | 'CALENDAR' | 'INBOX' | 'SURVEY' | 'SETTINGS';
+export type ViewState =
+  | 'DASHBOARD'
+  | 'CREATE_POST'
+  | 'POST_LIST'
+  | 'USER_MANAGEMENT'
+  | 'CALENDAR'
+  | 'INBOX'
+  | 'SURVEY'
+  | 'RANK_TRACKER'
+  | 'SETTINGS';
 
 // チャート用データ型
 export interface AnalyticsData {

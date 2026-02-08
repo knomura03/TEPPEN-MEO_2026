@@ -1,6 +1,6 @@
 # TEPPEN MEO：Phase1〜Phase3 実装実行計画（再監査版）
 
-最終更新: 2026-02-08（P2-05追記）
+最終更新: 2026-02-08（P3-01追記）
 
 この計画書は、Phase1〜Phase3の機能を「作り直しなし」で進めるための実装設計書です。  
 方針は「Phase0基盤 → Phase1 → Phase2 → Phase3 → Step2集中テスト → 修正 → デプロイ」で固定します。
@@ -500,6 +500,43 @@ provider追加時に次のチェックリストを自動生成し、PRに添付�
 - 設定画面でブランドキットを保存できる
 - 設定画面でテンプレートを作成/削除できる
 - 投稿画面でテンプレ適用・推奨タグ追加・NGワード警告が機能する
+- `docs/13` / `docs/05` / `docs/12` / `docs/11` が同時更新される
+
+## 18. P3-01 順位キーワード管理（Rank Tracker基盤）実装方針
+### 18.1 目的
+- 店舗ごとの「順位計測に使うキーワード」をGUIで管理できるようにする
+- 後続のP3-02（日次順位収集ジョブ）の入力データを整備する
+
+### 18.2 DB変更（migration）
+- 対象: `supabase/migrations/202602060015_p3_rank_keyword_management.sql`
+- 追加テーブル:
+  - `rank_keywords`
+    - `store_id`, `keyword`, `note`, `is_active`
+    - 重複防止: `unique(store_id, lower(keyword))`
+- 更新日時:
+  - `set_updated_at()` trigger で `updated_at` を自動更新
+- RLS:
+  - `user_has_store_access(store_id)` の範囲でCRUDを許可する
+
+### 18.3 Service/UI変更
+- `services/rankKeywordService.ts`
+  - `listActiveByStore(storeId)` / `create` / `update` / `archive`（論理削除）
+  - migration未適用時は専用エラー（P3-01 migration適用案内）を返す
+- `components/RankTrackerView.tsx`
+  - 一覧表示（店舗単位）
+  - 追加/編集/削除（論理削除）
+  - 店舗未選択時は操作不可の警告を表示
+- `components/Layout.tsx` / `App.tsx`
+  - メニューとビューを追加（feature flagで公開制御）
+
+### 18.4 実装ルール（固定）
+- キーワードは `trim` + 連続空白圧縮で正規化して保存する
+- 1キーワードは最大80文字
+- 削除は物理削除ではなく `is_active=false`（後続の収集履歴と整合を取りやすくするため）
+- `rank_tracker` feature flag のデフォルトは `ADMIN_ONLY` とする
+
+### 18.5 完了条件（P3-01）
+- 順位計測画面でキーワードのCRUDが成立する
 - `docs/13` / `docs/05` / `docs/12` / `docs/11` が同時更新される
 
 ---

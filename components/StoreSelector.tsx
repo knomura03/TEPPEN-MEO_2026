@@ -43,6 +43,7 @@ export const StoreSelector: React.FC = () => {
 
   return (
     <select
+      data-testid="store-selector"
       value={activeStoreId || ''}
       onChange={(e) => setActiveStoreId(e.target.value)}
       className="px-4 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full focus:ring-2 focus:ring-primary-500 outline-none transition-all text-gray-700 dark:text-gray-200"

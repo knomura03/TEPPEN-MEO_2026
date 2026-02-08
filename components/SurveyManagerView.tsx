@@ -362,6 +362,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">タイトル</label>
               <input
+                data-testid="survey-title"
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -398,6 +399,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
                 高評価しきい値（この点数以上で口コミ導線）
               </label>
               <select
+                data-testid="survey-positive-threshold"
                 value={positiveThreshold}
                 onChange={(e) => setPositiveThreshold(Number(e.target.value))}
                 className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl outline-none focus:ring-2 focus:ring-primary-500"
@@ -411,6 +413,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
 
           <div className="flex flex-wrap gap-2">
             <button
+              data-testid="survey-create-draft"
               type="button"
               onClick={() => void handleCreateDraft()}
               disabled={isSubmitting || !activeStoreId}
@@ -421,6 +424,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
             </button>
 
             <button
+              data-testid="survey-save-draft"
               type="button"
               onClick={() => void handleSaveDraft()}
               disabled={isSubmitting || !selectedSurvey}
@@ -431,6 +435,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
             </button>
 
             <button
+              data-testid="survey-publish"
               type="button"
               onClick={() => void handlePublish()}
               disabled={isSubmitting || !selectedSurvey || selectedSurvey.status === 'PUBLISHED'}
@@ -451,6 +456,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
             </button>
 
             <button
+              data-testid="survey-download-csv"
               type="button"
               onClick={() => void handleDownloadCsv()}
               disabled={!selectedSurvey}
@@ -469,6 +475,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
                 <button
+                  data-testid="survey-copy-public-url"
                   type="button"
                   onClick={() => void handleCopyPublicUrl()}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600"
@@ -477,6 +484,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
                   URLをコピー
                 </button>
                 <button
+                  data-testid="survey-open-public-url"
                   type="button"
                   onClick={handleOpenPublicUrl}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600"
@@ -485,6 +493,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
                   公開ページを開く
                 </button>
                 <button
+                  data-testid="survey-download-qr"
                   type="button"
                   onClick={() => void handleDownloadQr()}
                   disabled={isGeneratingAsset}
@@ -494,6 +503,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
                   QR画像
                 </button>
                 <button
+                  data-testid="survey-print-pop"
                   type="button"
                   onClick={() => void handlePrintPop()}
                   disabled={isGeneratingAsset}

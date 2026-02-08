@@ -835,6 +835,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                           </div>
                           {canEditStoreControl ? (
                             <input
+                              data-testid={`user-max-stores-${user.id}`}
                               type="number"
                               min={1}
                               value={draft.maxStoresInput}
@@ -858,6 +859,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                         canEditStoreControl ? (
                           <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
                             <input
+                              data-testid={`user-allow-csv-${user.id}`}
                               type="checkbox"
                               checked={draft.allowCsv}
                               onChange={(e) => setControlDraft(user.id, { allowCsv: e.target.checked })}
@@ -880,6 +882,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                         <div className="flex items-center justify-end gap-2">
                           {canEditStoreControl && (
                             <button
+                              data-testid={`user-control-save-${user.id}`}
                               onClick={() => void handleSaveUserControl(summary)}
                               disabled={draft.isSaving}
                               className="px-3 py-2 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
@@ -922,6 +925,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             </p>
           </div>
           <button
+            data-testid="store-csv-template-download"
             onClick={handleDownloadCsvTemplate}
             className="px-3 py-2 text-sm font-bold rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
           >
@@ -934,6 +938,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">対象USER</label>
               <select
+                data-testid="store-csv-user-select"
                 value={selectedCsvUserId}
                 onChange={(e) => {
                   setSelectedCsvUserId(e.target.value);
@@ -953,6 +958,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CSVアップロード</label>
               <input
+                data-testid="store-csv-file-input"
                 type="file"
                 accept=".csv,text/csv"
                 onChange={(e) => void handleCsvFileSelected(e.target.files?.[0] || null)}
@@ -1014,6 +1020,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
 
           <div className="flex justify-end">
             <button
+              data-testid="store-csv-execute"
               onClick={() => void handleExecuteCsvImport()}
               disabled={
                 isExecutingCsv ||
@@ -1042,6 +1049,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             </p>
           </div>
           <button
+            data-testid="store-group-add"
             onClick={openCreateGroupModal}
             className="px-3 py-2 text-sm font-bold rounded-xl bg-primary-600 text-white hover:bg-primary-700"
           >
@@ -1268,6 +1276,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">グループ名</label>
                   <input
+                    data-testid="store-group-name"
                     type="text"
                     value={groupName}
                     onChange={(e) => setGroupName(e.target.value)}
@@ -1318,6 +1327,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                   キャンセル
                 </button>
                 <button
+                  data-testid="store-group-save"
                   onClick={() => void handleSaveGroup()}
                   disabled={isSavingGroup}
                   className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"

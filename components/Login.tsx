@@ -75,6 +75,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <UserIcon className="h-5 w-5 text-gray-400 group-focus-within:text-primary-500 transition-colors" />
               </div>
               <input
+                data-testid="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -92,6 +93,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-primary-500 transition-colors" />
               </div>
               <input
+                data-testid="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -109,6 +111,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           )}
 
           <button
+            data-testid="login-submit"
             type="submit"
             disabled={isLoading}
             className="w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg shadow-primary-500/30 text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all disabled:opacity-70 disabled:shadow-none hover:-translate-y-0.5"

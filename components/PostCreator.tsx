@@ -556,6 +556,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
             <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">投稿内容</label>
                 <textarea
+                data-testid="post-content"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 className="w-full h-40 p-4 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none text-sm leading-relaxed"
@@ -653,6 +654,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
             {/* Actions */}
             <div className="flex items-center justify-end space-x-4 pt-4 border-t border-gray-100 dark:border-gray-700">
                 <button
+                data-testid="post-submit"
                 type="submit"
                 disabled={isSubmitDisabled}
                 className="flex items-center space-x-2 px-6 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md w-full justify-center"

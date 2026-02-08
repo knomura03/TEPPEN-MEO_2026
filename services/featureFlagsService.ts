@@ -76,10 +76,34 @@ export const featureFlagsService = {
     };
 
     if (params.storeId) {
-      const { error } = await client.from('feature_flags').upsert(payload, {
-        onConflict: 'org_id,store_id,feature_key',
-      });
-      if (error) throw error;
+      // NOTE: `feature_flags` uses partial unique indexes (store_id is null / not null).
+      // PostgREST/Supabase `upsert(onConflict=...)` cannot target partial unique indexes, so use a
+      // manual upsert to keep the schema constraints intact.
+      const { data: existingRows, error: existingError } = await client
+        .from('feature_flags')
+        .select('id')
+        .eq('org_id', params.orgId)
+        .eq('store_id', params.storeId)
+        .eq('feature_key', normalizedFeatureKey)
+        .limit(1);
+      if (existingError) throw existingError;
+
+      if (existingRows && existingRows.length > 0) {
+        const { error: updateError } = await client
+          .from('feature_flags')
+          .update({
+            state: params.state,
+            note: params.note || null,
+            updated_by: params.updatedBy || null,
+          })
+          .eq('org_id', params.orgId)
+          .eq('store_id', params.storeId)
+          .eq('feature_key', normalizedFeatureKey);
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await client.from('feature_flags').insert(payload);
+        if (insertError) throw insertError;
+      }
       return;
     }
 
@@ -118,26 +142,23 @@ export const featureFlagsService = {
     note?: string;
     updatedBy?: string;
   }): Promise<StoreGroupFeatureFlagApplyResult> {
-    const client = requireSupabase();
     const uniqueStoreIds = Array.from(new Set((params.storeIds || []).filter((storeId) => Boolean(storeId))));
     if (uniqueStoreIds.length === 0) {
       throw new Error('一括設定の対象店舗がありません。');
     }
 
     const normalizedFeatureKey = params.featureKey.toLowerCase();
-    const payload = uniqueStoreIds.map((storeId) => ({
-      org_id: params.orgId,
-      store_id: storeId,
-      feature_key: normalizedFeatureKey,
-      state: params.state,
-      note: params.note || null,
-      updated_by: params.updatedBy || null,
-    }));
-
-    const { error } = await client.from('feature_flags').upsert(payload, {
-      onConflict: 'org_id,store_id,feature_key',
-    });
-    if (error) throw error;
+    // Keep this deterministic with the same manual upsert logic as `upsert(storeId=...)`.
+    for (const storeId of uniqueStoreIds) {
+      await this.upsert({
+        orgId: params.orgId,
+        storeId,
+        featureKey: normalizedFeatureKey,
+        state: params.state,
+        note: params.note,
+        updatedBy: params.updatedBy,
+      });
+    }
 
     return {
       appliedStoreCount: uniqueStoreIds.length,

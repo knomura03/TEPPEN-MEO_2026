@@ -23,6 +23,7 @@ import { userStoreControlsService } from '../services/userStoreControlsService';
 import { storeCsvImportService, StoreCsvParseResult } from '../services/storeCsvImportService';
 import { storeLifecycleService } from '../services/storeLifecycleService';
 import { featureFlagsService } from '../services/featureFlagsService';
+import { getErrorMessage } from '../services/errorMessage';
 import { useStore } from '../contexts/StoreContext';
 import { storeGroupsService } from '../services/storeGroupsService';
 import { ModalPortal } from './ModalPortal';
@@ -621,7 +622,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
         'SUCCESS'
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : '店舗グループ一括設定に失敗しました。';
+      const message = getErrorMessage(error) || '店舗グループ一括設定に失敗しました。';
       addNotification('一括設定エラー', message, 'ERROR');
     } finally {
       setIsApplyingBulkSetting(false);

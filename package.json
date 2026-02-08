@@ -8,7 +8,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "smoke:contracts": "node scripts/contract-smoke.js"
+    "smoke:contracts": "node scripts/contract-smoke.js",
+    "audit:phase1": "tsx scripts/audit/runPhaseAudit.ts phase1",
+    "audit:static": "tsx scripts/audit/staticAudit.ts",
+    "audit:db:phase1": "tsx scripts/audit/dbAuditPhase1.ts",
+    "audit:e2e:phase1": "playwright test --config playwright.config.ts scripts/audit/e2e/phase1.spec.ts"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
@@ -21,8 +25,11 @@
     "recharts": "^3.7.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "playwright": "^1.58.2",
+    "tsx": "^4.20.5",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

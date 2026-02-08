@@ -11,6 +11,10 @@ node_modules
 dist
 dist-ssr
 *.local
+output
+playwright-report
+test-results
+supabase/.temp
 
 # Editor directories and files
 .vscode/*

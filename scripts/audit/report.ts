@@ -5,6 +5,7 @@ import { ensureDir, writeTextFile } from './lib';
 import { CommandResult } from './lib';
 import { DbAuditPhase1Result } from './dbAuditPhase1';
 import { StaticAuditResult } from './staticAudit';
+import { AuditBootstrapUsersResult } from './bootstrapUsers';
 
 export type PhaseAuditE2eResult = {
   ok: boolean;
@@ -25,6 +26,7 @@ export type PhaseAuditSummary = {
   outputDir: string;
   staticAudit: StaticAuditResult;
   dbAudit?: DbAuditPhase1Result | null;
+  bootstrapUsers?: AuditBootstrapUsersResult | null;
   e2eAudit?: PhaseAuditE2eResult | null;
 };
 
@@ -70,6 +72,7 @@ const buildEntryMarkdown = (params: { repoRoot: string; summary: PhaseAuditSumma
   const outputRel = toRelative(repoRoot, summary.outputDir);
   const staticRel = toRelative(repoRoot, path.join(summary.outputDir, 'A_static'));
   const dbRel = toRelative(repoRoot, path.join(summary.outputDir, 'B_db'));
+  const bootstrapRel = toRelative(repoRoot, path.join(summary.outputDir, 'preflight_users'));
 
   const lines: string[] = [];
   lines.push(`## ${started.toISOString()} ${summary.phase.toUpperCase()} ${label}`);
@@ -83,6 +86,13 @@ const buildEntryMarkdown = (params: { repoRoot: string; summary: PhaseAuditSumma
     lines.push(`  - logs: \`${dbRel}\``);
   } else {
     lines.push(`- B(db): SKIPPED`);
+  }
+  if (summary.bootstrapUsers) {
+    const info = summary.bootstrapUsers.ok ? 'PASS' : `FAIL: ${summary.bootstrapUsers.error || 'unknown error'}`;
+    lines.push(`- preflight(users): ${info}`);
+    lines.push(`  - logs: \`${bootstrapRel}\``);
+  } else {
+    lines.push(`- preflight(users): SKIPPED`);
   }
   if (summary.e2eAudit) {
     const e2eRel = toRelative(repoRoot, summary.e2eAudit.artifactsDir);
@@ -122,4 +132,3 @@ export const appendPhaseAuditLog = async (params: {
   const next = existing.endsWith('\n') ? `${existing}${entry}` : `${existing}\n${entry}`;
   await writeTextFile(logPath, next);
 };
-

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { ensureAuditUsers } from './bootstrapUsers';
 import { runDbAuditPhase1 } from './dbAuditPhase1';
 import { ensureDir, formatTimestampForPath, loadDotEnvFile, runCommand, writeJsonFile, writeTextFile } from './lib';
 import { appendPhaseAuditLog, PhaseAuditE2eResult, PhaseAuditSummary } from './report';
@@ -205,8 +206,16 @@ const main = async (): Promise<void> => {
     }
   }
 
-  let e2eAudit: PhaseAuditSummary['e2eAudit'] = null;
+  let bootstrapUsers: PhaseAuditSummary['bootstrapUsers'] = null;
   if (staticAudit.ok && dbAudit?.ok) {
+    bootstrapUsers = await ensureAuditUsers({
+      repoRoot,
+      outputDir: path.join(outputDir, 'preflight_users'),
+    });
+  }
+
+  let e2eAudit: PhaseAuditSummary['e2eAudit'] = null;
+  if (staticAudit.ok && dbAudit?.ok && bootstrapUsers?.ok) {
     if (isLocalUrl(baseUrl)) {
       const devOutPath = path.join(runnerLogDir, 'devserver.stdout.log');
       const devErrPath = path.join(runnerLogDir, 'devserver.stderr.log');
@@ -240,7 +249,7 @@ const main = async (): Promise<void> => {
   }
 
   const finishedAt = new Date();
-  const ok = Boolean(staticAudit.ok && dbAudit?.ok && e2eAudit?.ok);
+  const ok = Boolean(staticAudit.ok && dbAudit?.ok && bootstrapUsers?.ok && e2eAudit?.ok);
 
   const summary: PhaseAuditSummary = {
     phase,
@@ -251,6 +260,7 @@ const main = async (): Promise<void> => {
     outputDir,
     staticAudit,
     dbAudit,
+    bootstrapUsers,
     e2eAudit,
   };
 

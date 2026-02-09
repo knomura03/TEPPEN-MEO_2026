@@ -1,6 +1,6 @@
 # TEPPEN MEO：画面/ボタン/機能/DB接続 状態台帳（正本）
 
-最終更新: 2026-02-08（P3-06追記）
+最終更新: 2026-02-09（Phase1/2/3監査PASS反映）
 
 ## 0. 運用ルール（必須）
 - この台帳は、実装・修正・設定変更のたびに**同一作業内で更新**する。
@@ -75,7 +75,7 @@
 | `instagram-publish-post` | `supabase/functions/instagram-publish-post/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |
 | `facebook-publish-post` | `supabase/functions/facebook-publish-post/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |
 | `facebook-reply-message` | `supabase/functions/facebook-reply-message/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |
-| `rank-collect` | `supabase/functions/rank-collect/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 実装済み（2026-02-08）。P3-02/P3-03の収集処理を担当。Deploy後に有効化、`Verify JWT=OFF` 前提で関数内認証 |
+| `rank-collect` | `supabase/functions/rank-collect/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-09 CLI実行確認）/ `Verify JWT=OFF`。P3-02/P3-03の収集処理を担当 |
 
 ## 4. DB migration適用台帳（P1/P2/P3）
 | migrationファイル | 目的 | 状態 |
@@ -111,3 +111,14 @@
 3. 新しい画面やボタンを作った場合は、新規行を追加する
 4. Supabase GUI作業（Function配備、Secret追加、migration実行）があったら `3` と `4` を更新する
 5. 最終確認手順は `docs/12_P1_FINAL_VERIFICATION_RUNBOOK.md` と整合させる
+
+## 7. 監査スナップショット（自動監査結果）
+| Phase | 最新結果 | 監査時刻（UTC） | 監査コミット | サマリJSON |
+|---|---|---|---|---|
+| Phase1 | PASS | 2026-02-09T02:01:37Z | `817e8f9` | `output/audit/phase1/20260209_110137/phaseAudit.summary.json` |
+| Phase2 | PASS | 2026-02-09T02:03:13Z | `bb6101f` | `output/audit/phase2/20260209_110313/phaseAudit.summary.json` |
+| Phase3 | PASS | 2026-02-09T02:27:31Z | `b998961` | `output/audit/phase3/20260209_112731/phaseAudit.summary.json` |
+
+### 備考
+- Phase3は `rank-collect` 未配備によるFAILを経て、関数配備後にPASSへ収束。
+- 監査詳細の時系列ログは `docs/14_PHASE_AUDIT_LOG.md` を正本とし、本節は最新状態の要約のみ保持する。

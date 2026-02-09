@@ -1,6 +1,6 @@
 # TEPPEN MEO：画面/ボタン/機能/DB接続 状態台帳（正本）
 
-最終更新: 2026-02-09（Phase1/2/3監査PASS反映）
+最終更新: 2026-02-09（Phase1/2/3監査PASS、Phase4監査FAILを反映）
 
 ## 0. 運用ルール（必須）
 - この台帳は、実装・修正・設定変更のたびに**同一作業内で更新**する。
@@ -14,6 +14,7 @@
 - `MOCK_ONLY`: モック表示のみ（実データ未接続）
 - `UI_ONLY`: 画面のみ存在し、保存/連携処理は未接続
 - `CONDITIONAL`: コード実装済みだが、外部設定（Edge Functions/Secrets等）完了で有効化
+- `NOT_IMPLEMENTED`: ロードマップ上は定義済みだが未実装
 
 ## 2. 画面・機能マトリクス
 | ID | 画面/領域 | UI/ボタン/機能 | ステータス | 接続先（DB/API/Function） | モック/注意点 | フェーズ |
@@ -65,6 +66,8 @@
 | USER-06 | ユーザー・契約管理 | CSV一括店舗作成実行 | CONNECTED | RPC `bulk_create_stores_for_user` | 1件不正で全体失敗（0件作成） | P1-08拡張 |
 | USER-07 | ユーザー・契約管理 | モーダル表示（スモーク） | CONNECTED | `ModalPortal` | `fixed inset-0` でずれ対策済み | P1-08拡張 |
 | USER-08 | ユーザー・契約管理 | 店舗グループ一括設定（機能公開） | CONNECTED | `feature_flags`（`featureFlagsService.upsertForStoreGroup`） | 実行はADMINのみ。MANAGERは参照のみ | P1-09 |
+| BILL-01 | 課金/請求 | Stripeプラン/契約/請求管理 | NOT_IMPLEMENTED | - | `Phase4` 予定。課金導線UI・DBとも未実装 | Phase4 |
+| PWA-01 | アプリ化 | PWAインストール/オフライン対応 | NOT_IMPLEMENTED | - | `manifest/service worker/install導線` が未実装 | Phase4 |
 
 ## 3. Edge Functions 配備台帳
 | Function名 | リポジトリソース | 必須Secrets | 現在状態 |
@@ -118,7 +121,9 @@
 | Phase1 | PASS | 2026-02-09T02:01:37Z | `817e8f9` | `output/audit/phase1/20260209_110137/phaseAudit.summary.json` |
 | Phase2 | PASS | 2026-02-09T02:03:13Z | `bb6101f` | `output/audit/phase2/20260209_110313/phaseAudit.summary.json` |
 | Phase3 | PASS | 2026-02-09T02:27:31Z | `b998961` | `output/audit/phase3/20260209_112731/phaseAudit.summary.json` |
+| Phase4 | FAIL | 2026-02-09T02:41:09Z | `f5cebf5` | `output/audit/phase4/20260209_114109/phaseAudit.summary.json` |
 
 ### 備考
 - Phase3は `rank-collect` 未配備によるFAILを経て、関数配備後にPASSへ収束。
+- Phase4は `billing_plans` など課金系テーブル未実装（`PGRST205`）でFAIL。`docs/10` の「Phase4除外」と整合する未着手状態。
 - 監査詳細の時系列ログは `docs/14_PHASE_AUDIT_LOG.md` を正本とし、本節は最新状態の要約のみ保持する。

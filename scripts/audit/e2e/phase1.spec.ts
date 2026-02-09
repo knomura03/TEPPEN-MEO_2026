@@ -115,8 +115,21 @@ const logout = async (page: Page) => {
 };
 
 const ensureStoreSelected = async (page: Page) => {
-  const selector = page.getByTestId('store-selector');
-  if (!(await selector.isVisible().catch(() => false))) {
+  const selectorByTestId = page.getByTestId('store-selector');
+  const selectorByHeader = page.getByRole('banner').getByRole('combobox').first();
+
+  await Promise.race([
+    selectorByTestId.waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {}),
+    selectorByHeader.waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {}),
+  ]);
+
+  const selector = (await selectorByTestId.isVisible().catch(() => false))
+    ? selectorByTestId
+    : (await selectorByHeader.isVisible().catch(() => false))
+      ? selectorByHeader
+      : null;
+
+  if (!selector) {
     const storeMissing = page.getByRole('button', { name: /店舗が未設定|店舗取得エラー/ }).first();
     if (await storeMissing.isVisible().catch(() => false)) {
       throw new Error('No stores available for this user. Prepare at least one store (and membership) before running audit.');

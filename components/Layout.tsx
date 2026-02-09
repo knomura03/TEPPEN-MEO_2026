@@ -128,15 +128,15 @@ export const Layout: React.FC<LayoutProps> = ({
   }, [activeOrgId, activeStore?.id]);
 
   const menuItems = [
-    { id: 'DASHBOARD', label: 'ダッシュボード', icon: LayoutDashboard, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'dashboard' },
-    { id: 'BILLING', label: '課金・請求', icon: CreditCard, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'billing' },
-    { id: 'CALENDAR', label: 'カレンダー', icon: Calendar, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'calendar' },
-    { id: 'SURVEY', label: 'アンケート', icon: ClipboardList, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'survey' },
-    { id: 'CREATE_POST', label: '新規投稿', icon: PenSquare, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'create_post' },
-    { id: 'POST_LIST', label: '投稿一覧', icon: List, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'post_list' },
-    { id: 'INBOX', label: '統合受信箱', icon: MessageSquare, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'inbox' },
-    { id: 'RANK_TRACKER', label: '順位計測', icon: TrendingUp, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'rank_tracker' },
-    { id: 'USER_MANAGEMENT', label: 'ユーザー・契約管理', icon: Users, allowed: [Role.ADMIN, Role.MANAGER], featureKey: 'user_management' },
+    { id: 'DASHBOARD', label: 'ダッシュボード', icon: LayoutDashboard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'dashboard' },
+    { id: 'BILLING', label: '課金・請求', icon: CreditCard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'billing' },
+    { id: 'CALENDAR', label: 'カレンダー', icon: Calendar, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'calendar' },
+    { id: 'SURVEY', label: 'アンケート', icon: ClipboardList, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'survey' },
+    { id: 'CREATE_POST', label: '新規投稿', icon: PenSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'create_post' },
+    { id: 'POST_LIST', label: '投稿一覧', icon: List, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'post_list' },
+    { id: 'INBOX', label: '統合受信箱', icon: MessageSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'inbox' },
+    { id: 'RANK_TRACKER', label: '順位計測', icon: TrendingUp, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'rank_tracker' },
+    { id: 'USER_MANAGEMENT', label: 'ユーザー・契約管理', icon: Users, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER], featureKey: 'user_management' },
   ];
 
   const canAccess = (allowedRoles: Role[]) => allowedRoles.includes(currentUser.role);
@@ -147,7 +147,7 @@ export const Layout: React.FC<LayoutProps> = ({
   const canUseFeature = (featureKey: string) => {
     const visibility = getFeatureVisibility(featureKey);
     if (visibility === 'HIDDEN') return false;
-    if (visibility === 'ADMIN_ONLY') return currentUser.role === Role.ADMIN;
+    if (visibility === 'ADMIN_ONLY') return currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR;
     return true;
   };
 
@@ -171,7 +171,7 @@ export const Layout: React.FC<LayoutProps> = ({
     canUseFeature('settings_profile') ||
     canUseFeature('settings_store') ||
     canUseFeature('settings_integrations') ||
-    (currentUser.role === Role.ADMIN && canUseFeature('settings_system'));
+    ((currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR) && canUseFeature('settings_system'));
 
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden transition-colors duration-200`}>
@@ -235,6 +235,7 @@ export const Layout: React.FC<LayoutProps> = ({
                 <p className="text-sm font-bold text-gray-800 dark:text-white truncate group-hover:text-primary-600 transition-colors">{currentUser.name}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate capitalize flex items-center gap-1">
                    {currentUser.role === Role.ADMIN && <span className="w-2 h-2 rounded-full bg-red-500"></span>}
+                   {currentUser.role === Role.SUPERVISOR && <span className="w-2 h-2 rounded-full bg-purple-500"></span>}
                    {currentUser.role === Role.MANAGER && <span className="w-2 h-2 rounded-full bg-blue-500"></span>}
                    {currentUser.role === Role.USER && <span className="w-2 h-2 rounded-full bg-green-500"></span>}
                    {currentUser.role.toLowerCase()}

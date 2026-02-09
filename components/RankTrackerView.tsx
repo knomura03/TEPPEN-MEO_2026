@@ -665,7 +665,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
   }, [dashboardRunDetails]);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in" data-testid="rank-tracker-view">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">順位計測（キーワード管理）</h1>
@@ -699,6 +699,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
             type="button"
             onClick={() => void loadDashboard()}
             disabled={isDashboardLoading || !activeStoreId || !isSupabaseConfigured}
+            data-testid="rank-dashboard-reload"
             className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <RefreshCcw size={14} />
@@ -843,6 +844,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
               type="button"
               onClick={() => void loadNapRuns()}
               disabled={isNapLoading || !activeStoreId || !isSupabaseConfigured}
+              data-testid="nap-runs-reload"
               className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <RefreshCcw size={14} />
@@ -852,6 +854,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
               type="button"
               onClick={() => void handleRunNapCheck()}
               disabled={isNapSubmitting || isNapLoading || !activeStoreId || !isSupabaseConfigured}
+              data-testid="nap-run-execute"
               className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Play size={14} />
@@ -894,6 +897,8 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                   key={run.id}
                   type="button"
                   onClick={() => void handleSelectNapRun(run.id)}
+                  data-testid="nap-run-item"
+                  data-run-id={run.id}
                   className={`w-full text-left p-3 rounded-xl border ${
                     selectedNapRunId === run.id
                       ? 'border-primary-300 bg-primary-50 dark:bg-primary-900/20'
@@ -981,6 +986,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
               type="button"
               onClick={() => void loadNapAlerts()}
               disabled={isNapAlertLoading || !activeStoreId || !isSupabaseConfigured}
+              data-testid="nap-alert-reload"
               className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <RefreshCcw size={14} />
@@ -1011,6 +1017,8 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
               return (
                 <div
                   key={alert.id}
+                  data-testid="nap-alert-item"
+                  data-alert-id={alert.id}
                   className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30"
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -1034,6 +1042,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                         type="button"
                         onClick={() => void handleUpdateNapAlertStatus(alert, 'ACKED')}
                         disabled={disabled}
+                        data-testid="nap-alert-toggle"
                         className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         ACK
@@ -1043,6 +1052,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                         type="button"
                         onClick={() => void handleUpdateNapAlertStatus(alert, 'OPEN')}
                         disabled={disabled}
+                        data-testid="nap-alert-toggle"
                         className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         未対応に戻す
@@ -1053,6 +1063,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                       type="button"
                       onClick={() => void handleUpdateNapAlertStatus(alert, 'RESOLVED')}
                       disabled={disabled}
+                      data-testid="nap-alert-resolve"
                       className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       解消
@@ -1078,6 +1089,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
               type="button"
               onClick={() => void loadCollectionRuns()}
               disabled={isRunLoading || !activeStoreId || !isSupabaseConfigured}
+              data-testid="rank-runs-reload"
               className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <RefreshCcw size={14} />
@@ -1087,6 +1099,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
               type="button"
               onClick={() => void handleRunCollectionMock()}
               disabled={isRunSubmitting || isRunLoading || !activeStoreId || !isSupabaseConfigured}
+              data-testid="rank-run-execute"
               className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Play size={14} />
@@ -1108,6 +1121,8 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                   key={run.id}
                   type="button"
                   onClick={() => void handleSelectRun(run.id)}
+                  data-testid="rank-run-item"
+                  data-run-id={run.id}
                   className={`w-full text-left p-3 rounded-xl border ${
                     selectedRunId === run.id
                       ? 'border-primary-300 bg-primary-50 dark:bg-primary-900/20'
@@ -1220,6 +1235,8 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
             {competitors.map((competitor) => (
               <div
                 key={competitor.id}
+                data-testid="rank-competitor-item"
+                data-competitor-id={competitor.id}
                 className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 flex items-start justify-between gap-3"
               >
                 <div className="min-w-0">
@@ -1235,6 +1252,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                   type="button"
                   onClick={() => void handleArchiveCompetitor(competitor)}
                   disabled={isCompetitorSubmitting}
+                  data-testid="rank-competitor-delete"
                   className="inline-flex items-center gap-1 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-200 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-lg disabled:opacity-60"
                 >
                   <Trash2 size={14} />
@@ -1251,6 +1269,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
             value={newCompetitorName}
             onChange={(e) => setNewCompetitorName(e.target.value)}
             placeholder="競合名（例: 渋谷ラーメン本店）"
+            data-testid="rank-competitor-name-input"
             className="md:col-span-2 w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
             disabled={isCompetitorSubmitting}
           />
@@ -1259,6 +1278,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
             value={newCompetitorNote}
             onChange={(e) => setNewCompetitorNote(e.target.value)}
             placeholder="メモ（任意）"
+            data-testid="rank-competitor-note-input"
             className="w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
             disabled={isCompetitorSubmitting}
           />
@@ -1267,6 +1287,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
           type="button"
           onClick={() => void handleCreateCompetitor()}
           disabled={isCompetitorSubmitting || !activeStoreId || !isSupabaseConfigured}
+          data-testid="rank-competitor-add"
           className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <PlusCircle size={16} />
@@ -1291,7 +1312,12 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
             {keywords.map((item) => {
               const isEditing = editingId === item.id;
               return (
-                <div key={item.id} className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
+                <div
+                  key={item.id}
+                  data-testid="rank-keyword-item"
+                  data-keyword-id={item.id}
+                  className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30"
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       {isEditing ? (
@@ -1387,6 +1413,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
             value={newKeyword}
             onChange={(e) => setNewKeyword(e.target.value)}
             placeholder="キーワード（例: 渋谷 ラーメン）"
+            data-testid="rank-keyword-new-input"
             className="md:col-span-2 w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
             disabled={isSubmitting}
           />
@@ -1395,6 +1422,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
             value={newNote}
             onChange={(e) => setNewNote(e.target.value)}
             placeholder="メモ（任意）"
+            data-testid="rank-keyword-note-input"
             className="w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
             disabled={isSubmitting}
           />
@@ -1403,6 +1431,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
           type="button"
           onClick={() => void handleCreate()}
           disabled={isSubmitting || !activeStoreId || !isSupabaseConfigured}
+          data-testid="rank-keyword-add"
           className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <PlusCircle size={16} />

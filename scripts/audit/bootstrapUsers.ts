@@ -30,7 +30,7 @@ const ensureAuditFeatureFlags = async (params: {
   storeId: string;
   actorUserId: string;
 }): Promise<void> => {
-  const requiredFeatureKeys = ['survey', 'create_post', 'post_list', 'inbox', 'user_management'];
+  const requiredFeatureKeys = ['survey', 'create_post', 'post_list', 'inbox', 'user_management', 'rank_tracker'];
   for (const featureKey of requiredFeatureKeys) {
     const normalizedFeatureKey = featureKey.toLowerCase();
     const { data: existingRows, error: existingError } = await params.supabase

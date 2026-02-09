@@ -11,11 +11,14 @@
     "smoke:contracts": "node scripts/contract-smoke.js",
     "audit:phase1": "tsx scripts/audit/runPhaseAudit.ts phase1",
     "audit:phase2": "tsx scripts/audit/runPhaseAudit.ts phase2",
+    "audit:phase3": "tsx scripts/audit/runPhaseAudit.ts phase3",
     "audit:static": "tsx scripts/audit/staticAudit.ts",
     "audit:db:phase1": "tsx scripts/audit/dbAuditPhase1.ts",
     "audit:db:phase2": "tsx scripts/audit/dbAuditPhase2.ts",
+    "audit:db:phase3": "tsx scripts/audit/dbAuditPhase3.ts",
     "audit:e2e:phase1": "playwright test --config playwright.config.ts scripts/audit/e2e/phase1.spec.ts",
-    "audit:e2e:phase2": "playwright test --config playwright.config.ts scripts/audit/e2e/phase2.spec.ts"
+    "audit:e2e:phase2": "playwright test --config playwright.config.ts scripts/audit/e2e/phase2.spec.ts",
+    "audit:e2e:phase3": "playwright test --config playwright.config.ts scripts/audit/e2e/phase3.spec.ts"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",

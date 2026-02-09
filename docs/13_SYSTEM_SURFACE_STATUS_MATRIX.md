@@ -73,8 +73,8 @@
 | Function名 | リポジトリソース | 必須Secrets | 現在状態 |
 |---|---|---|---|
 | `admin-create-user` | `supabase/functions/admin-create-user/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-06）/ `Verify JWT=OFF` 設定運用 |
-| `admin-billing-plan-upsert` | `supabase/functions/admin-billing-plan-upsert/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 未配備（要配備）。既存運用同様 `Verify JWT=OFF` 前提 |
-| `admin-org-subscription-set-plan` | `supabase/functions/admin-org-subscription-set-plan/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 未配備（要配備）。既存運用同様 `Verify JWT=OFF` 前提 |
+| `admin-billing-plan-upsert` | `supabase/functions/admin-billing-plan-upsert/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-09 UTC, CLI実施）/ `Verify JWT=OFF` |
+| `admin-org-subscription-set-plan` | `supabase/functions/admin-org-subscription-set-plan/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-09 UTC, CLI実施）/ `Verify JWT=OFF` |
 | `admin-provider-secret-upsert` | `supabase/functions/admin-provider-secret-upsert/index.ts` | `SUPABASE_SERVICE_ROLE_KEY`, `PROVIDER_CONFIG_ENCRYPTION_KEY` | 配備済み（2026-02-06）/ Secrets登録済み（2026-02-06）/ `Verify JWT=OFF` 設定運用 |
 | `admin-provider-connection-test` | `supabase/functions/admin-provider-connection-test/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-06）/ `Verify JWT=OFF` 設定運用 |
 | `instagram-publish-post` | `supabase/functions/instagram-publish-post/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |

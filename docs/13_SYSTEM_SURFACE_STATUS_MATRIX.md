@@ -27,7 +27,7 @@
 | POST-01 | 新規投稿 | 投稿保存（単一店舗） | HYBRID | `posts` | Supabase未設定時は疑似成功通知 | P1-06対応済み |
 | POST-02 | 新規投稿 | 画像アップロード | CONNECTED | Supabase Storage `post-media`, `post_media` | バケット/ポリシー未設定だと失敗 | P1 |
 | POST-03 | 新規投稿 | 投稿先選択 | MOCK_ONLY | なし | `MOCK_ACCOUNTS` 固定 | P2で実接続予定 |
-| POST-04 | 新規投稿 | 店舗グループ一括投稿 | CONNECTED | `store_groups`, `postsService.createBulk` | ADMIN/MANAGERのみ利用可。失敗時ロールバック | P1-09 |
+| POST-04 | 新規投稿 | 店舗グループ一括投稿 | CONNECTED | `store_groups`, `postsService.createBulk` | ADMIN/SUPERVISOR/MANAGERのみ利用可。失敗時ロールバック | P1-09 |
 | POST-07 | 新規投稿 | テンプレート適用/ブランド警告 | HYBRID | `brandKitService`, `brand_kits`, `post_templates` | migration `202602060014` 未適用環境は専用エラー。Supabase未設定時はテンプレ未登録表示 | P2-05 |
 | POST-05 | 投稿一覧 | Instagram投稿実行（手動） | CONDITIONAL | `postPublishService`, Edge Function `instagram-publish-post`, `post_publish_logs` | `202602060011` + Function配備後に有効。条件未達時はMOCK記録で実行 | P2-02 |
 | POST-06 | 投稿一覧 | Facebook投稿実行（手動） | CONDITIONAL | `postPublishService`, Edge Function `facebook-publish-post`, `post_publish_logs` | Function配備後に有効。条件未達時はMOCK記録で実行 | P2-03 |
@@ -57,22 +57,24 @@
 | SET-05 | 設定>SNS連携 | Secret保存/接続テスト | CONDITIONAL | Edge Functions `admin-provider-secret-upsert`, `admin-provider-connection-test` | Functions配備/Secrets登録/有効ログインセッションが必須。Gateway 401対策としてフロントは `functions.invoke` ではなくHTTP直叩き（`apikey`+`Authorization`）を使用。Functions設定の `Verify JWT=OFF` が前提 | Phase0 |
 | SET-07 | 設定>SNS連携 | OAuth連携（開始/完了/解除） | CONDITIONAL | RPC `oauth_start_session`, `oauth_complete_session`, `oauth_disconnect_session`, `oauth_sessions` | `202602060010` 適用後に有効。現段階はモック認可URL + 認可コード入力で共通導線を検証 | P2-01 |
 | SET-06 | 設定>システム管理 | APIキー表示UI | UI_ONLY | なし | ダミー表示（`****************************`） | 未着手 |
-| SET-08 | 設定>システム管理 | ブランドキット/投稿テンプレ管理 | CONDITIONAL | `brand_kits`, `post_templates`, `brandKitService` | `202602060014` 適用後に有効。権限はADMIN/MANAGER（UIはADMIN導線） | P2-05 |
+| SET-08 | 設定>システム管理 | ブランドキット/投稿テンプレ管理 | CONDITIONAL | `brand_kits`, `post_templates`, `brandKitService` | `202602060014` 適用後に有効。権限は内部（ADMIN/SUPERVISOR） | P2-05 |
 | USER-01 | ユーザー・契約管理 | ユーザー一覧/削除 | HYBRID | `memberships`, `profiles` | Supabase未設定時は `MOCK_USERS` | P1 |
 | USER-02 | ユーザー・契約管理 | 新規ユーザー招待 | CONDITIONAL | Edge Function `admin-create-user` | Function配備＋`SUPABASE_SERVICE_ROLE_KEY`必須 | P1 |
 | USER-03 | ユーザー・契約管理 | 店舗グループCRUD | CONNECTED | `store_groups`, `store_group_stores` | USERは編集不可 | P1-08 |
-| USER-04 | ユーザー・契約管理 | USER別 店舗上限設定 | CONNECTED | `org_store_policies`, `user_store_controls` | ADMIN/MANAGERのみ操作可 | P1-08拡張 |
+| USER-04 | ユーザー・契約管理 | USER別 店舗上限設定 | CONNECTED | `org_store_policies`, `user_store_controls` | ADMIN/SUPERVISORのみ操作可 | P1-08拡張 |
 | USER-05 | ユーザー・契約管理 | CSV一括店舗作成ON/OFF | CONNECTED | `user_store_controls.allow_csv_store_bulk_create` | USER対象のみ | P1-08拡張 |
 | USER-06 | ユーザー・契約管理 | CSV一括店舗作成実行 | CONNECTED | RPC `bulk_create_stores_for_user` | 1件不正で全体失敗（0件作成） | P1-08拡張 |
 | USER-07 | ユーザー・契約管理 | モーダル表示（スモーク） | CONNECTED | `ModalPortal` | `fixed inset-0` でずれ対策済み | P1-08拡張 |
-| USER-08 | ユーザー・契約管理 | 店舗グループ一括設定（機能公開） | CONNECTED | `feature_flags`（`featureFlagsService.upsertForStoreGroup`） | 実行はADMINのみ。MANAGERは参照のみ | P1-09 |
-| BILL-01 | 課金/請求 | Stripeプラン/契約/請求管理 | CONDITIONAL | `billing_plans`, `org_subscriptions`, `billing_invoices`, `subscription_usage_events` | 課金/請求UI（プラン表示・請求履歴・請求書DL導線）は実装済み。Stripe本番課金API連携は未実装 | Phase4 |
+| USER-08 | ユーザー・契約管理 | 店舗グループ一括設定（機能公開） | CONNECTED | `feature_flags`（`featureFlagsService.upsertForStoreGroup`） | 実行は内部（ADMIN/SUPERVISOR）のみ。顧客MANAGERは参照のみ | P1-09 |
+| BILL-01 | 課金/請求 | 契約プラン作成/更新 + ORG割当（請求は外部運用） | CONDITIONAL | `billing_plans`, `org_subscriptions`, `audit_logs`, Edge Functions `admin-billing-plan-upsert`, `admin-org-subscription-set-plan` | 画面表示は全ロール可。編集は内部（ADMIN/SUPERVISOR）のみ。Stripe本番課金API連携・請求書は未実装（外部運用） | Phase4 |
 | PWA-01 | アプリ化 | PWAインストール/オフライン対応 | CONDITIONAL | `pwa_installations` | `manifest`/`service worker`/インストール導線は実装済み。PWA利用ログ保存（`pwa_installations`）は未接続 | Phase4 |
 
 ## 3. Edge Functions 配備台帳
 | Function名 | リポジトリソース | 必須Secrets | 現在状態 |
 |---|---|---|---|
 | `admin-create-user` | `supabase/functions/admin-create-user/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-06）/ `Verify JWT=OFF` 設定運用 |
+| `admin-billing-plan-upsert` | `supabase/functions/admin-billing-plan-upsert/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 未配備（要配備）。既存運用同様 `Verify JWT=OFF` 前提 |
+| `admin-org-subscription-set-plan` | `supabase/functions/admin-org-subscription-set-plan/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 未配備（要配備）。既存運用同様 `Verify JWT=OFF` 前提 |
 | `admin-provider-secret-upsert` | `supabase/functions/admin-provider-secret-upsert/index.ts` | `SUPABASE_SERVICE_ROLE_KEY`, `PROVIDER_CONFIG_ENCRYPTION_KEY` | 配備済み（2026-02-06）/ Secrets登録済み（2026-02-06）/ `Verify JWT=OFF` 設定運用 |
 | `admin-provider-connection-test` | `supabase/functions/admin-provider-connection-test/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-06）/ `Verify JWT=OFF` 設定運用 |
 | `instagram-publish-post` | `supabase/functions/instagram-publish-post/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |
@@ -102,6 +104,7 @@
 | `supabase/migrations/202602060018_p3_nap_consistency_check.sql` | P3-05 NAP整合性チェック | 実装済み。未適用環境ではNAPチェック履歴/結果が実行できない |
 | `supabase/migrations/202602060019_p3_nap_alert_operations.sql` | P3-06 NAPアラート運用 | 実装済み。未適用環境ではNAPアラート表示/運用が実行できない |
 | `supabase/migrations/202602060020_p4_billing_pwa_foundation.sql` | P4 課金/PWA DB基盤 | 実装済み。未適用環境ではPhase4 DB監査が `PGRST205` で失敗する |
+| `supabase/migrations/202602090001_p4_roles_supervisor_and_plan_admin_gui.sql` | P4 ロール再編（SUPERVISOR）+ 契約プランGUI | 実装済み（要適用）。未適用環境ではロール再編/プラン管理GUIが正しく動作しない |
 
 ## 5. 現時点のモック/未接続残件（優先順）
 1. ダッシュボードKPIが固定値（実データ未接続）

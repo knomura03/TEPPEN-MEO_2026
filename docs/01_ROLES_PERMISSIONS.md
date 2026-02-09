@@ -1,18 +1,23 @@
 # TEPPEN MEO：ロール/権限設計（権限フラグ方式）
 
-最終更新: 2026-02-03
+最終更新: 2026-02-09
 
 ## 目的
 ロール（ADMIN/MANAGER/USER）の呼び名や範囲が将来変わっても、実装や運用が壊れないようにします。
 
 そのために、**ロール名ではなく「権限フラグ」で機能アクセスを制御**します。
 
-## ロール定義（現時点の理解）
-※この定義は将来変わる可能性がある前提です。
+## ロール定義（確定: 2026-02-09）
+ロールは4段階に整理しました（内部と顧客を明確に分離します）。
 
-- **ADMIN**: knomura。開発者。全権（全組織/全店舗/全設定/全ログ）。
-- **MANAGER**: TEPPEN MEOの営業/運用。USER権限に加えて、ユーザー管理（追加/削除/権限/上限）やメルマガ配信など。
-- **USER**: 店舗スタッフなど。TEPPEN MEOの基本機能（投稿/受信箱/設定/ダッシュボード等）。
+- **ADMIN**: 内部。全権（全組織/全店舗/全設定/全ログ/全ユーザー作成）。
+- **SUPERVISOR**: 内部。販売代理店（旧MANAGERの置換）。顧客ORGの管理（契約プラン割当、顧客ユーザー招待、上限管理など）。
+- **MANAGER**: 顧客。ORG内リーダー（店舗責任者）。顧客ユーザー管理（USER招待）や承認などの運用権限。
+- **USER**: 顧客。一般ユーザー（店舗スタッフ）。基本機能（投稿/受信箱/設定など）。
+
+補足:
+- **旧`MANAGER`（代理店）= 新`SUPERVISOR`**へ移行する前提（DB migrationで置換）。
+- 新`MANAGER`は「顧客側のORG内リーダー」として新規に作成していく。
 
 ## 基本方針（重要）
 1. **表示制御（フロント）**: 画面・ボタンは権限に応じて表示/非活性にする（UX）。
@@ -28,8 +33,11 @@
 - `canSendMail`：メルマガ配信・配信リスト管理
 - `canManageIntegrations`：外部連携（GBP等）の接続/解除、再同期
 - `canViewAuditLogs`：監査ログ閲覧
-- `canManagePlans`：ユーザーごとの上限（例: 機能枠/数値）変更
+- `canManageBillingPlans`：契約プラン（Plan catalog）の作成/更新/有効化
+- `canSetOrgPlan`：ORGへの契約プラン割当/変更（`org_subscriptions`）
+- `canManageUserStoreControls`：ユーザー別 店舗上限/CSV一括ON-OFF（`user_store_controls`）
 - `canManageSystemSettings`：システム設定（将来: GUIで鍵管理等）
+- `canManageStoreGroups`：店舗グループCRUD・グループ一括設定（P1-08/09）
 
 ### 日常機能
 - `canCreatePosts`：投稿作成/編集/削除
@@ -44,6 +52,17 @@
 - まずは「ロールにプリセットの権限セット」を割り当てる（例: MANAGERは `canManageUsers=true`）。
 - ただし将来の仕様変更に備え、**個別ユーザー（Membership）単位での上書き**を許可する。
 - 変更履歴（誰が、いつ、何を変えたか）は監査ログに残す。
+
+## 実装で固定した重要ルール（2026-02-09）
+- **内部ユーザーの定義**: `ADMIN` / `SUPERVISOR`
+- **顧客ユーザーの定義**: `MANAGER` / `USER`
+- **FeatureFlagの`ADMIN_ONLY`**: 内部のみ（`ADMIN`/`SUPERVISOR`）
+- **契約プラン割当（請求は外部運用）**
+  - プラン割当単位はORG（`org_subscriptions`）
+  - 内部（`ADMIN`/`SUPERVISOR`）が「そのORGで最初の顧客ユーザー（`MANAGER`/`USER`）を作成」する場合のみ、`planCode`を必須にする（事故防止）
+  - 顧客`MANAGER`がユーザー招待する場合は、`planCode`は無視する（顧客がプランを触れない運用を保証）
+
+運用手順は `docs/15_CONTRACT_PLAN_OPERATIONS.md` を参照。
 
 ## “二段構え”の具体例
 ### 例1: ユーザー管理
@@ -61,4 +80,3 @@ knomuraの工数を最小にするため、最終的には以下を管理画面�
 - 変更は監査ログに自動記録
 
 ※MVPでは「安全運用」を優先し、秘密情報の登録は環境変数運用になる可能性があります（`docs/04_ENV_AND_SECRETS.md`）。
-

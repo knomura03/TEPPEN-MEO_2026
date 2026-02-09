@@ -25,6 +25,44 @@ TEPPEN MEO内で「契約プランの作成/更新」「ORGへの割当」「ユ
    - `admin-org-subscription-set-plan`
    - `admin-create-user`（ユーザー招待）
 
+## 準備: DB migration 適用手順（Supabase SQL Editor）
+前提: 本番Supabaseの `SQL Editor` で実行します（forward-only）。
+
+1. Supabaseダッシュボードを開く
+2. 左メニュー `SQL Editor` を開く
+3. `New query`（新規クエリ）を作成
+4. 下記ファイルの内容を、丸ごと貼り付けて `Run` する
+   - `supabase/migrations/202602060020_p4_billing_pwa_foundation.sql`
+   - `supabase/migrations/202602090001_p4_roles_supervisor_and_plan_admin_gui.sql`
+5. 画面下に `Success. No rows returned` が出ることを確認
+
+注意:
+- 途中でエラーになった場合は、エラーメッセージ（全文）を貼ってください。前提migrationの抜け/実行順の問題を切り分けます。
+
+## 準備: Edge Functions デプロイ手順（Supabase GUI）
+前提: 既存運用に合わせて `Verify JWT=OFF` で運用します。
+
+### 1) `admin-billing-plan-upsert` をデプロイ
+1. Supabaseダッシュボードを開く
+2. 左メニュー `Edge Functions` → `Functions`
+3. 右上 `Deploy a new function` → `Via Editor`
+4. Function name に `admin-billing-plan-upsert` を入力して作成
+5. エディタに、下記ファイルの中身を丸ごと貼り付けて `Deploy`（または保存/デプロイ）
+   - `supabase/functions/admin-billing-plan-upsert/index.ts`
+6. デプロイ後、Functions一覧に表示されることを確認
+7. Function詳細の設定で `Verify JWT` を `OFF` にする
+
+### 2) `admin-org-subscription-set-plan` をデプロイ
+同様に、以下をデプロイします。
+- Function name: `admin-org-subscription-set-plan`
+- 貼り付け元: `supabase/functions/admin-org-subscription-set-plan/index.ts`
+
+### 3) Secrets確認（共通）
+1. 左メニュー `Edge Functions` → `Secrets`
+2. `SUPABASE_SERVICE_ROLE_KEY` が存在することを確認
+   - 無い場合: Supabaseの `Project Settings` から `service_role` キーを取得し、Secretsへ登録
+
+
 ## 手順1: 契約プランを作成/更新する（内部ユーザーのみ）
 1. 左メニューから `課金・請求` を開く
 2. 画面内の `内部: 契約プラン管理` セクションを確認
@@ -77,4 +115,3 @@ TEPPEN MEO内で「契約プランの作成/更新」「ORGへの割当」「ユ
   - ログアウト→再ログインを試す
   - Functions配備/Secrets（`SUPABASE_SERVICE_ROLE_KEY`）を確認する
   - それでも解消しない場合は `docs/13_SYSTEM_SURFACE_STATUS_MATRIX.md` の「Gateway 401対策」メモに従い、Function設定（`Verify JWT`）やInvocationsを確認する
-

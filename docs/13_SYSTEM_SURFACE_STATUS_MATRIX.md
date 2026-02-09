@@ -66,8 +66,8 @@
 | USER-06 | ユーザー・契約管理 | CSV一括店舗作成実行 | CONNECTED | RPC `bulk_create_stores_for_user` | 1件不正で全体失敗（0件作成） | P1-08拡張 |
 | USER-07 | ユーザー・契約管理 | モーダル表示（スモーク） | CONNECTED | `ModalPortal` | `fixed inset-0` でずれ対策済み | P1-08拡張 |
 | USER-08 | ユーザー・契約管理 | 店舗グループ一括設定（機能公開） | CONNECTED | `feature_flags`（`featureFlagsService.upsertForStoreGroup`） | 実行はADMINのみ。MANAGERは参照のみ | P1-09 |
-| BILL-01 | 課金/請求 | Stripeプラン/契約/請求管理 | NOT_IMPLEMENTED | `billing_plans`, `org_subscriptions`, `billing_invoices`, `subscription_usage_events` | DB基盤は `202602060020` で実装済み。課金UI/外部決済連携は未実装 | Phase4 |
-| PWA-01 | アプリ化 | PWAインストール/オフライン対応 | NOT_IMPLEMENTED | `pwa_installations` | DB基盤は `202602060020` で実装済み。`manifest/service worker/install導線` は未実装 | Phase4 |
+| BILL-01 | 課金/請求 | Stripeプラン/契約/請求管理 | CONDITIONAL | `billing_plans`, `org_subscriptions`, `billing_invoices`, `subscription_usage_events` | 課金/請求UI（プラン表示・請求履歴・請求書DL導線）は実装済み。Stripe本番課金API連携は未実装 | Phase4 |
+| PWA-01 | アプリ化 | PWAインストール/オフライン対応 | CONDITIONAL | `pwa_installations` | `manifest`/`service worker`/インストール導線は実装済み。PWA利用ログ保存（`pwa_installations`）は未接続 | Phase4 |
 
 ## 3. Edge Functions 配備台帳
 | Function名 | リポジトリソース | 必須Secrets | 現在状態 |
@@ -122,9 +122,9 @@
 | Phase1 | PASS | 2026-02-09T02:48:28Z | `2e4dea3` | `output/audit/phase1/20260209_114828/phaseAudit.summary.json` |
 | Phase2 | PASS | 2026-02-09T02:44:32Z | `8ac24c7` | `output/audit/phase2/20260209_114432/phaseAudit.summary.json` |
 | Phase3 | PASS | 2026-02-09T02:50:44Z | `b71680e` | `output/audit/phase3/20260209_115044/phaseAudit.summary.json` |
-| Phase4 | FAIL | 2026-02-09T04:22:53Z | `f1bbb7c` | `output/audit/phase4/20260209_132253/phaseAudit.summary.json` |
+| Phase4 | PASS | 2026-02-09T05:24:12Z | `20dddfc` | `output/audit/phase4/20260209_142412/phaseAudit.summary.json` |
 
 ### 備考
 - Phase3は `rank-collect` 未配備によるFAILを経て、関数配備後にPASSへ収束。
-- Phase4は DB基盤migration（`202602060020`）適用済みでB(DB)はPASS。現在のFAIL要因はC(E2E)で、課金/請求UI導線とPWA導線の未実装。
+- Phase4は DB基盤migration（`202602060020`）適用済み。課金/請求UI導線とPWA導線の追加後、A/B/C すべてPASSへ収束。
 - 監査詳細の時系列ログは `docs/14_PHASE_AUDIT_LOG.md` を正本とし、本節は最新状態の要約のみ保持する。

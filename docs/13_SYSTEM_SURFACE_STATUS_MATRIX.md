@@ -119,7 +119,7 @@
 ## 7. 監査スナップショット（自動監査結果）
 | Phase | 最新結果 | 監査時刻（UTC） | 監査コミット | サマリJSON |
 |---|---|---|---|---|
-| Phase1 | PASS | 2026-02-09T02:48:28Z | `2e4dea3` | `output/audit/phase1/20260209_114828/phaseAudit.summary.json` |
+| Phase1 | PASS | 2026-02-09T05:27:36Z | `23047d8` | `output/audit/phase1/20260209_142736/phaseAudit.summary.json` |
 | Phase2 | PASS | 2026-02-09T02:44:32Z | `8ac24c7` | `output/audit/phase2/20260209_114432/phaseAudit.summary.json` |
 | Phase3 | PASS | 2026-02-09T02:50:44Z | `b71680e` | `output/audit/phase3/20260209_115044/phaseAudit.summary.json` |
 | Phase4 | PASS | 2026-02-09T05:24:12Z | `20dddfc` | `output/audit/phase4/20260209_142412/phaseAudit.summary.json` |

@@ -122,9 +122,9 @@
 | Phase1 | PASS | 2026-02-09T02:48:28Z | `2e4dea3` | `output/audit/phase1/20260209_114828/phaseAudit.summary.json` |
 | Phase2 | PASS | 2026-02-09T02:44:32Z | `8ac24c7` | `output/audit/phase2/20260209_114432/phaseAudit.summary.json` |
 | Phase3 | PASS | 2026-02-09T02:50:44Z | `b71680e` | `output/audit/phase3/20260209_115044/phaseAudit.summary.json` |
-| Phase4 | FAIL | 2026-02-09T02:52:38Z | `0854eb9` | `output/audit/phase4/20260209_115238/phaseAudit.summary.json` |
+| Phase4 | FAIL | 2026-02-09T04:22:53Z | `f1bbb7c` | `output/audit/phase4/20260209_132253/phaseAudit.summary.json` |
 
 ### 備考
 - Phase3は `rank-collect` 未配備によるFAILを経て、関数配備後にPASSへ収束。
-- Phase4は DB基盤migration（`202602060020`）追加済み。監査FAILは「本番Supabaseへの未適用」が原因で、適用後はB(DB)を再評価する。
+- Phase4は DB基盤migration（`202602060020`）適用済みでB(DB)はPASS。現在のFAIL要因はC(E2E)で、課金/請求UI導線とPWA導線の未実装。
 - 監査詳細の時系列ログは `docs/14_PHASE_AUDIT_LOG.md` を正本とし、本節は最新状態の要約のみ保持する。

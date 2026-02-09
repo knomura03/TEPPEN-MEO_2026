@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
     return jsonResponse(400, { error: 'Missing required fields' });
   }
 
-  const allowedRoles = new Set(['ADMIN', 'MANAGER', 'USER']);
+  const allowedRoles = new Set(['ADMIN', 'SUPERVISOR', 'MANAGER', 'USER']);
   if (!allowedRoles.has(role)) {
     return jsonResponse(400, { error: 'Invalid role' });
   }
@@ -147,13 +147,21 @@ Deno.serve(async (req) => {
 
   const actorRoles = actorMemberships.map((row: { role: string }) => row.role.toUpperCase());
   const isAdmin = actorRoles.includes('ADMIN');
+  const isSupervisor = actorRoles.includes('SUPERVISOR');
   const isManager = actorRoles.includes('MANAGER');
+  const isInternal = isAdmin || isSupervisor;
 
-  if ((role === 'ADMIN' || role === 'MANAGER') && !isAdmin) {
-    return jsonResponse(403, { error: 'Only ADMIN can create ADMIN/MANAGER' });
+  if (role === 'ADMIN' && !isAdmin) {
+    return jsonResponse(403, { error: 'Only ADMIN can create ADMIN' });
   }
-  if (role === 'USER' && !(isAdmin || isManager)) {
-    return jsonResponse(403, { error: 'Only ADMIN or MANAGER can create USER' });
+  if (role === 'SUPERVISOR' && !isAdmin) {
+    return jsonResponse(403, { error: 'Only ADMIN can create SUPERVISOR' });
+  }
+  if (role === 'MANAGER' && !isInternal) {
+    return jsonResponse(403, { error: 'Only ADMIN/SUPERVISOR can create MANAGER' });
+  }
+  if (role === 'USER' && !(isInternal || isManager)) {
+    return jsonResponse(403, { error: 'Only ADMIN/SUPERVISOR/MANAGER can create USER' });
   }
 
   let newUserId: string;
@@ -239,8 +247,29 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Contract plan enforcement:
+  // - Internal (ADMIN/SUPERVISOR) must provide planCode when the org has no plan and they are creating a customer user (MANAGER/USER).
+  // - Customer MANAGER invitations ignore planCode to prevent plan changes by customers.
+  let orgHasPlan = false;
+  if (isInternal && (role === 'MANAGER' || role === 'USER')) {
+    const { data: existingSubscription, error: subscriptionError } = await supabaseAdmin
+      .from('org_subscriptions')
+      .select('id, billing_plan_id')
+      .eq('org_id', targetOrgId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (subscriptionError) {
+      return jsonResponse(400, { error: subscriptionError.message });
+    }
+    orgHasPlan = Boolean(existingSubscription?.billing_plan_id);
+    if (!orgHasPlan && (!planCode || planCode.length === 0)) {
+      return jsonResponse(400, { error: 'planCode is required for the first customer user in this org' });
+    }
+  }
+
   // Optional: assign/update contract plan for the org (billing foundation must be applied).
-  if (planCode && planCode.length > 0) {
+  if (isInternal && planCode && planCode.length > 0) {
     const { data: planRow, error: planError } = await supabaseAdmin
       .from('billing_plans')
       .select('id, code, is_active')

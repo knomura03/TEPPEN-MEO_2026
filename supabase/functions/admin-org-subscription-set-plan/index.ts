@@ -101,9 +101,9 @@ Deno.serve(async (req) => {
 
   const actorRoles = actorMemberships.map((row: { role: string }) => String(row.role || '').toUpperCase());
   const isAdmin = actorRoles.includes('ADMIN');
-  const isManager = actorRoles.includes('MANAGER');
-  if (!(isAdmin || isManager)) {
-    return jsonResponse(403, { error: 'Only ADMIN/MANAGER can change org subscription plan' });
+  const isSupervisor = actorRoles.includes('SUPERVISOR');
+  if (!(isAdmin || isSupervisor)) {
+    return jsonResponse(403, { error: 'Only ADMIN/SUPERVISOR can change org subscription plan' });
   }
 
   const { data: planRow, error: planError } = await supabaseAdmin
@@ -179,4 +179,3 @@ Deno.serve(async (req) => {
     planCode,
   });
 });
-

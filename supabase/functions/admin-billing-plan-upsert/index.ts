@@ -87,10 +87,10 @@ Deno.serve(async (req) => {
 
   const isPrivileged = actorMemberships.some((row: { role: string }) => {
     const role = String(row.role || '').toUpperCase();
-    return role === 'ADMIN' || role === 'MANAGER';
+    return role === 'ADMIN' || role === 'SUPERVISOR';
   });
   if (!isPrivileged) {
-    return jsonResponse(403, { error: 'Only ADMIN/MANAGER can manage billing plans' });
+    return jsonResponse(403, { error: 'Only ADMIN/SUPERVISOR can manage billing plans' });
   }
 
   let payload: {
@@ -187,4 +187,3 @@ Deno.serve(async (req) => {
     code,
   });
 });
-

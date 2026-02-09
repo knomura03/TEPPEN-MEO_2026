@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Role, StoreGroup, User, VisibilityState } from '../types';
+import { BillingPlan, Role, StoreGroup, User, VisibilityState } from '../types';
 import { MOCK_USERS } from '../constants';
 import {
   Trash2,
@@ -23,6 +23,7 @@ import { userStoreControlsService } from '../services/userStoreControlsService';
 import { storeCsvImportService, StoreCsvParseResult } from '../services/storeCsvImportService';
 import { storeLifecycleService } from '../services/storeLifecycleService';
 import { featureFlagsService } from '../services/featureFlagsService';
+import { billingService } from '../services/billingService';
 import { getErrorMessage } from '../services/errorMessage';
 import { useStore } from '../contexts/StoreContext';
 import { storeGroupsService } from '../services/storeGroupsService';
@@ -60,6 +61,7 @@ const BULK_FEATURE_OPTIONS: { key: string; label: string; description: string }[
 export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
   const { stores, activeStoreId, reloadStores } = useStore();
+  const isInternal = currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR;
 
   const [userRows, setUserRows] = useState<ManagedUserStoreSummary[]>(fallbackSummary);
   const [isLoading, setIsLoading] = useState(false);
@@ -71,7 +73,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<Role>(Role.USER);
   const [inviteStoreId, setInviteStoreId] = useState<string>('');
+  const [invitePlanCode, setInvitePlanCode] = useState<string>('');
   const [isInviting, setIsInviting] = useState(false);
+  const [orgPlanCode, setOrgPlanCode] = useState<string>('');
+  const [isOrgPlanMissing, setIsOrgPlanMissing] = useState<boolean>(false);
+  const [invitePlanCatalog, setInvitePlanCatalog] = useState<BillingPlan[]>([]);
+  const [isLoadingInvitePlans, setIsLoadingInvitePlans] = useState<boolean>(false);
 
   const [storeGroups, setStoreGroups] = useState<StoreGroup[]>([]);
   const [isLoadingGroups, setIsLoadingGroups] = useState(false);
@@ -162,7 +169,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     () => storeGroups.find((group) => group.id === bulkSettingGroupId) || null,
     [bulkSettingGroupId, storeGroups]
   );
-  const canApplyBulkSetting = currentUser.role === Role.ADMIN;
+  const canApplyBulkSetting = isInternal;
 
   const syncControlDrafts = (rows: ManagedUserStoreSummary[]) => {
     const next: Record<string, ControlDraft> = {};
@@ -225,6 +232,52 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     }
   };
 
+  const loadOrgPlan = async (orgId: string | null) => {
+    if (!isSupabaseConfigured) {
+      setOrgPlanCode('FREE');
+      setIsOrgPlanMissing(false);
+      return;
+    }
+    if (!orgId) {
+      setOrgPlanCode('');
+      setIsOrgPlanMissing(false);
+      return;
+    }
+
+    try {
+      const subscription = await billingService.getOrgSubscription(orgId);
+      const code = subscription?.billingPlan?.code ? String(subscription.billingPlan.code) : '';
+      setOrgPlanCode(code);
+      setIsOrgPlanMissing(!code);
+      if (code) {
+        setInvitePlanCode('');
+      }
+    } catch (error) {
+      console.error('[UserManagement] Failed to load org plan:', error);
+      setOrgPlanCode('');
+      setIsOrgPlanMissing(true);
+    }
+  };
+
+  const loadInvitePlanCatalog = async () => {
+    if (!isInternal || !isSupabaseConfigured) {
+      setInvitePlanCatalog([]);
+      return;
+    }
+    setIsLoadingInvitePlans(true);
+    try {
+      const plans = await billingService.listBillingPlans({ includeInactive: false });
+      const activePlans = plans.filter((plan) => plan.isActive);
+      setInvitePlanCatalog(activePlans);
+    } catch (error) {
+      const message = getErrorMessage(error) || '契約プラン一覧の取得に失敗しました。';
+      addNotification('プラン取得エラー', message, 'ERROR');
+      setInvitePlanCatalog([]);
+    } finally {
+      setIsLoadingInvitePlans(false);
+    }
+  };
+
   useEffect(() => {
     if (!inviteStoreId && activeStoreId) {
       setInviteStoreId(activeStoreId);
@@ -236,10 +289,20 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     const loadData = async () => {
       await loadUsers(activeOrgId);
       await loadStoreGroups(activeOrgId);
+      await loadOrgPlan(activeOrgId);
     };
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOrgId]);
+
+  useEffect(() => {
+    if (!isInviteOpen) return;
+    if (!isInternal) return;
+    if (!activeOrgId) return;
+    if (!isOrgPlanMissing) return;
+    void loadInvitePlanCatalog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInviteOpen, isInternal, activeOrgId, isOrgPlanMissing]);
 
   useEffect(() => {
     if (storeGroups.length === 0) {
@@ -251,6 +314,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
 
   const canManage = (targetUser: User) => {
     if (currentUser.role === Role.ADMIN) return true;
+    if (currentUser.role === Role.SUPERVISOR) {
+      return targetUser.role === Role.MANAGER || targetUser.role === Role.USER;
+    }
     if (currentUser.role === Role.MANAGER) {
       return targetUser.role === Role.USER;
     }
@@ -307,15 +373,26 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       return;
     }
 
+    const needsPlanCode = isInternal && isOrgPlanMissing && (inviteRole === Role.MANAGER || inviteRole === Role.USER);
+    if (needsPlanCode) {
+      const code = invitePlanCode.trim().toUpperCase();
+      if (!code) {
+        addNotification('入力エラー', '契約プラン（planCode）を選択してください。', 'WARNING');
+        return;
+      }
+    }
+
     setIsInviting(true);
     try {
       const normalizedStoreId = inviteRole === Role.USER && inviteStoreId ? inviteStoreId : null;
+      const normalizedPlanCode = needsPlanCode ? invitePlanCode.trim().toUpperCase() : null;
       const data = await invokeAdminFunctionByHttp('admin-create-user', {
         name: inviteName.trim(),
         email: inviteEmail.trim(),
         role: inviteRole,
         orgId: activeOrgId,
         storeId: normalizedStoreId,
+        planCode: normalizedPlanCode,
       });
       if (data?.error) throw new Error(String(data.error));
 
@@ -324,6 +401,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       setInviteEmail('');
       setInviteRole(Role.USER);
       setInviteStoreId(activeStoreId || '');
+      setInvitePlanCode('');
       setIsInviteOpen(false);
       await loadUsers(activeOrgId);
     } catch (err) {
@@ -661,11 +739,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const roleLabel = (role: Role) => {
     switch (role) {
       case Role.ADMIN:
-        return '開発者 (Admin)';
+        return '内部 (Admin)';
+      case Role.SUPERVISOR:
+        return '代理店 (Supervisor)';
       case Role.MANAGER:
-        return '代理店 (Manager)';
+        return '店舗責任者 (Manager)';
       case Role.USER:
-        return '店舗 (User)';
+        return '一般ユーザー (User)';
       default:
         return role;
     }
@@ -675,8 +755,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     switch (role) {
       case Role.ADMIN:
         return 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800';
-      case Role.MANAGER:
+      case Role.SUPERVISOR:
         return 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800';
+      case Role.MANAGER:
+        return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800';
       case Role.USER:
         return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800';
       default:
@@ -710,9 +792,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
         <div>
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">ユーザー・契約管理</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {currentUser.role === Role.ADMIN
-              ? 'システム全体の全ユーザーおよび代理店を管理します。'
-              : '契約店舗（一般ユーザー）のアカウント管理を行います。'}
+            {isInternal
+              ? '内部ユーザーとして、顧客/代理店を含むユーザーと契約を管理します。'
+              : '自組織の顧客ユーザーを管理します。'}
           </p>
         </div>
         <div className="flex gap-3">
@@ -736,6 +818,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       {!activeOrgId && (
         <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 text-sm rounded-xl p-4">
           店舗が選択されていません。右上の店舗セレクタから選択してください。
+        </div>
+      )}
+      {isInternal && activeOrgId && isOrgPlanMissing && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-sm rounded-xl p-4">
+          このORGは契約プランが未設定です。内部ユーザーが最初の顧客ユーザー（MANAGER/USER）を作成する場合、`planCode` が必須になります。
+          事前に「課金・請求」画面でORGへプランを割り当てる運用がおすすめです。
         </div>
       )}
 
@@ -785,7 +873,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     isSaving: false,
                   } satisfies ControlDraft);
 
-                const canEditStoreControl = user.id !== currentUser.id && user.role === Role.USER && canManage(user);
+                const canEditStoreControl = isInternal && user.id !== currentUser.id && user.role === Role.USER;
 
                 return (
                   <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors align-top">
@@ -811,7 +899,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex flex-col">
                         <span className="text-sm font-bold text-gray-800 dark:text-white">{user.plan || 'FREE'}</span>
-                        <span className="text-xs text-gray-400">次回更新: 2024/12/31</span>
+                        <span className="text-xs text-gray-400">次回更新: 外部運用</span>
                       </div>
                     </td>
 
@@ -914,129 +1002,131 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Upload size={18} />
-              CSV一括店舗作成（USER向け）
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              USERごとのON/OFFと上限を適用し、1件でも不正があれば全体失敗で取り込みます。
-            </p>
-          </div>
-          <button
-            data-testid="store-csv-template-download"
-            onClick={handleDownloadCsvTemplate}
-            className="px-3 py-2 text-sm font-bold rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
-          >
-            テンプレートDL
-          </button>
-        </div>
-
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {isInternal && (
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+          <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">対象USER</label>
-              <select
-                data-testid="store-csv-user-select"
-                value={selectedCsvUserId}
-                onChange={(e) => {
-                  setSelectedCsvUserId(e.target.value);
-                  setCsvExecutionErrors([]);
-                }}
-                className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
-              >
-                <option value="">選択してください</option>
-                {userOnlyRows.map((row) => (
-                  <option key={row.user.id} value={row.user.id}>
-                    {row.user.name}（現在 {row.currentStoreCount} / 上限 {row.effectiveStoreLimit}）
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CSVアップロード</label>
-              <input
-                data-testid="store-csv-file-input"
-                type="file"
-                accept=".csv,text/csv"
-                onChange={(e) => void handleCsvFileSelected(e.target.files?.[0] || null)}
-                className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
-              />
-              {csvFileName && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">選択中: {csvFileName}</p>}
-            </div>
-          </div>
-
-          {selectedCsvTarget && (
-            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 p-3 text-sm text-gray-700 dark:text-gray-200">
-              <p>
-                対象ユーザー: <span className="font-bold">{selectedCsvTarget.user.name}</span>
-              </p>
-              <p>
-                CSV一括許可: <span className="font-bold">{selectedCsvTarget.allowCsvStoreBulkCreate ? 'ON' : 'OFF'}</span>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Upload size={18} />
+                CSV一括店舗作成（USER向け）
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                USERごとのON/OFFと上限を適用し、1件でも不正があれば全体失敗で取り込みます。
               </p>
             </div>
-          )}
-
-          {csvParseResult.errors.length > 0 && (
-            <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
-              <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-bold text-sm mb-2">
-                <FileWarning size={16} />
-                CSV検証エラー（先頭20件）
-              </div>
-              <ul className="space-y-1 text-xs text-red-700 dark:text-red-200">
-                {csvParseResult.errors.slice(0, 20).map((error, index) => (
-                  <li key={`${error.line}-${error.column}-${index}`}>
-                    line {error.line} / {error.column} / {error.code}: {error.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {csvExecutionErrors.length > 0 && (
-            <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
-              <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-bold text-sm mb-2">
-                <FileWarning size={16} />
-                CSV実行エラー（先頭20件）
-              </div>
-              <ul className="space-y-1 text-xs text-red-700 dark:text-red-200">
-                {csvExecutionErrors.slice(0, 20).map((error, index) => (
-                  <li key={`${error.line}-${error.column}-${index}`}>
-                    line {error.line} / {error.column} / {error.code}: {error.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {csvParseResult.errors.length === 0 && csvParseResult.rows.length > 0 && (
-            <div className="rounded-xl border border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20 p-4 text-sm text-green-700 dark:text-green-300 flex items-center gap-2">
-              <CheckCircle2 size={16} />
-              CSV検証OK: {csvParseResult.rows.length} 行
-            </div>
-          )}
-
-          <div className="flex justify-end">
             <button
-              data-testid="store-csv-execute"
-              onClick={() => void handleExecuteCsvImport()}
-              disabled={
-                isExecutingCsv ||
-                !selectedCsvTarget ||
-                !selectedCsvTarget.allowCsvStoreBulkCreate ||
-                csvParseResult.rows.length === 0 ||
-                csvParseResult.errors.length > 0
-              }
-              className="px-4 py-2 text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+              data-testid="store-csv-template-download"
+              onClick={handleDownloadCsvTemplate}
+              className="px-3 py-2 text-sm font-bold rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
             >
-              {isExecutingCsv ? 'CSV実行中...' : 'CSV一括作成を実行'}
+              テンプレートDL
             </button>
           </div>
+
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">対象USER</label>
+                <select
+                  data-testid="store-csv-user-select"
+                  value={selectedCsvUserId}
+                  onChange={(e) => {
+                    setSelectedCsvUserId(e.target.value);
+                    setCsvExecutionErrors([]);
+                  }}
+                  className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                >
+                  <option value="">選択してください</option>
+                  {userOnlyRows.map((row) => (
+                    <option key={row.user.id} value={row.user.id}>
+                      {row.user.name}（現在 {row.currentStoreCount} / 上限 {row.effectiveStoreLimit}）
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CSVアップロード</label>
+                <input
+                  data-testid="store-csv-file-input"
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(e) => void handleCsvFileSelected(e.target.files?.[0] || null)}
+                  className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                />
+                {csvFileName && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">選択中: {csvFileName}</p>}
+              </div>
+            </div>
+
+            {selectedCsvTarget && (
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 p-3 text-sm text-gray-700 dark:text-gray-200">
+                <p>
+                  対象ユーザー: <span className="font-bold">{selectedCsvTarget.user.name}</span>
+                </p>
+                <p>
+                  CSV一括許可: <span className="font-bold">{selectedCsvTarget.allowCsvStoreBulkCreate ? 'ON' : 'OFF'}</span>
+                </p>
+              </div>
+            )}
+
+            {csvParseResult.errors.length > 0 && (
+              <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
+                <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-bold text-sm mb-2">
+                  <FileWarning size={16} />
+                  CSV検証エラー（先頭20件）
+                </div>
+                <ul className="space-y-1 text-xs text-red-700 dark:text-red-200">
+                  {csvParseResult.errors.slice(0, 20).map((error, index) => (
+                    <li key={`${error.line}-${error.column}-${index}`}>
+                      line {error.line} / {error.column} / {error.code}: {error.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {csvExecutionErrors.length > 0 && (
+              <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
+                <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-bold text-sm mb-2">
+                  <FileWarning size={16} />
+                  CSV実行エラー（先頭20件）
+                </div>
+                <ul className="space-y-1 text-xs text-red-700 dark:text-red-200">
+                  {csvExecutionErrors.slice(0, 20).map((error, index) => (
+                    <li key={`${error.line}-${error.column}-${index}`}>
+                      line {error.line} / {error.column} / {error.code}: {error.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {csvParseResult.errors.length === 0 && csvParseResult.rows.length > 0 && (
+              <div className="rounded-xl border border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20 p-4 text-sm text-green-700 dark:text-green-300 flex items-center gap-2">
+                <CheckCircle2 size={16} />
+                CSV検証OK: {csvParseResult.rows.length} 行
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                data-testid="store-csv-execute"
+                onClick={() => void handleExecuteCsvImport()}
+                disabled={
+                  isExecutingCsv ||
+                  !selectedCsvTarget ||
+                  !selectedCsvTarget.allowCsvStoreBulkCreate ||
+                  csvParseResult.rows.length === 0 ||
+                  csvParseResult.errors.length > 0
+                }
+                className="px-4 py-2 text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isExecutingCsv ? 'CSV実行中...' : 'CSV一括作成を実行'}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
         <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between gap-3">
@@ -1172,7 +1262,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               </p>
               {!canApplyBulkSetting && (
                 <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                  MANAGERは参照のみです。実行はADMINで行ってください。
+                  顧客MANAGERは参照のみです。実行は内部ユーザー（ADMIN/SUPERVISOR）で行ってください。
                 </p>
               )}
             </div>
@@ -1225,11 +1315,21 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     >
                       {currentUser.role === Role.ADMIN && (
                         <>
-                          <option value={Role.ADMIN}>ADMIN</option>
-                          <option value={Role.MANAGER}>MANAGER</option>
+                          <option value={Role.ADMIN}>ADMIN（内部）</option>
+                          <option value={Role.SUPERVISOR}>SUPERVISOR（代理店）</option>
+                          <option value={Role.MANAGER}>MANAGER（顧客リーダー）</option>
+                          <option value={Role.USER}>USER（一般ユーザー）</option>
                         </>
                       )}
-                      <option value={Role.USER}>USER</option>
+                      {currentUser.role === Role.SUPERVISOR && (
+                        <>
+                          <option value={Role.MANAGER}>MANAGER（顧客リーダー）</option>
+                          <option value={Role.USER}>USER（一般ユーザー）</option>
+                        </>
+                      )}
+                      {currentUser.role === Role.MANAGER && (
+                        <option value={Role.USER}>USER（一般ユーザー）</option>
+                      )}
                     </select>
                   </div>
                   <div>
@@ -1237,6 +1337,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     <select
                       value={inviteStoreId}
                       onChange={(e) => setInviteStoreId(e.target.value)}
+                      disabled={inviteRole !== Role.USER}
                       className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
                     >
                       <option value="">未選択（招待後に本人が作成）</option>
@@ -1248,8 +1349,46 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     </select>
                   </div>
                 </div>
+                {isInternal && activeOrgId && (
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 p-3">
+                    {isOrgPlanMissing ? (
+                      <>
+                        <div className="text-xs font-bold text-amber-700 dark:text-amber-300 mb-2">
+                          このORGは契約プラン未設定です（内部ユーザーが最初の顧客招待を行う場合、planCode必須）。
+                        </div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          契約プラン（planCode）
+                          {(inviteRole === Role.MANAGER || inviteRole === Role.USER) && <span className="text-red-500"> *</span>}
+                        </label>
+                        <select
+                          value={invitePlanCode}
+                          onChange={(e) => setInvitePlanCode(e.target.value)}
+                          disabled={isLoadingInvitePlans || !(inviteRole === Role.MANAGER || inviteRole === Role.USER)}
+                          className="w-full p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl"
+                        >
+                          <option value="">選択してください</option>
+                          {invitePlanCatalog.map((plan) => (
+                            <option key={plan.id} value={plan.code}>
+                              {plan.code}（{plan.name}）
+                            </option>
+                          ))}
+                        </select>
+                        {invitePlanCatalog.length === 0 && !isLoadingInvitePlans && (
+                          <div className="text-xs text-amber-700 dark:text-amber-300 mt-2">
+                            利用可能なプランがありません。先に「課金・請求」画面でプランを作成してください。
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-xs text-gray-600 dark:text-gray-300">
+                        現在の契約プラン: <span className="font-bold">{orgPlanCode || 'FREE'}</span>
+                        <span className="ml-2 text-gray-500 dark:text-gray-400">（変更は「課金・請求」画面で行います）</span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  USERは初期店舗未選択でも招待できます（招待後に設定画面から店舗作成）。ADMIN/MANAGERは全店アクセスです。
+                  USERは初期店舗未選択でも招待できます（招待後に設定画面から店舗作成）。ADMIN/SUPERVISOR/MANAGERは全店アクセスです。
                 </p>
               </div>
               <div className="flex justify-end gap-2 mt-6">

@@ -182,7 +182,7 @@ test('Phase3: admin executes P3-01〜P3-06 flow', async ({ page }) => {
   await expect(runItems.first()).toBeVisible({ timeout: 30_000 });
   await runItems.first().click();
   await expect(page.getByText('選択中runの収集結果')).toBeVisible();
-  await expect(page.getByText('順位キーワード')).toBeVisible();
+  await expect(page.getByText(/^順位キーワード$/)).toBeVisible();
 
   await expect(page.getByText('順位/競合ダッシュボード（P3-04）')).toBeVisible();
   await page.getByTestId('rank-dashboard-reload').click();

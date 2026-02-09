@@ -599,3 +599,14 @@
   - logs: `output/audit/phase3/20260209_115044/preflight_users`
 - C(e2e): PASS (artifacts: `output/audit/phase3/20260209_115044/C_e2e`)
 
+## 2026-02-09T02:52:38.440Z PHASE4 FAIL
+
+- command: `npm run audit:phase4`
+- commit: `b71680e47efbe4c05e60cf6ea0afd5181c7fb708`
+- output: `output/audit/phase4/20260209_115238`
+- A(static): PASS (run typecheck=OK(5.9s), run build=OK(5.7s), run smoke:contracts=OK(250ms))
+- B(db): FAIL (billing_plans.columns code=PGRST205: Could not find the table 'public.billing_plans' in the schema cache)
+  - logs: `output/audit/phase4/20260209_115238/B_db`
+- preflight(users): SKIPPED
+- C(e2e): SKIPPED
+

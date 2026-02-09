@@ -13,6 +13,7 @@ import { SettingsView } from './components/SettingsView';
 import { SurveyManagerView } from './components/SurveyManagerView';
 import { PublicSurveyPage } from './components/PublicSurveyPage';
 import { RankTrackerView } from './components/RankTrackerView';
+import { BillingView } from './components/BillingView';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ToastContainer } from './components/Toast';
 import { StoreProvider } from './contexts/StoreContext';
@@ -112,6 +113,8 @@ const App: React.FC = () => {
     switch (currentView) {
       case 'DASHBOARD':
         return <Dashboard isDarkMode={isDarkMode} />;
+      case 'BILLING':
+        return <BillingView />;
       case 'CALENDAR':
         return <CalendarView currentUser={currentUser} />;
       case 'CREATE_POST':

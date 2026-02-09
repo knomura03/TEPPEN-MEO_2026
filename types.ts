@@ -562,6 +562,7 @@ export interface InboxMessage {
 
 export type ViewState =
   | 'DASHBOARD'
+  | 'BILLING'
   | 'CREATE_POST'
   | 'POST_LIST'
   | 'USER_MANAGEMENT'

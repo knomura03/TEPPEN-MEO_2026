@@ -229,6 +229,7 @@ export const DEFAULT_PROVIDER_CAPABILITIES: ProviderCapability[] = [
 
 export const DEFAULT_FEATURE_VISIBILITY: Record<string, VisibilityState> = {
   dashboard: 'ENABLED',
+  billing: 'ENABLED',
   calendar: 'ENABLED',
   survey: 'ENABLED',
   create_post: 'ENABLED',

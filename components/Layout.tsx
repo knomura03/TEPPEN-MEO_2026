@@ -16,7 +16,8 @@ import {
   MapPin,
   Settings,
   Search,
-  TrendingUp
+  TrendingUp,
+  CreditCard
 } from 'lucide-react';
 import { OnboardingTour } from './OnboardingTour';
 import { NotificationCenter } from './NotificationCenter';
@@ -128,6 +129,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
   const menuItems = [
     { id: 'DASHBOARD', label: 'ダッシュボード', icon: LayoutDashboard, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'dashboard' },
+    { id: 'BILLING', label: '課金・請求', icon: CreditCard, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'billing' },
     { id: 'CALENDAR', label: 'カレンダー', icon: Calendar, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'calendar' },
     { id: 'SURVEY', label: 'アンケート', icon: ClipboardList, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'survey' },
     { id: 'CREATE_POST', label: '新規投稿', icon: PenSquare, allowed: [Role.ADMIN, Role.MANAGER, Role.USER], featureKey: 'create_post' },
@@ -151,6 +153,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
   const viewLabels: Record<string, string> = {
     'DASHBOARD': 'ダッシュボード',
+    'BILLING': '課金・請求',
     'CALENDAR': 'カレンダー',
     'SURVEY': 'アンケート',
     'CREATE_POST': '新規投稿',

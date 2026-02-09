@@ -563,3 +563,15 @@
   - logs: `output/audit/phase2/20260209_114432/preflight_users`
 - C(e2e): PASS (artifacts: `output/audit/phase2/20260209_114432/C_e2e`)
 
+## 2026-02-09T02:46:30.085Z PHASE1 FAIL
+
+- command: `npm run audit:phase1`
+- commit: `8ac24c76297e6c40494cfefcca80f833c75058d6`
+- output: `output/audit/phase1/20260209_114630`
+- A(static): PASS (run typecheck=OK(4.4s), run build=OK(5.9s), run smoke:contracts=OK(288ms))
+- B(db): PASS (13 checks)
+  - logs: `output/audit/phase1/20260209_114630/B_db`
+- preflight(users): PASS
+  - logs: `output/audit/phase1/20260209_114630/preflight_users`
+- C(e2e): FAIL(exit=1) (artifacts: `output/audit/phase1/20260209_114630/C_e2e`)
+

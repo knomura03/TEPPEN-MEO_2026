@@ -1,8 +1,9 @@
 
 export enum Role {
-  ADMIN = 'ADMIN',     // 開発者・全権管理者
-  MANAGER = 'MANAGER', // 販売者・代理店
-  USER = 'USER'        // 店舗オーナー
+  ADMIN = 'ADMIN',           // 内部: 全権管理者
+  SUPERVISOR = 'SUPERVISOR', // 内部: 販売代理店（旧MANAGER）
+  MANAGER = 'MANAGER',       // 顧客: ORGリーダー（店舗責任者）
+  USER = 'USER'              // 顧客: 一般ユーザー
 }
 
 // Contract plan code. Source of truth is `billing_plans.code` (e.g., FREE, STANDARD, PRO).

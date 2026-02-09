@@ -223,11 +223,11 @@ class AuthService {
 
   // 権限チェックヘルパー
   canManageUsers(user: User): boolean {
-    return user.role === Role.ADMIN || user.role === Role.MANAGER;
+    return user.role === Role.ADMIN || user.role === Role.SUPERVISOR || user.role === Role.MANAGER;
   }
 
   canManageSettings(user: User): boolean {
-    return user.role === Role.ADMIN;
+    return user.role === Role.ADMIN || user.role === Role.SUPERVISOR;
   }
 }
 

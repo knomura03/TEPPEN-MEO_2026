@@ -15,12 +15,14 @@ const requireSupabase = () => {
 const toRole = (raw: string): Role => {
   const upper = (raw || '').toUpperCase();
   if (upper === Role.ADMIN) return Role.ADMIN;
+  if (upper === Role.SUPERVISOR) return Role.SUPERVISOR;
   if (upper === Role.MANAGER) return Role.MANAGER;
   return Role.USER;
 };
 
 const rolePriority: Record<Role, number> = {
-  [Role.ADMIN]: 3,
+  [Role.ADMIN]: 4,
+  [Role.SUPERVISOR]: 3,
   [Role.MANAGER]: 2,
   [Role.USER]: 1,
 };
@@ -38,4 +40,3 @@ export const membershipsService = {
     return roles.reduce((best, next) => (rolePriority[next] > rolePriority[best] ? next : best), Role.USER);
   },
 };
-

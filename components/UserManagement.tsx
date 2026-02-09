@@ -74,6 +74,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const [inviteRole, setInviteRole] = useState<Role>(Role.USER);
   const [inviteStoreId, setInviteStoreId] = useState<string>('');
   const [invitePlanCode, setInvitePlanCode] = useState<string>('');
+  const [invitePassword, setInvitePassword] = useState<string>('');
   const [isInviting, setIsInviting] = useState(false);
   const [orgPlanCode, setOrgPlanCode] = useState<string>('');
   const [isOrgPlanMissing, setIsOrgPlanMissing] = useState<boolean>(false);
@@ -386,6 +387,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     try {
       const normalizedStoreId = inviteRole === Role.USER && inviteStoreId ? inviteStoreId : null;
       const normalizedPlanCode = needsPlanCode ? invitePlanCode.trim().toUpperCase() : null;
+      const normalizedPassword = invitePassword.trim();
       const data = await invokeAdminFunctionByHttp('admin-create-user', {
         name: inviteName.trim(),
         email: inviteEmail.trim(),
@@ -393,15 +395,21 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
         orgId: activeOrgId,
         storeId: normalizedStoreId,
         planCode: normalizedPlanCode,
+        password: normalizedPassword.length > 0 ? normalizedPassword : undefined,
       });
       if (data?.error) throw new Error(String(data.error));
 
-      addNotification('招待完了', '招待メールを送信しました。', 'SUCCESS');
+      addNotification(
+        '招待完了',
+        normalizedPassword.length > 0 ? 'ユーザーを作成しました。' : '招待メールを送信しました。',
+        'SUCCESS'
+      );
       setInviteName('');
       setInviteEmail('');
       setInviteRole(Role.USER);
       setInviteStoreId(activeStoreId || '');
       setInvitePlanCode('');
+      setInvitePassword('');
       setIsInviteOpen(false);
       await loadUsers(activeOrgId);
     } catch (err) {
@@ -1299,11 +1307,28 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">メールアドレス</label>
                   <input
+                    data-testid="invite-email-input"
                     type="email"
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
                     className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    監査用パスワード（任意）
+                  </label>
+                  <input
+                    data-testid="invite-password-input"
+                    type="password"
+                    value={invitePassword}
+                    onChange={(e) => setInvitePassword(e.target.value)}
+                    placeholder="入力時はメール招待せず即時作成"
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    監査自動化用の任意項目です。空欄の場合は従来どおり招待メールを送信します。
+                  </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>

@@ -131,6 +131,19 @@ const findVisibleBillingEntry = async (page: Page): Promise<Locator | null> => {
   return null;
 };
 
+const openBillingView = async (page: Page) => {
+  const billingEntry = await findVisibleBillingEntry(page);
+  expect(billingEntry, '課金/請求の導線が見つかりません。Phase4のUI未実装の可能性があります。').not.toBeNull();
+  if (!billingEntry) return;
+  await billingEntry.click();
+  await expect(page.getByTestId('billing-view-root')).toBeVisible();
+};
+
+const waitForToastText = async (page: Page, text: string, timeoutMs = 15_000) => {
+  const toast = page.getByText(text).last();
+  await expect(toast).toBeVisible({ timeout: timeoutMs });
+};
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('hasSeenTour', 'true');
@@ -142,10 +155,7 @@ test('Phase4: billing + pwa surface is available', async ({ page }) => {
   await login(page, env.admin);
   await ensureStoreSelected(page);
 
-  const billingEntry = await findVisibleBillingEntry(page);
-  expect(billingEntry, '課金/請求の導線が見つかりません。Phase4のUI未実装の可能性があります。').not.toBeNull();
-  if (!billingEntry) return;
-  await billingEntry.click();
+  await openBillingView(page);
 
   const billingPanelCandidates = [
     page.getByTestId('billing-plan-current'),
@@ -177,4 +187,72 @@ test('Phase4: billing + pwa surface is available', async ({ page }) => {
     (await pwaInstallButton.isVisible().catch(() => false)) ||
     (await pwaInstallText.isVisible().catch(() => false));
   expect(hasInstallCta, 'PWAインストール導線が見つかりません。').toBeTruthy();
+});
+
+test('Phase4: plan create -> org assign -> invite user', async ({ page }) => {
+  test.setTimeout(4 * 60 * 1000);
+
+  await ensureLoggedOut(page);
+  await login(page, env.admin);
+  await ensureStoreSelected(page);
+  await openBillingView(page);
+
+  const token = new Date().toISOString().replace(/[^0-9]/g, '').slice(-10);
+  const planCode = `AUDIT${token}`;
+  const inviteEmail = `audit+${token}@example.com`;
+
+  const planEditor = page.locator('div').filter({ has: page.getByText('プラン作成/更新') }).first();
+  await planEditor.locator('input[placeholder="例: FREE"]').fill(planCode);
+  await planEditor.locator('input[placeholder="例: Free"]').fill(`[AUDIT] ${planCode}`);
+  await planEditor.locator('input[type="number"]').fill('1200');
+  await planEditor.locator('input[placeholder="説明（任意）"]').fill(`audit plan ${token}`);
+  await planEditor.getByRole('button', { name: '保存' }).click();
+  await waitForToastText(page, '保存完了');
+
+  const assignPanel = page
+    .locator('h5')
+    .filter({ hasText: 'ORGへのプラン割当' })
+    .first()
+    .locator('xpath=ancestor::div[contains(@class,"border")][1]');
+  await expect(assignPanel).toBeVisible();
+  await assignPanel.locator('select').first().selectOption(planCode);
+  await assignPanel.getByRole('button', { name: 'このORGに割当' }).click();
+  await waitForToastText(page, '更新完了');
+
+  const userMgmtEntry =
+    (await page.locator('#nav-USER_MANAGEMENT').isVisible().catch(() => false))
+      ? page.locator('#nav-USER_MANAGEMENT')
+      : page.getByText('ユーザー・契約管理').first();
+  await userMgmtEntry.click();
+
+  await page.getByRole('button', { name: '新規ユーザー作成' }).click();
+  const inviteModal = page.locator('div').filter({ has: page.getByText('新規ユーザー作成（招待）') }).first();
+  await expect(inviteModal).toBeVisible();
+
+  await inviteModal.locator('label:has-text("名前") + input').fill(`[AUDIT] USER ${token}`);
+  await inviteModal.getByTestId('invite-email-input').fill(inviteEmail);
+  await inviteModal.getByTestId('invite-password-input').fill('AuditPass!234');
+  await inviteModal.locator('label:has-text("権限ロール") + select').selectOption('USER');
+
+  const planCodeSelect = inviteModal.locator('label:has-text("契約プラン（planCode）") + select');
+  if (await planCodeSelect.isVisible().catch(() => false)) {
+    await planCodeSelect.selectOption(planCode);
+  }
+
+  const inviteResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes('/functions/v1/admin-create-user') && response.request().method() === 'POST',
+    { timeout: 180_000 }
+  );
+  await inviteModal.getByRole('button', { name: '招待を送信' }).click();
+
+  const inviteResponse = await inviteResponsePromise;
+  const inviteResponseBody = await inviteResponse.text();
+  expect(
+    inviteResponse.ok(),
+    `admin-create-user failed: status=${inviteResponse.status()} body=${inviteResponseBody}`
+  ).toBeTruthy();
+
+  await expect(page.getByText(inviteEmail).first()).toBeVisible({ timeout: 60_000 });
+  await waitForToastText(page, '招待完了', 60_000);
 });

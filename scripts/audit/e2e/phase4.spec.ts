@@ -90,8 +90,21 @@ const login = async (page: Page, creds: AuditCreds) => {
 };
 
 const ensureStoreSelected = async (page: Page) => {
-  const selector = page.getByTestId('store-selector');
-  if (!(await selector.isVisible().catch(() => false))) {
+  const selectorByTestId = page.getByTestId('store-selector');
+  const selectorByHeader = page.getByRole('banner').getByRole('combobox').first();
+
+  await Promise.race([
+    selectorByTestId.waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {}),
+    selectorByHeader.waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {}),
+  ]);
+
+  const selector = (await selectorByTestId.isVisible().catch(() => false))
+    ? selectorByTestId
+    : (await selectorByHeader.isVisible().catch(() => false))
+      ? selectorByHeader
+      : null;
+
+  if (!selector) {
     throw new Error('Store selector not found. The app shell may not be loaded.');
   }
   const current = await selector.inputValue();

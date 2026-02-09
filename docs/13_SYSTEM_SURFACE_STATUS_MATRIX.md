@@ -1,6 +1,6 @@
 # TEPPEN MEO：画面/ボタン/機能/DB接続 状態台帳（正本）
 
-最終更新: 2026-02-09（Phase1/2/3監査PASS、Phase4監査FAILを反映）
+最終更新: 2026-02-09（Phase4基盤migration追加・最新監査結果を反映）
 
 ## 0. 運用ルール（必須）
 - この台帳は、実装・修正・設定変更のたびに**同一作業内で更新**する。
@@ -66,8 +66,8 @@
 | USER-06 | ユーザー・契約管理 | CSV一括店舗作成実行 | CONNECTED | RPC `bulk_create_stores_for_user` | 1件不正で全体失敗（0件作成） | P1-08拡張 |
 | USER-07 | ユーザー・契約管理 | モーダル表示（スモーク） | CONNECTED | `ModalPortal` | `fixed inset-0` でずれ対策済み | P1-08拡張 |
 | USER-08 | ユーザー・契約管理 | 店舗グループ一括設定（機能公開） | CONNECTED | `feature_flags`（`featureFlagsService.upsertForStoreGroup`） | 実行はADMINのみ。MANAGERは参照のみ | P1-09 |
-| BILL-01 | 課金/請求 | Stripeプラン/契約/請求管理 | NOT_IMPLEMENTED | - | `Phase4` 予定。課金導線UI・DBとも未実装 | Phase4 |
-| PWA-01 | アプリ化 | PWAインストール/オフライン対応 | NOT_IMPLEMENTED | - | `manifest/service worker/install導線` が未実装 | Phase4 |
+| BILL-01 | 課金/請求 | Stripeプラン/契約/請求管理 | NOT_IMPLEMENTED | `billing_plans`, `org_subscriptions`, `billing_invoices`, `subscription_usage_events` | DB基盤は `202602060020` で実装済み。課金UI/外部決済連携は未実装 | Phase4 |
+| PWA-01 | アプリ化 | PWAインストール/オフライン対応 | NOT_IMPLEMENTED | `pwa_installations` | DB基盤は `202602060020` で実装済み。`manifest/service worker/install導線` は未実装 | Phase4 |
 
 ## 3. Edge Functions 配備台帳
 | Function名 | リポジトリソース | 必須Secrets | 現在状態 |
@@ -80,7 +80,7 @@
 | `facebook-reply-message` | `supabase/functions/facebook-reply-message/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |
 | `rank-collect` | `supabase/functions/rank-collect/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-09 CLI実行確認）/ `Verify JWT=OFF`。P3-02/P3-03の収集処理を担当 |
 
-## 4. DB migration適用台帳（P1/P2/P3）
+## 4. DB migration適用台帳（P1/P2/P3/P4）
 | migrationファイル | 目的 | 状態 |
 |---|---|---|
 | `supabase/migrations/202602060002_p1_surveys.sql` | P1-01 アンケート基盤 | 適用済み想定（要環境確認） |
@@ -101,6 +101,7 @@
 | `supabase/migrations/202602060017_p3_competitor_comparison_collection.sql` | P3-03 競合比較収集 | 実装済み。未適用環境では競合ターゲット管理/競合収集が実行できない |
 | `supabase/migrations/202602060018_p3_nap_consistency_check.sql` | P3-05 NAP整合性チェック | 実装済み。未適用環境ではNAPチェック履歴/結果が実行できない |
 | `supabase/migrations/202602060019_p3_nap_alert_operations.sql` | P3-06 NAPアラート運用 | 実装済み。未適用環境ではNAPアラート表示/運用が実行できない |
+| `supabase/migrations/202602060020_p4_billing_pwa_foundation.sql` | P4 課金/PWA DB基盤 | 実装済み。未適用環境ではPhase4 DB監査が `PGRST205` で失敗する |
 
 ## 5. 現時点のモック/未接続残件（優先順）
 1. ダッシュボードKPIが固定値（実データ未接続）
@@ -118,12 +119,12 @@
 ## 7. 監査スナップショット（自動監査結果）
 | Phase | 最新結果 | 監査時刻（UTC） | 監査コミット | サマリJSON |
 |---|---|---|---|---|
-| Phase1 | PASS | 2026-02-09T02:01:37Z | `817e8f9` | `output/audit/phase1/20260209_110137/phaseAudit.summary.json` |
-| Phase2 | PASS | 2026-02-09T02:03:13Z | `bb6101f` | `output/audit/phase2/20260209_110313/phaseAudit.summary.json` |
-| Phase3 | PASS | 2026-02-09T02:27:31Z | `b998961` | `output/audit/phase3/20260209_112731/phaseAudit.summary.json` |
-| Phase4 | FAIL | 2026-02-09T02:41:09Z | `f5cebf5` | `output/audit/phase4/20260209_114109/phaseAudit.summary.json` |
+| Phase1 | PASS | 2026-02-09T02:48:28Z | `2e4dea3` | `output/audit/phase1/20260209_114828/phaseAudit.summary.json` |
+| Phase2 | PASS | 2026-02-09T02:44:32Z | `8ac24c7` | `output/audit/phase2/20260209_114432/phaseAudit.summary.json` |
+| Phase3 | PASS | 2026-02-09T02:50:44Z | `b71680e` | `output/audit/phase3/20260209_115044/phaseAudit.summary.json` |
+| Phase4 | FAIL | 2026-02-09T02:52:38Z | `0854eb9` | `output/audit/phase4/20260209_115238/phaseAudit.summary.json` |
 
 ### 備考
 - Phase3は `rank-collect` 未配備によるFAILを経て、関数配備後にPASSへ収束。
-- Phase4は `billing_plans` など課金系テーブル未実装（`PGRST205`）でFAIL。`docs/10` の「Phase4除外」と整合する未着手状態。
+- Phase4は DB基盤migration（`202602060020`）追加済み。監査FAILは「本番Supabaseへの未適用」が原因で、適用後はB(DB)を再評価する。
 - 監査詳細の時系列ログは `docs/14_PHASE_AUDIT_LOG.md` を正本とし、本節は最新状態の要約のみ保持する。

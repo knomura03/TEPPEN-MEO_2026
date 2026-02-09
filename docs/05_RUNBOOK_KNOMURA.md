@@ -1,6 +1,6 @@
 # knomura向け手順書（最小作業で進める）
 
-最終更新: 2026-02-08（P3-06追記）
+最終更新: 2026-02-09（Phase4 DB基盤migration手順を追記）
 
 ## この手順書の読み方
 - 「どこをクリックするか」をそのまま書いています。
@@ -60,6 +60,24 @@ AUDIT_BASE_URL=http://localhost:3000
 - 例（Phase4）:
   - DB存在監査: `npm run audit:db:phase4`
   - ブラウザ監査: `npm run audit:e2e:phase4`
+
+## （Phase4）課金/PWAのDB基盤を有効化する手順
+`Phase4` 監査のB（DB存在監査）を通すには、以下migrationを先に適用します。
+
+### 手順（クリック順）
+1. Supabaseダッシュボードを開く
+2. 左メニューの `SQL Editor` を開く
+3. `supabase/migrations/202602060020_p4_billing_pwa_foundation.sql` の中身を貼り付ける
+4. `Run` を押す
+5. `Success. No rows returned` を確認する
+
+### 反映確認（この順で実行）
+1. `npm run audit:db:phase4`
+2. `npm run audit:phase4`
+
+### 期待結果
+- `audit:db:phase4` は `billing_plans` / `org_subscriptions` / `billing_invoices` / `subscription_usage_events` / `pwa_installations` の存在チェックに成功します。
+- `audit:phase4` の最終結果は、UI実装状況（課金画面・PWA導線）に応じて `PASS/FAIL` が決まります。
 
 ## P1-09（店舗グループ一括投稿/一括設定）の使い方
 ### 一括投稿（ADMIN/MANAGER）

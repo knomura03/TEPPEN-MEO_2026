@@ -79,8 +79,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   const [activeTab, setActiveTab] = useState<SettingsTab>('PROFILE');
   const lastProfileLoadErrorRef = useRef<string | null>(null);
   const lastStoreLoadErrorRef = useRef<string | null>(null);
-  const [orgPlanCode, setOrgPlanCode] = useState<string>('FREE');
+  const [orgPlanCode, setOrgPlanCode] = useState<string>('');
   const [orgPlanNextRenewal, setOrgPlanNextRenewal] = useState<string>('-');
+  const [isOrgPlanMissing, setIsOrgPlanMissing] = useState(false);
+  const isInternal = currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR;
 
   const getProfileSaveErrorMessage = (error: unknown) => {
     const rawMessage = typeof error === 'string'
@@ -149,14 +151,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   useEffect(() => {
     const loadOrgPlan = async () => {
       if (!isSupabaseConfigured || !activeOrgId) {
-        setOrgPlanCode('FREE');
+        setOrgPlanCode(currentUser.plan || '');
         setOrgPlanNextRenewal('-');
+        setIsOrgPlanMissing(false);
         return;
       }
       try {
         const subscription = await billingService.getOrgSubscription(activeOrgId);
-        const nextCode = subscription?.billingPlan?.code || 'FREE';
+        const nextCode = subscription?.billingPlan?.code ? String(subscription.billingPlan.code) : '';
         setOrgPlanCode(nextCode);
+        setIsOrgPlanMissing(!nextCode);
         if (subscription?.currentPeriodEnd) {
           const y = subscription.currentPeriodEnd.getFullYear();
           const m = String(subscription.currentPeriodEnd.getMonth() + 1).padStart(2, '0');
@@ -167,12 +171,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
         }
       } catch (error) {
         console.error('[SettingsView] Failed to load org plan:', error);
-        setOrgPlanCode('FREE');
+        setOrgPlanCode('');
         setOrgPlanNextRenewal('-');
+        setIsOrgPlanMissing(false);
       }
     };
     void loadOrgPlan();
-  }, [activeOrgId]);
+  }, [activeOrgId, currentUser.plan]);
 
   // Integrations / Provider State
   const [providerCards, setProviderCards] = useState<ProviderCard[]>([]);
@@ -566,7 +571,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   };
 
   const loadBrandAssets = async () => {
-    if (!isSupabaseConfigured || !activeOrgId || currentUser.role !== Role.ADMIN) {
+    if (!isSupabaseConfigured || !activeOrgId || !isInternal) {
       setBrandKit(null);
       setTemplates([]);
       applyBrandKitInputs(null);
@@ -999,23 +1004,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
 
   const visibleProviderCards = useMemo(() => {
     return providerCards.filter((card) => {
-      if (currentUser.role === Role.ADMIN) return true;
+      if (isInternal) return true;
       return card.catalog.defaultVisibility === 'ENABLED';
     });
-  }, [currentUser.role, providerCards]);
+  }, [isInternal, providerCards]);
 
   const canAccessByFlag = (featureKey: string) => {
     const state = resolveFeatureState(featureFlags, featureKey, activeStoreId || undefined);
     if (state === 'HIDDEN') return false;
-    if (state === 'ADMIN_ONLY') return currentUser.role === Role.ADMIN;
+    if (state === 'ADMIN_ONLY') return isInternal;
     return true;
   };
 
   const canShowProfileTab = canAccessByFlag('settings_profile');
   const canShowStoreTab = canAccessByFlag('settings_store');
   const canShowIntegrationsTab = canAccessByFlag('settings_integrations');
-  const canShowSystemTab = currentUser.role === Role.ADMIN && canAccessByFlag('settings_system');
-  const canManageProviders = currentUser.role === Role.ADMIN && canAccessByFlag('provider_management');
+  const canShowSystemTab = isInternal && canAccessByFlag('settings_system');
+  const canManageProviders = isInternal && canAccessByFlag('provider_management');
   const integrationDisabledReason = !isSupabaseConfigured
     ? 'Supabase未設定のため操作できません。VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY を設定してください。'
     : !activeStoreId
@@ -1137,8 +1142,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                    <div className="flex justify-between items-start">
                        <div>
                            <p className="text-primary-100 text-sm font-medium mb-1">現在のプラン</p>
-                           <h3 className="text-2xl font-bold">{orgPlanCode || currentUser.plan || 'FREE'} PLAN</h3>
+                           <h3 className="text-2xl font-bold">
+                             {(isOrgPlanMissing ? '未設定' : (orgPlanCode || currentUser.plan || 'FREE'))} PLAN
+                           </h3>
                            <p className="text-sm text-primary-100 mt-2">次回更新日: {orgPlanNextRenewal}</p>
+                           {isOrgPlanMissing && isInternal && (
+                             <div className="mt-4 rounded-xl bg-white/10 border border-white/20 p-3">
+                               <p className="text-xs text-primary-50">
+                                 この組織は契約プランが未設定です。内部ユーザーが最初の顧客ユーザーを作成する前に、「課金・請求」画面でプランを割り当ててください。
+                               </p>
+                             </div>
+                           )}
                        </div>
                        <CreditCard className="text-primary-200 w-12 h-12 opacity-50" />
                    </div>
@@ -1610,12 +1624,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
             </div>
           )}
 
-          {activeTab === 'SYSTEM' && currentUser.role === Role.ADMIN && (
+          {activeTab === 'SYSTEM' && isInternal && (
              <div className="max-w-4xl space-y-8">
                <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 p-4 rounded-xl flex gap-3">
                  <AlertTriangle className="text-orange-600 dark:text-orange-400 flex-shrink-0" />
                  <div>
-                   <h3 className="font-bold text-orange-800 dark:text-orange-300 text-sm">開発者エリア</h3>
+                   <h3 className="font-bold text-orange-800 dark:text-orange-300 text-sm">内部エリア</h3>
                    <p className="text-xs text-orange-700 dark:text-orange-400 mt-1">この設定を変更するとシステム全体に影響が及びます。</p>
                  </div>
                </div>

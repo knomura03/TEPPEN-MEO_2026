@@ -33,6 +33,7 @@ import { buildProviderReadiness } from '../services/providerReadinessService';
 import { featureFlagsService, resolveFeatureState } from '../services/featureFlagsService';
 import { oauthConnectionService } from '../services/oauthConnectionService';
 import { brandKitService } from '../services/brandKitService';
+import { billingService } from '../services/billingService';
 import { getErrorMessage } from '../services/errorMessage';
 import { ModalPortal } from './ModalPortal';
 
@@ -78,6 +79,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   const [activeTab, setActiveTab] = useState<SettingsTab>('PROFILE');
   const lastProfileLoadErrorRef = useRef<string | null>(null);
   const lastStoreLoadErrorRef = useRef<string | null>(null);
+  const [orgPlanCode, setOrgPlanCode] = useState<string>('FREE');
+  const [orgPlanNextRenewal, setOrgPlanNextRenewal] = useState<string>('-');
 
   const getProfileSaveErrorMessage = (error: unknown) => {
     const rawMessage = typeof error === 'string'
@@ -142,6 +145,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     const store = stores.find((item) => item.id === activeStoreId);
     return store?.orgId || null;
   }, [activeStoreId, stores]);
+
+  useEffect(() => {
+    const loadOrgPlan = async () => {
+      if (!isSupabaseConfigured || !activeOrgId) {
+        setOrgPlanCode('FREE');
+        setOrgPlanNextRenewal('-');
+        return;
+      }
+      try {
+        const subscription = await billingService.getOrgSubscription(activeOrgId);
+        const nextCode = subscription?.billingPlan?.code || 'FREE';
+        setOrgPlanCode(nextCode);
+        if (subscription?.currentPeriodEnd) {
+          const y = subscription.currentPeriodEnd.getFullYear();
+          const m = String(subscription.currentPeriodEnd.getMonth() + 1).padStart(2, '0');
+          const d = String(subscription.currentPeriodEnd.getDate()).padStart(2, '0');
+          setOrgPlanNextRenewal(`${y}-${m}-${d}`);
+        } else {
+          setOrgPlanNextRenewal('-');
+        }
+      } catch (error) {
+        console.error('[SettingsView] Failed to load org plan:', error);
+        setOrgPlanCode('FREE');
+        setOrgPlanNextRenewal('-');
+      }
+    };
+    void loadOrgPlan();
+  }, [activeOrgId]);
 
   // Integrations / Provider State
   const [providerCards, setProviderCards] = useState<ProviderCard[]>([]);
@@ -1106,8 +1137,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                    <div className="flex justify-between items-start">
                        <div>
                            <p className="text-primary-100 text-sm font-medium mb-1">現在のプラン</p>
-                           <h3 className="text-2xl font-bold">{currentUser.plan || 'FREE'} PLAN</h3>
-                           <p className="text-sm text-primary-100 mt-2">次回更新日: 2024年12月31日</p>
+                           <h3 className="text-2xl font-bold">{orgPlanCode || currentUser.plan || 'FREE'} PLAN</h3>
+                           <p className="text-sm text-primary-100 mt-2">次回更新日: {orgPlanNextRenewal}</p>
                        </div>
                        <CreditCard className="text-primary-200 w-12 h-12 opacity-50" />
                    </div>

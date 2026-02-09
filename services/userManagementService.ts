@@ -28,6 +28,10 @@ type DbOrgStorePolicyRow = {
   default_user_store_limit: number;
 };
 
+type DbOrgSubscriptionPlanRow = {
+  billing_plan?: { code?: string | null } | null;
+};
+
 export type ManagedUserStoreSummary = {
   user: User;
   currentStoreCount: number;
@@ -63,7 +67,7 @@ const rolePriority: Record<Role, number> = {
   [Role.USER]: 1,
 };
 
-const buildUser = (userId: string, role: Role, createdAt: string, profile?: DbProfileRow | null): User => {
+const buildUser = (userId: string, role: Role, createdAt: string, plan: string, profile?: DbProfileRow | null): User => {
   const email = profile?.email || '';
   const username = email ? email.split('@')[0] : userId.slice(0, 8);
   return {
@@ -73,7 +77,7 @@ const buildUser = (userId: string, role: Role, createdAt: string, profile?: DbPr
     email,
     role,
     avatarUrl: profile?.avatar_url || undefined,
-    plan: 'FREE',
+    plan: plan || 'FREE',
     lastLoginAt: createdAt ? new Date(createdAt) : new Date(),
   };
 };
@@ -122,6 +126,21 @@ export const userManagementService = {
     const profileMap = new Map<string, DbProfileRow>();
     (profileRows || []).forEach((row) => profileMap.set((row as DbProfileRow).id, row as DbProfileRow));
 
+    let orgPlanCode = 'FREE';
+    const { data: subscriptionData, error: subscriptionError } = await client
+      .from('org_subscriptions')
+      .select('billing_plan:billing_plans (code)')
+      .eq('org_id', orgId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (subscriptionError && !isMissingRelationError(subscriptionError)) throw subscriptionError;
+    if (subscriptionData) {
+      const row = subscriptionData as DbOrgSubscriptionPlanRow;
+      const code = row.billing_plan?.code ? String(row.billing_plan.code) : '';
+      if (code) orgPlanCode = code;
+    }
+
     let policyRows: DbOrgStorePolicyRow | null = null;
     const { data: policyData, error: policyError } = await client
       .from('org_store_policies')
@@ -155,7 +174,7 @@ export const userManagementService = {
       const info = grouped.get(userId)!;
       const profile = profileMap.get(userId) || null;
       const control = controlMap.get(userId);
-      const user = buildUser(userId, info.role, info.createdAt, profile);
+      const user = buildUser(userId, info.role, info.createdAt, orgPlanCode, profile);
       const currentStoreCount = info.role === Role.USER ? info.storeIds.size : 0;
       const effectiveStoreLimit = info.role === Role.USER
         ? Math.max(1, control?.max_stores ?? defaultLimit)

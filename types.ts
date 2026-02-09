@@ -5,7 +5,33 @@ export enum Role {
   USER = 'USER'        // 店舗オーナー
 }
 
-export type PlanType = 'FREE' | 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE';
+// Contract plan code. Source of truth is `billing_plans.code` (e.g., FREE, STANDARD, PRO).
+export type PlanType = string;
+
+export interface BillingPlan {
+  id: string;
+  code: string;
+  name: string;
+  amountMonthly: number;
+  currency: string;
+  isActive: boolean;
+  description?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface OrgSubscription {
+  id: string;
+  orgId: string;
+  billingPlanId?: string | null;
+  billingPlan?: BillingPlan | null;
+  status: string;
+  currentPeriodStart?: Date;
+  currentPeriodEnd?: Date;
+  cancelAtPeriodEnd: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export interface StoreInfo {
   address?: string;

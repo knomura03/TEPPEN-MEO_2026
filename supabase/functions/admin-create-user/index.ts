@@ -92,6 +92,7 @@ Deno.serve(async (req) => {
     role?: string;
     storeId?: string;
     orgId?: string;
+    planCode?: string;
     // Optional: when provided, create/update the user with a known password (no invite email).
     password?: string;
   };
@@ -106,6 +107,7 @@ Deno.serve(async (req) => {
   const role = payload.role?.toUpperCase();
   const storeId = payload.storeId?.trim();
   const orgId = payload.orgId?.trim();
+  const planCode = payload.planCode?.trim().toUpperCase();
   const password = payload.password?.trim();
 
   if (!email || !name || !role) {
@@ -235,6 +237,69 @@ Deno.serve(async (req) => {
     if (membershipInsertError) {
       return jsonResponse(400, { error: membershipInsertError.message });
     }
+  }
+
+  // Optional: assign/update contract plan for the org (billing foundation must be applied).
+  if (planCode && planCode.length > 0) {
+    const { data: planRow, error: planError } = await supabaseAdmin
+      .from('billing_plans')
+      .select('id, code, is_active')
+      .eq('code', planCode)
+      .maybeSingle();
+    if (planError || !planRow?.id) {
+      return jsonResponse(400, { error: 'billing plan not found' });
+    }
+    if (!planRow.is_active) {
+      return jsonResponse(400, { error: 'billing plan is inactive' });
+    }
+
+    const { data: existingSubscription, error: subscriptionError } = await supabaseAdmin
+      .from('org_subscriptions')
+      .select('id, org_id')
+      .eq('org_id', targetOrgId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (subscriptionError) {
+      return jsonResponse(400, { error: subscriptionError.message });
+    }
+
+    if (existingSubscription?.id) {
+      const { error: subscriptionUpdateError } = await supabaseAdmin
+        .from('org_subscriptions')
+        .update({
+          billing_plan_id: planRow.id,
+          status: 'ACTIVE',
+        })
+        .eq('id', existingSubscription.id);
+      if (subscriptionUpdateError) {
+        return jsonResponse(400, { error: subscriptionUpdateError.message });
+      }
+    } else {
+      const { error: subscriptionInsertError } = await supabaseAdmin
+        .from('org_subscriptions')
+        .insert({
+          org_id: targetOrgId,
+          billing_plan_id: planRow.id,
+          status: 'ACTIVE',
+        });
+      if (subscriptionInsertError) {
+        return jsonResponse(400, { error: subscriptionInsertError.message });
+      }
+    }
+
+    await supabaseAdmin.from('audit_logs').insert({
+      org_id: targetOrgId,
+      actor_user_id: actorUserId,
+      action: 'ORG_SUBSCRIPTION_SET_PLAN',
+      target_type: 'organization',
+      target_id: targetOrgId,
+      payload: {
+        org_id: targetOrgId,
+        plan_code: planCode,
+        via: 'admin-create-user',
+      },
+    });
   }
 
   return jsonResponse(200, {

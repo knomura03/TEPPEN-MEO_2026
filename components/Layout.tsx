@@ -219,6 +219,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
           {canOpenSettings && (
             <button
+              data-testid="open-settings"
               onClick={() => onNavigate('SETTINGS')}
               className="w-full flex items-center space-x-3 px-4 py-3 bg-white dark:bg-gray-700/50 rounded-xl border border-gray-100 dark:border-gray-600 hover:border-primary-300 hover:shadow-sm transition-all group text-left"
             >
@@ -304,6 +305,7 @@ export const Layout: React.FC<LayoutProps> = ({
               <div className="border-t border-gray-100 dark:border-gray-700 my-4 pt-4">
                 {canOpenSettings && (
                   <button
+                      data-testid="open-settings-mobile"
                       onClick={() => {
                           onNavigate('SETTINGS');
                           setIsMobileMenuOpen(false);

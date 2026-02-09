@@ -570,8 +570,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOrgId, currentUser.role]);
 
-  const closeOAuthModal = () => {
-    if (isCompletingOAuth) return;
+  const closeOAuthModal = (force = false) => {
+    if (isCompletingOAuth && !force) return;
     setIsOAuthModalOpen(false);
     setOauthStateToken('');
     setOauthAuthorizationUrl('');
@@ -676,7 +676,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
         authCode: oauthAuthCode.trim(),
       });
       addNotification('OAuth連携完了', `${oauthProviderLabel || 'Provider'} の接続が完了しました。`, 'SUCCESS');
-      closeOAuthModal();
+      closeOAuthModal(true);
       await loadProviderCards();
     } catch (error) {
       console.error('[SettingsView] Failed to complete OAuth provider flow:', error);

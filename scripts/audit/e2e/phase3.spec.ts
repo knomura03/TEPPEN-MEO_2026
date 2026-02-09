@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
-import type { Locator, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 type AuditCreds = {
   email: string;
@@ -139,16 +139,6 @@ const waitForOneNotification = async (page: Page, titleOrText: RegExp | string):
   await expect(page.getByText(titleOrText).first()).toBeVisible({ timeout: 30_000 });
 };
 
-const pickFirstEnabled = async (locator: Locator): Promise<Locator> => {
-  const count = await locator.count();
-  for (let idx = 0; idx < count; idx += 1) {
-    const item = locator.nth(idx);
-    const disabled = await item.isDisabled().catch(() => false);
-    if (!disabled) return item;
-  }
-  throw new Error('No enabled element found.');
-};
-
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('hasSeenTour', 'true');
@@ -215,14 +205,14 @@ test('Phase3: manager/user can open rank tracker', async ({ page }) => {
   await login(page, env.manager);
   await ensureStoreSelected(page);
   await openRankTracker(page);
-  const managerReload = await pickFirstEnabled(page.locator('[data-testid="rank-runs-reload"], [data-testid="rank-dashboard-reload"]'));
-  await managerReload.click();
+  await expect(page.getByText('日次順位収集（P3-02）')).toBeVisible();
+  await expect(page.getByText('競合ターゲット（P3-03）')).toBeVisible();
   await logout(page);
 
   await login(page, env.user);
   await ensureStoreSelected(page);
   await openRankTracker(page);
-  const userReload = await pickFirstEnabled(page.locator('[data-testid="rank-runs-reload"], [data-testid="rank-dashboard-reload"]'));
-  await userReload.click();
+  await expect(page.getByText('日次順位収集（P3-02）')).toBeVisible();
+  await expect(page.getByText('競合ターゲット（P3-03）')).toBeVisible();
   await logout(page);
 });

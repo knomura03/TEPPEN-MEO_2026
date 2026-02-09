@@ -23,7 +23,8 @@ type DbOrgSubscriptionRow = {
   cancel_at_period_end: boolean;
   created_at: string;
   updated_at: string;
-  billing_plan?: DbBillingPlanRow | null;
+  // PostgREST embed may come back as an object or a single-item array depending on relationship inference.
+  billing_plan?: DbBillingPlanRow | DbBillingPlanRow[] | null;
 };
 
 type FunctionInvokeResult = {
@@ -105,11 +106,20 @@ const mapBillingPlan = (row: DbBillingPlanRow): BillingPlan => ({
   updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
 });
 
+const resolveEmbeddedBillingPlan = (value: DbOrgSubscriptionRow['billing_plan']): DbBillingPlanRow | null => {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] || null;
+  return value;
+};
+
 const mapOrgSubscription = (row: DbOrgSubscriptionRow): OrgSubscription => ({
   id: row.id,
   orgId: row.org_id,
   billingPlanId: row.billing_plan_id,
-  billingPlan: row.billing_plan ? mapBillingPlan(row.billing_plan) : null,
+  billingPlan: (() => {
+    const embedded = resolveEmbeddedBillingPlan(row.billing_plan);
+    return embedded ? mapBillingPlan(embedded) : null;
+  })(),
   status: row.status,
   currentPeriodStart: row.current_period_start ? new Date(row.current_period_start) : undefined,
   currentPeriodEnd: row.current_period_end ? new Date(row.current_period_end) : undefined,
@@ -201,4 +211,3 @@ export const billingService = {
     }
   },
 };
-

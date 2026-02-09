@@ -12,10 +12,13 @@
 - 今後のP1チケットもこの手順書へ追記していきます。
 
 ## Phase監査（自動で一発実行）
-Phase1が正しく動いているかを、**A: 静的監査 / B: DB存在監査 / C: 動的監査（ブラウザ操作）**までまとめて自動実行できます。
+Phaseごとの状態を **A: 静的監査 / B: DB存在監査 / C: 動的監査（ブラウザ操作）** までまとめて自動実行できます。
 
 実行コマンド:
 - `npm run audit:phase1`
+- `npm run audit:phase2`
+- `npm run audit:phase3`
+- `npm run audit:phase4`
 
 ### 最初の1回だけやること（監査用ログイン情報を置く）
 1. リポジトリ直下に `.env.audit.local` を作成します（このファイルはGitに入りません）。
@@ -54,6 +57,9 @@ AUDIT_BASE_URL=http://localhost:3000
 - 静的監査だけ: `npm run audit:static`
 - DB存在監査だけ: `npm run audit:db:phase1`
 - ブラウザ監査だけ: `npm run audit:e2e:phase1`
+- 例（Phase4）:
+  - DB存在監査: `npm run audit:db:phase4`
+  - ブラウザ監査: `npm run audit:e2e:phase4`
 
 ## P1-09（店舗グループ一括投稿/一括設定）の使い方
 ### 一括投稿（ADMIN/MANAGER）

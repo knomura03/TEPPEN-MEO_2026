@@ -7,6 +7,7 @@ import { ensureAuditUsers } from './bootstrapUsers';
 import { runDbAuditPhase1 } from './dbAuditPhase1';
 import { runDbAuditPhase2 } from './dbAuditPhase2';
 import { runDbAuditPhase3 } from './dbAuditPhase3';
+import { runDbAuditPhase4 } from './dbAuditPhase4';
 import { ensureDir, formatTimestampForPath, loadDotEnvFile, runCommand, writeJsonFile, writeTextFile } from './lib';
 import { appendPhaseAuditLog, PhaseAuditE2eResult, PhaseAuditSummary } from './report';
 import { runStaticAudit } from './staticAudit';
@@ -66,7 +67,7 @@ const getGitSha = async (repoRoot: string): Promise<string> => {
 
 const commitAndPushAuditLog = async (params: {
   repoRoot: string;
-  phase: 'phase1' | 'phase2' | 'phase3';
+  phase: 'phase1' | 'phase2' | 'phase3' | 'phase4';
   ok: boolean;
 }): Promise<void> => {
   const filePath = path.join('docs', '14_PHASE_AUDIT_LOG.md');
@@ -98,7 +99,7 @@ const commitAndPushAuditLog = async (params: {
 
 const runE2ePhase = async (params: {
   repoRoot: string;
-  phase: 'phase1' | 'phase2' | 'phase3';
+  phase: 'phase1' | 'phase2' | 'phase3' | 'phase4';
   baseUrl: string;
   outputDir: string;
 }): Promise<PhaseAuditE2eResult> => {
@@ -168,9 +169,12 @@ const runE2ePhase = async (params: {
 const main = async (): Promise<void> => {
   const repoRoot = process.cwd();
   const phaseArg = process.argv[2] || '';
-  const phase = phaseArg === 'phase1' || phaseArg === 'phase2' || phaseArg === 'phase3' ? phaseArg : null;
+  const phase =
+    phaseArg === 'phase1' || phaseArg === 'phase2' || phaseArg === 'phase3' || phaseArg === 'phase4'
+      ? phaseArg
+      : null;
   if (!phase) {
-    throw new Error(`Usage: tsx scripts/audit/runPhaseAudit.ts <phase1|phase2|phase3>`);
+    throw new Error(`Usage: tsx scripts/audit/runPhaseAudit.ts <phase1|phase2|phase3|phase4>`);
   }
 
   const startedAt = new Date();
@@ -210,10 +214,15 @@ const main = async (): Promise<void> => {
                 repoRoot,
                 outputDir: path.join(outputDir, 'B_db'),
               })
-            : await runDbAuditPhase3({
-                repoRoot,
-                outputDir: path.join(outputDir, 'B_db'),
-              });
+            : phase === 'phase3'
+              ? await runDbAuditPhase3({
+                  repoRoot,
+                  outputDir: path.join(outputDir, 'B_db'),
+                })
+              : await runDbAuditPhase4({
+                  repoRoot,
+                  outputDir: path.join(outputDir, 'B_db'),
+                });
     } catch (error) {
       await writeTextFile(path.join(outputDir, 'B_db', 'dbAudit.exception.log'), String(error));
       dbAudit = null;

@@ -16,7 +16,7 @@ export type PhaseAuditE2eResult = {
 };
 
 export type PhaseAuditSummary = {
-  phase: 'phase1' | 'phase2' | 'phase3';
+  phase: 'phase1' | 'phase2' | 'phase3' | 'phase4';
   ok: boolean;
   gitSha: string;
   startedAt: string;

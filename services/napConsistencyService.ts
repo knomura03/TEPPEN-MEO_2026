@@ -206,7 +206,7 @@ const compareField = (
 };
 
 const formatSummaryMessage = (summary: NapConsistencySummary): string =>
-  `NAPチェック完了: MATCH ${summary.match}件 / MISMATCH ${summary.mismatch}件 / MISSING ${summary.missing}件`;
+  `店舗情報チェック完了: 一致 ${summary.match}件 / 不一致 ${summary.mismatch}件 / 情報なし ${summary.missing}件`;
 
 export const napConsistencyService = {
   async listRunsByStore(storeId: string, limit = 20): Promise<NapConsistencyRun[]> {
@@ -336,12 +336,16 @@ export const napConsistencyService = {
             ? 'MATCH'
             : 'MISMATCH';
 
+        const mismatchLabel = mismatchFields
+          .map((field) => (field === 'name' ? '店名' : field === 'address' ? '住所' : field === 'phone' ? '電話' : field))
+          .join(', ');
+
         const message =
           status === 'MATCH'
-            ? 'NAP整合OK'
+            ? '一致'
             : status === 'MISSING'
-              ? 'NAP項目がprovider設定に見つかりません。'
-              : `不一致: ${mismatchFields.join(', ')}`;
+              ? '店舗情報がSNS連携設定に見つかりません。'
+              : `不一致: ${mismatchLabel}`;
 
         return {
           run_id: run.id,

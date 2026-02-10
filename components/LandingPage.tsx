@@ -29,7 +29,7 @@ type FeatureCard = {
 
 const FEATURES: FeatureCard[] = [
   {
-    title: '統合受信箱（口コミ/コメント）',
+    title: '受信メッセージ管理（口コミ/コメント）',
     description: '複数SNSのメッセージ対応を、ひとつの画面で進められます。',
     icon: MessageSquare,
   },
@@ -39,7 +39,7 @@ const FEATURES: FeatureCard[] = [
     icon: Calendar,
   },
   {
-    title: '店舗情報（NAP）管理',
+    title: '店舗情報（名前・住所・電話）管理',
     description: '店舗情報の表記をそろえて、更新漏れや記載ずれを防ぎます。',
     icon: MapPin,
   },

@@ -395,7 +395,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     if (needsPlanCode) {
       const code = invitePlanCode.trim().toUpperCase();
       if (!code) {
-        addNotification('入力エラー', '契約プラン（planCode）を選択してください。', 'WARNING');
+        addNotification('入力エラー', '契約プランを選択してください。', 'WARNING');
         return;
       }
     }
@@ -847,8 +847,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       )}
       {isInternal && activeOrgId && isOrgPlanMissing && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-sm rounded-xl p-4">
-          このORGは契約プランが未設定です。内部ユーザーが最初の顧客ユーザー（MANAGER/USER）を作成する場合、`planCode` が必須になります。
-          事前に「契約プラン」画面でORGへプランを割り当てる運用がおすすめです。
+          この組織は契約プランが未設定です。内部担当が最初の顧客ユーザー（店舗責任者 / 一般ユーザー）を作成する場合、契約プランを選択してください。
+          可能であれば、事前に「契約プラン」画面でこの組織へプランを割り当てる運用がおすすめです。
         </div>
       )}
 
@@ -1434,10 +1434,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     {isOrgPlanMissing ? (
                       <>
                         <div className="text-xs font-bold text-amber-700 dark:text-amber-300 mb-2">
-                          このORGは契約プラン未設定です（内部ユーザーが最初の顧客招待を行う場合、planCode必須）。
+                          この組織は契約プラン未設定です（内部担当が最初の顧客ユーザーを作成する場合、契約プランが必須です）。
                         </div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          契約プラン（planCode）
+                          契約プラン
                           {(inviteRole === Role.MANAGER || inviteRole === Role.USER) && <span className="text-red-500"> *</span>}
                         </label>
                         <select

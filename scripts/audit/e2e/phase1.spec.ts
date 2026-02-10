@@ -70,6 +70,27 @@ const loadAuditEnv = (): AuditEnv => {
 const env = loadAuditEnv();
 const runId = `AUDIT_${new Date().toISOString().replace(/[:.]/g, '-')}`;
 
+const getLoginEmailInput = (page: Page) =>
+  page
+    .locator(
+      '[data-testid="login-email"], input[name="email"], input[type="email"], input[placeholder="you@example.com"]'
+    )
+    .first();
+
+const getLoginPasswordInput = (page: Page) =>
+  page
+    .locator(
+      '[data-testid="login-password"], input[name="password"], input[type="password"], input[placeholder="••••••••"]'
+    )
+    .first();
+
+const getLoginSubmitButton = (page: Page) =>
+  page
+    .locator(
+      '[data-testid="login-submit"], button[type="submit"], button:has-text("ログイン"), button:has-text("管理画面")'
+    )
+    .first();
+
 const clickSidebarLogout = async (page: Page) => {
   const logoutButton = page.locator('#sidebar-logout-button');
   if (!(await logoutButton.isVisible().catch(() => false))) return false;
@@ -87,7 +108,7 @@ const clickSidebarLogout = async (page: Page) => {
 
 const ensureLoginScreen = async (page: Page) => {
   await page.goto('/login', { waitUntil: 'domcontentloaded' });
-  const loginEmail = page.getByTestId('login-email');
+  const loginEmail = getLoginEmailInput(page);
   if (await loginEmail.isVisible().catch(() => false)) return;
 
   if (await page.locator('#nav-DASHBOARD').isVisible().catch(() => false)) {
@@ -115,7 +136,7 @@ const ensureLoginScreen = async (page: Page) => {
 
 const ensureLoggedOut = async (page: Page) => {
   await ensureLoginScreen(page);
-  const loginEmail = page.getByTestId('login-email');
+  const loginEmail = getLoginEmailInput(page);
   if (await loginEmail.isVisible().catch(() => false)) return;
 
   if (await clickSidebarLogout(page)) {
@@ -132,10 +153,10 @@ const ensureLoggedOut = async (page: Page) => {
 
 const login = async (page: Page, creds: AuditCreds) => {
   await ensureLoginScreen(page);
-  await expect(page.getByTestId('login-email')).toBeVisible();
-  await page.getByTestId('login-email').fill(creds.email);
-  await page.getByTestId('login-password').fill(creds.password);
-  await page.getByTestId('login-submit').click();
+  await expect(getLoginEmailInput(page)).toBeVisible();
+  await getLoginEmailInput(page).fill(creds.email);
+  await getLoginPasswordInput(page).fill(creds.password);
+  await getLoginSubmitButton(page).click();
   await expect(page.locator('#nav-DASHBOARD')).toBeVisible();
 };
 

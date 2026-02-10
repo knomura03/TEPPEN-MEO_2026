@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { MOCK_POSTS } from '../constants';
 import { Post, PostApprovalActionType, PostApprovalComment, PostStatus, Role, User } from '../types';
 import { Clock, CheckCircle, AlertCircle, Calendar, X, Image as ImageIcon, Loader2, MessageSquare } from 'lucide-react';
@@ -64,6 +64,8 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
   const [isLoadingMedia, setIsLoadingMedia] = useState(false);
   const [newImages, setNewImages] = useState<File[]>([]);
   const [newImagePreviews, setNewImagePreviews] = useState<string[]>([]);
+  const [postSearchTerm, setPostSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'PENDING' | 'REJECTED' | 'FAILED'>('ALL');
   const maxFileSizeBytes = 10 * 1024 * 1024;
 
   const reload = async () => {
@@ -512,18 +514,57 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
     return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200';
   };
 
+  const matchesStatusFilter = (post: Post) => {
+    if (statusFilter === 'ALL') return true;
+    if (statusFilter === 'PENDING') return post.approvalStatus === 'PENDING';
+    if (statusFilter === 'REJECTED') return post.approvalStatus === 'REJECTED';
+    if (statusFilter === 'DRAFT') return post.status === PostStatus.DRAFT && post.approvalStatus !== 'PENDING' && post.approvalStatus !== 'REJECTED';
+    if (statusFilter === 'SCHEDULED') return post.status === PostStatus.SCHEDULED;
+    if (statusFilter === 'PUBLISHED') return post.status === PostStatus.PUBLISHED;
+    if (statusFilter === 'FAILED') return post.status === PostStatus.FAILED;
+    return true;
+  };
+
+  const filteredPosts = useMemo(() => {
+    const normalizedSearch = postSearchTerm.trim().toLowerCase();
+    return posts.filter((post) => {
+      if (!matchesStatusFilter(post)) {
+        return false;
+      }
+      if (!normalizedSearch) {
+        return true;
+      }
+      return post.content.toLowerCase().includes(normalizedSearch);
+    });
+  }, [postSearchTerm, posts, statusFilter]);
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-white">投稿管理</h1>
-        <div className="flex gap-2">
-            <select className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1 text-sm bg-white dark:bg-gray-700 dark:text-white">
-                <option>すべてのステータス</option>
-                <option>公開済み</option>
-                <option>予約済み</option>
-                <option>承認待ち</option>
-                <option>差し戻し</option>
-            </select>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <input
+            data-testid="post-filter-search"
+            type="text"
+            value={postSearchTerm}
+            onChange={(e) => setPostSearchTerm(e.target.value)}
+            placeholder="本文で検索"
+            className="w-full sm:w-64 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white"
+          />
+          <select
+            data-testid="post-filter-status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as 'ALL' | 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'PENDING' | 'REJECTED' | 'FAILED')}
+            className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white"
+          >
+            <option value="ALL">すべての状態</option>
+            <option value="DRAFT">下書き</option>
+            <option value="SCHEDULED">予約済み</option>
+            <option value="PUBLISHED">公開済み</option>
+            <option value="PENDING">承認待ち</option>
+            <option value="REJECTED">差し戻し</option>
+            <option value="FAILED">エラー</option>
+          </select>
         </div>
       </div>
 
@@ -540,7 +581,14 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {posts.map((post) => (
+              {filteredPosts.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-sm text-gray-500 dark:text-gray-400">
+                    条件に一致する投稿がありません。
+                  </td>
+                </tr>
+              )}
+              {filteredPosts.map((post) => (
                 <tr
                   key={post.id}
                   data-testid="post-row"

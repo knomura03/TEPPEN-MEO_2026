@@ -310,6 +310,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
 
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <article
+          id="billing-current-plan"
           data-testid="billing-plan-current"
           className={`lg:col-span-2 ${PAGE_CARD_PADDED_CLASS}`}
         >
@@ -335,7 +336,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
           </div>
         </article>
 
-        <article className={PAGE_CARD_PADDED_CLASS}>
+        <article id="billing-payment-note" className={PAGE_CARD_PADDED_CLASS}>
           <p className="text-sm text-gray-500 dark:text-gray-400">請求</p>
           <p className="text-xl font-bold text-gray-900 dark:text-gray-100 mt-2">別システム管理</p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
@@ -354,7 +355,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
       </section>
 
       {isInternal && (
-        <section className={`${PAGE_CARD_PADDED_CLASS} space-y-5`}>
+        <section id="billing-admin-section" className={`${PAGE_CARD_PADDED_CLASS} space-y-5`}>
           <div>
             <h4 className="text-lg font-bold text-gray-900 dark:text-gray-100">内部: 契約プラン管理</h4>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -363,7 +364,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="border border-gray-100 dark:border-gray-700 rounded-2xl p-4">
+            <div id="billing-plan-list" className="border border-gray-100 dark:border-gray-700 rounded-2xl p-4">
               <h5 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3">プラン一覧</h5>
               <div className="space-y-2">
                 {isLoadingPlans && (
@@ -404,7 +405,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
               </div>
             </div>
 
-            <div className="border border-gray-100 dark:border-gray-700 rounded-2xl p-4">
+            <div id="billing-plan-form" className="border border-gray-100 dark:border-gray-700 rounded-2xl p-4">
               <h5 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3">プラン作成/更新</h5>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -497,7 +498,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
             </div>
           </div>
 
-          <div className="border border-gray-100 dark:border-gray-700 rounded-2xl p-4">
+          <div id="billing-org-assignment" className="border border-gray-100 dark:border-gray-700 rounded-2xl p-4">
             <h5 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3">ORGへのプラン割当</h5>
             <div className="flex flex-col md:flex-row md:items-center gap-3">
               <select
@@ -533,7 +534,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
             </div>
           </div>
 
-          <div className="border border-gray-100 dark:border-gray-700 rounded-2xl p-4">
+          <div id="billing-audit-logs" className="border border-gray-100 dark:border-gray-700 rounded-2xl p-4">
             <h5 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3">直近の操作履歴</h5>
             {isLoadingAuditLogs ? (
               <div className="text-sm text-gray-500 dark:text-gray-400">読み込み中...</div>

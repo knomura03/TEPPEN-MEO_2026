@@ -73,7 +73,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
            <p className={PAGE_HEADER_DESCRIPTION_CLASS}>店舗パフォーマンスをひと目で確認できます。</p>
         </div>
         
-        <div className="flex items-center gap-3 bg-white dark:bg-gray-800 p-1.5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+        <div
+          id="dashboard-date-range-controls"
+          className="flex items-center gap-3 bg-white dark:bg-gray-800 p-1.5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm"
+        >
            <button 
              onClick={() => setDateRange('7days')}
              className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${dateRange === '7days' ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50'}`}
@@ -97,7 +100,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
       </div>
 
       {/* MEO KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div id="dashboard-kpi-cards" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard title="マップ表示回数" value="12,450" change={12.5} icon={MapPin} colorClass="bg-blue-500 text-blue-500" />
         <StatCard title="ルート検索数" value="856" change={5.2} icon={Navigation} colorClass="bg-green-500 text-green-500" />
         <StatCard title="通話クリック" value="124" change={-2.4} icon={Phone} colorClass="bg-purple-500 text-purple-500" />
@@ -106,7 +109,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Chart */}
-        <div className={`lg:col-span-2 ${PAGE_CARD_PADDED_CLASS}`}>
+        <div id="dashboard-main-chart" className={`lg:col-span-2 ${PAGE_CARD_PADDED_CLASS}`}>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-bold text-gray-800 dark:text-white">検索パフォーマンス推移</h2>
             <div className="flex gap-2 text-sm">
@@ -142,7 +145,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
         </div>
 
         {/* Search Breakdown */}
-        <div className={`${PAGE_CARD_PADDED_CLASS} flex flex-col`}>
+        <div id="dashboard-search-breakdown" className={`${PAGE_CARD_PADDED_CLASS} flex flex-col`}>
           <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-6">検索タイプの内訳</h2>
           <div className="flex-1 flex flex-col justify-center space-y-8">
              <div className="relative pt-2">

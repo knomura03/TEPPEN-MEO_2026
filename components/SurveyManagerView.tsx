@@ -579,7 +579,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className={`${PAGE_CARD_PADDED_CLASS} space-y-4`}>
+        <div id="survey-list-panel" className={`${PAGE_CARD_PADDED_CLASS} space-y-4`}>
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-gray-800 dark:text-white">アンケート一覧</h2>
             <button
@@ -634,7 +634,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
           </div>
         </div>
 
-        <div className={`${PAGE_CARD_PADDED_CLASS} space-y-5`}>
+        <div id="survey-editor-panel" className={`${PAGE_CARD_PADDED_CLASS} space-y-5`}>
           <h2 className="text-lg font-bold text-gray-800 dark:text-white">作成・編集</h2>
 
           <div className="space-y-4">
@@ -809,7 +809,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div id="survey-action-buttons" className="flex flex-wrap gap-2">
             <button
               data-testid="survey-create-draft"
               type="button"
@@ -867,7 +867,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
           </div>
 
           {selectedSurvey?.status === 'PUBLISHED' && selectedSurvey.publicToken && (
-            <div className="p-4 rounded-xl border border-green-200 dark:border-green-900/40 bg-green-50 dark:bg-green-900/20">
+            <div id="survey-public-assets" className="p-4 rounded-xl border border-green-200 dark:border-green-900/40 bg-green-50 dark:bg-green-900/20">
               <p className="text-sm font-medium text-green-800 dark:text-green-300">公開URL</p>
               <p
                 data-testid="survey-public-url"
@@ -918,7 +918,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
             </div>
           )}
 
-          <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
+          <div id="survey-analytics-panel" className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
             <h3 className="text-sm font-bold text-gray-800 dark:text-white mb-3">回答の集計</h3>
             {isLoadingAnalytics && <p className="text-xs text-gray-500 dark:text-gray-400">集計中...</p>}
             {!isLoadingAnalytics && analytics && (

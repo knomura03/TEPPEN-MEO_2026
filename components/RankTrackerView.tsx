@@ -704,7 +704,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
         </div>
       )}
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
+      <div id="rank-dashboard-section" className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-gray-800 dark:text-white">順位・競合ダッシュボード</h2>
@@ -712,16 +712,18 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
               直近の実行結果の推移と競合比較を表示します（テストデータ/本番データどちらでも表示可能）。
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void loadDashboard()}
-            disabled={isDashboardLoading || !activeStoreId || !isSupabaseConfigured}
-            data-testid="rank-dashboard-reload"
-            className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <RefreshCcw size={14} />
-            ダッシュボード再読込
-          </button>
+          <div id="rank-dashboard-actions">
+            <button
+              type="button"
+              onClick={() => void loadDashboard()}
+              disabled={isDashboardLoading || !activeStoreId || !isSupabaseConfigured}
+              data-testid="rank-dashboard-reload"
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <RefreshCcw size={14} />
+              ダッシュボード再読込
+            </button>
+          </div>
         </div>
 
         {dashboardWarning && (
@@ -848,7 +850,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
         )}
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
+      <div id="rank-nap-check-section" className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-gray-800 dark:text-white">店舗情報チェック（名前/住所/電話）</h2>
@@ -856,7 +858,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
               店舗情報（名前/住所/電話）と媒体設定値の一致状況を実行履歴で確認します。
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div id="rank-nap-actions" className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => void loadNapRuns()}
@@ -990,7 +992,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
         )}
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
+      <div id="rank-alerts-section" className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-gray-800 dark:text-white">店舗情報アラート</h2>
@@ -1093,7 +1095,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
         )}
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
+      <div id="rank-collection-section" className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-gray-800 dark:text-white">日次順位収集</h2>
@@ -1237,7 +1239,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
         )}
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
+      <div id="rank-competitors-section" className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-gray-800 dark:text-white">競合ターゲット</h2>
           <span className="text-xs text-gray-500 dark:text-gray-400">収集実行時に競合指標を同時保存します</span>
@@ -1312,7 +1314,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
         </button>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
+      <div id="rank-keywords-section" className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-gray-800 dark:text-white">キーワード一覧</h2>
           <span className="text-xs text-gray-500 dark:text-gray-400">

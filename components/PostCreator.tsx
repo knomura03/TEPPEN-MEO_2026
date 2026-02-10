@@ -427,10 +427,10 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 overflow-hidden">
         {/* Editor Column */}
-        <div className={`${PAGE_CARD_CLASS} p-6 overflow-y-auto`}>
+        <div id="post-editor-panel" className={`${PAGE_CARD_CLASS} p-6 overflow-y-auto`}>
             <form onSubmit={handleSubmit} className="space-y-6">
             {/* Platform Selection */}
-            <div>
+            <div id="post-target-mode-section">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">投稿対象</label>
                 <div className="space-y-2">
                   <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
@@ -478,7 +478,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
                 )}
             </div>
 
-            <div>
+            <div id="post-template-section">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">テンプレート / ブランドキット</label>
                 <div className="space-y-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -539,7 +539,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
                 </div>
             </div>
 
-            <div>
+            <div id="post-platform-section">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">投稿先を選択</label>
                 <div className="flex flex-wrap gap-3">
                 {MOCK_ACCOUNTS.map(account => (
@@ -660,7 +660,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-end space-x-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+            <div id="post-submit-section" className="flex items-center justify-end space-x-4 pt-4 border-t border-gray-100 dark:border-gray-700">
                 <button
                 data-testid="post-submit"
                 type="submit"
@@ -683,7 +683,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
         </div>
 
         {/* Preview Column */}
-        <div className="bg-gray-50 dark:bg-gray-900 rounded-xl shadow-inner border border-gray-200 dark:border-gray-700 p-6 overflow-y-auto flex flex-col">
+        <div id="post-preview-panel" className="bg-gray-50 dark:bg-gray-900 rounded-xl shadow-inner border border-gray-200 dark:border-gray-700 p-6 overflow-y-auto flex flex-col">
             <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     <MonitorSmartphone size={20} />

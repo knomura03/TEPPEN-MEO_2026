@@ -1,5 +1,6 @@
 import { StoreGroup } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { migrationRequiredMessage } from './migrationRequiredMessage';
 
 type DbStoreGroupStoreRow = {
   store_id: string;
@@ -35,7 +36,7 @@ const ensureStoreGroupSchema = async (client: NonNullable<typeof supabase>) => {
   if (storeGroupSchemaChecked) return;
   const { error } = await client.from('store_groups').select('id').limit(1);
   if (error && isMissingRelationError(error)) {
-    throw new Error('P1-08 migration（store_groups）の適用後に再試行してください。');
+    throw new Error(migrationRequiredMessage('店舗グループ'));
   }
   if (error) throw error;
   storeGroupSchemaChecked = true;
@@ -68,7 +69,7 @@ export const storeGroupsService = {
       .order('name', { ascending: true });
 
     if (error && isMissingRelationError(error)) {
-      throw new Error('P1-08 migration（store_groups）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('店舗グループ'));
     }
     if (error) throw error;
     return ((data || []) as DbStoreGroupRow[]).map(mapStoreGroup);
@@ -95,7 +96,7 @@ export const storeGroupsService = {
       .single();
 
     if (error && isMissingRelationError(error)) {
-      throw new Error('P1-08 migration（store_groups）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('店舗グループ'));
     }
     if (error) throw error;
 
@@ -107,7 +108,7 @@ export const storeGroupsService = {
       }));
       const { error: memberError } = await client.from('store_group_stores').insert(insertRows);
       if (memberError && isMissingRelationError(memberError)) {
-        throw new Error('P1-08 migration（store_group_stores）の適用後に再試行してください。');
+        throw new Error(migrationRequiredMessage('店舗グループ（店舗の紐付け）'));
       }
       if (memberError) throw memberError;
     }
@@ -118,7 +119,7 @@ export const storeGroupsService = {
       .eq('id', created.id)
       .single();
     if (savedError && isMissingRelationError(savedError)) {
-      throw new Error('P1-08 migration（store_groups）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('店舗グループ'));
     }
     if (savedError) throw savedError;
     return mapStoreGroup(savedRow as DbStoreGroupRow);
@@ -143,7 +144,7 @@ export const storeGroupsService = {
       .eq('id', params.id);
 
     if (error && isMissingRelationError(error)) {
-      throw new Error('P1-08 migration（store_groups）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('店舗グループ'));
     }
     if (error) throw error;
 
@@ -152,7 +153,7 @@ export const storeGroupsService = {
       .select('store_id')
       .eq('store_group_id', params.id);
     if (selectError && isMissingRelationError(selectError)) {
-      throw new Error('P1-08 migration（store_group_stores）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('店舗グループ（店舗の紐付け）'));
     }
     if (selectError) throw selectError;
 
@@ -168,7 +169,7 @@ export const storeGroupsService = {
         .eq('store_group_id', params.id)
         .in('store_id', toDelete);
       if (deleteError && isMissingRelationError(deleteError)) {
-        throw new Error('P1-08 migration（store_group_stores）の適用後に再試行してください。');
+        throw new Error(migrationRequiredMessage('店舗グループ（店舗の紐付け）'));
       }
       if (deleteError) throw deleteError;
     }
@@ -180,7 +181,7 @@ export const storeGroupsService = {
       }));
       const { error: insertError } = await client.from('store_group_stores').insert(insertRows);
       if (insertError && isMissingRelationError(insertError)) {
-        throw new Error('P1-08 migration（store_group_stores）の適用後に再試行してください。');
+        throw new Error(migrationRequiredMessage('店舗グループ（店舗の紐付け）'));
       }
       if (insertError) throw insertError;
     }
@@ -194,7 +195,7 @@ export const storeGroupsService = {
       .delete()
       .eq('id', storeGroupId);
     if (error && isMissingRelationError(error)) {
-      throw new Error('P1-08 migration（store_groups）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('店舗グループ'));
     }
     if (error) throw error;
   },

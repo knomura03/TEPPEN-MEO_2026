@@ -1,5 +1,6 @@
 import { CompetitorMetricSnapshot, CompetitorTarget } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { migrationRequiredMessage } from './migrationRequiredMessage';
 
 type DbCompetitorTargetRow = {
   id: string;
@@ -30,7 +31,7 @@ type DbCompetitorMetricSnapshotRow = {
   created_at: string;
 };
 
-const MIGRATION_ERROR_MESSAGE = 'P3-03 migration（competitor collection）の適用後に再試行してください。';
+const MIGRATION_ERROR_MESSAGE = migrationRequiredMessage('順位チェック（競合比較）');
 
 const requireSupabase = () => {
   if (!isSupabaseConfigured || !supabase) {

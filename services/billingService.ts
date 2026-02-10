@@ -1,5 +1,6 @@
 import { BillingPlan, OrgSubscription } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { migrationRequiredMessage } from './migrationRequiredMessage';
 
 type DbBillingPlanRow = {
   id: string;
@@ -36,7 +37,7 @@ type FunctionInvokeResult = {
 
 const requireSupabase = () => {
   if (!isSupabaseConfigured || !supabase) {
-    throw new Error('Supabaseが未設定のため、課金プラン機能を利用できません。');
+    throw new Error('Supabaseが未設定のため、契約プラン機能を利用できません。');
   }
   return supabase;
 };
@@ -143,7 +144,7 @@ export const billingService = {
     const { data, error } = await query;
     if (error) {
       if (isMissingRelationError(error)) {
-        throw new Error('課金プラン基盤（Phase4 migration）が未適用です。先に `202602060020_p4_billing_pwa_foundation.sql` を適用してください。');
+        throw new Error(migrationRequiredMessage('契約プラン'));
       }
       throw error;
     }

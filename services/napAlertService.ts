@@ -1,5 +1,6 @@
 import { NapAlert, NapAlertStatus, NapConsistencyResult, NapConsistencyResultStatus } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { migrationRequiredMessage } from './migrationRequiredMessage';
 
 type DbNapAlertRow = {
   id: string;
@@ -31,14 +32,14 @@ type SyncResultRow = Pick<
   'id' | 'providerCatalogId' | 'providerKey' | 'providerName' | 'status' | 'mismatchFields'
 >;
 
-const MIGRATION_ERROR_MESSAGE = 'P3-06 migration（NAP alert operations）の適用後に再試行してください。';
+const MIGRATION_ERROR_MESSAGE = migrationRequiredMessage('店舗情報チェック（アラート）');
 
 const SELECT_COLUMNS =
   'id, store_id, provider_catalog_id, provider_key, provider_name, status, last_result_status, mismatch_fields, last_run_id, last_result_id, first_detected_at, opened_at, last_detected_at, last_checked_at, acknowledged_at, acknowledged_by_user_id, resolved_at, resolved_by_user_id, note, updated_by, created_at, updated_at';
 
 const requireSupabase = () => {
   if (!isSupabaseConfigured || !supabase) {
-    throw new Error('Supabaseが未設定のため、NAPアラートを利用できません。');
+    throw new Error('Supabaseが未設定のため、店舗情報チェック（アラート）を利用できません。');
   }
   return supabase;
 };
@@ -242,4 +243,3 @@ export const napAlertService = {
     }
   },
 };
-

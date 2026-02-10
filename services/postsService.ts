@@ -8,6 +8,7 @@ import {
   SocialPlatform,
 } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { migrationRequiredMessage } from './migrationRequiredMessage';
 import { postMediaService } from './postMediaService';
 
 type DbPostRow = {
@@ -116,7 +117,7 @@ const ensureApprovalCommentSchema = async (client: NonNullable<typeof supabase>)
   if (approvalCommentSchemaChecked) return;
   const { error } = await client.from('post_approval_comments').select('id').limit(1);
   if (error && isMissingRelationError(error)) {
-    throw new Error('P1-07 migration（post_approval_comments）の適用後に再試行してください。');
+    throw new Error(migrationRequiredMessage('投稿の履歴コメント'));
   }
   if (error) throw error;
   approvalCommentSchemaChecked = true;
@@ -138,7 +139,7 @@ const appendApprovalComment = async (
     comment: params.comment || null,
   });
   if (error && isMissingRelationError(error)) {
-    throw new Error('P1-07 migration（post_approval_comments）の適用後に再試行してください。');
+    throw new Error(migrationRequiredMessage('投稿の履歴コメント'));
   }
   if (error) throw error;
 };
@@ -229,7 +230,7 @@ export const postsService = {
       .single();
 
     if (error && isMissingColumnError(error)) {
-      throw new Error('P1-06 migration（posts approval列）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('投稿の承認フロー'));
     }
     if (error) throw error;
 
@@ -319,7 +320,7 @@ export const postsService = {
       })
       .eq('id', postId);
     if (error && isMissingColumnError(error)) {
-      throw new Error('P1-06 migration（posts approval列）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('投稿の承認フロー'));
     }
     if (error) throw error;
     if (actorUserId) {
@@ -346,7 +347,7 @@ export const postsService = {
       })
       .eq('id', postId);
     if (error && isMissingColumnError(error)) {
-      throw new Error('P1-06 migration（posts approval列）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('投稿の承認フロー'));
     }
     if (error) throw error;
     await appendApprovalComment(client, {
@@ -371,7 +372,7 @@ export const postsService = {
       })
       .eq('id', postId);
     if (error && isMissingColumnError(error)) {
-      throw new Error('P1-06 migration（posts approval列）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('投稿の承認フロー'));
     }
     if (error) throw error;
     await appendApprovalComment(client, {
@@ -391,7 +392,7 @@ export const postsService = {
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
     if (error && isMissingRelationError(error)) {
-      throw new Error('P1-07 migration（post_approval_comments）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('投稿の履歴コメント'));
     }
     if (error) throw error;
     return ((data || []) as DbPostApprovalCommentRow[]).map(mapDbApprovalComment);

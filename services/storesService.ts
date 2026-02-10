@@ -1,5 +1,6 @@
 import { Store } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { migrationRequiredMessage } from './migrationRequiredMessage';
 
 type DbStoreRow = {
   id: string;
@@ -63,7 +64,7 @@ export const storesService = {
     });
     if (error && !isMissingSchemaError(error)) throw error;
     if (error && isMissingSchemaError(error)) {
-      throw new Error('P1-08拡張 migration（202602060009）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('店舗の作成'));
     }
 
     const row = Array.isArray(data) ? data[0] : data;

@@ -1,5 +1,6 @@
 import { Store, StoreCsvImportResult, StoreCsvRow, StoreCsvValidationError } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { migrationRequiredMessage } from './migrationRequiredMessage';
 
 type DbStoreRow = {
   id: string;
@@ -82,7 +83,7 @@ export const storeLifecycleService = {
     });
     if (error && !isMissingSchemaError(error)) throw error;
     if (error && isMissingSchemaError(error)) {
-      throw new Error('P1-08拡張 migration（202602060009）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('店舗の作成'));
     }
 
     const row = Array.isArray(data) ? data[0] : data;
@@ -115,7 +116,7 @@ export const storeLifecycleService = {
     });
     if (error && !isMissingSchemaError(error)) throw error;
     if (error && isMissingSchemaError(error)) {
-      throw new Error('P1-08拡張 migration（202602060009）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('CSV一括作成'));
     }
 
     const result = (data || {}) as RpcBulkStoreResult;

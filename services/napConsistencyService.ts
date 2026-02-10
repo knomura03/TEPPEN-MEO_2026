@@ -9,6 +9,7 @@ import { isSupabaseConfigured, supabase } from './supabaseClient';
 import { providerCatalogService } from './providerCatalogService';
 import { storesService } from './storesService';
 import { napAlertService } from './napAlertService';
+import { migrationRequiredMessage } from './migrationRequiredMessage';
 
 type DbNapRunRow = {
   id: string;
@@ -58,7 +59,7 @@ type ExtractedNapValue = {
   sourceKey: string;
 };
 
-const MIGRATION_ERROR_MESSAGE = 'P3-05 migration（NAP consistency check）の適用後に再試行してください。';
+const MIGRATION_ERROR_MESSAGE = migrationRequiredMessage('店舗情報チェック');
 
 const NAP_KEY_CANDIDATES = {
   name: ['name', 'store_name', 'storeName', 'business_name', 'businessName', 'location_name', 'locationName', 'nap_name'],
@@ -68,7 +69,7 @@ const NAP_KEY_CANDIDATES = {
 
 const requireSupabase = () => {
   if (!isSupabaseConfigured || !supabase) {
-    throw new Error('Supabaseが未設定のため、NAP整合性チェックを実行できません。');
+    throw new Error('Supabaseが未設定のため、店舗情報チェックを実行できません。');
   }
   return supabase;
 };
@@ -415,7 +416,7 @@ export const napConsistencyService = {
         message,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'NAP整合性チェックの実行に失敗しました。';
+      const message = error instanceof Error ? error.message : '店舗情報チェックの実行に失敗しました。';
       await finalize('FAILED', { total: 0, match: 0, mismatch: 0, missing: 0 }, message);
       throw error;
     }

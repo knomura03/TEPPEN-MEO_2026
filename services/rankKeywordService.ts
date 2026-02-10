@@ -1,5 +1,6 @@
 import { RankKeyword } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { migrationRequiredMessage } from './migrationRequiredMessage';
 
 type DbRankKeywordRow = {
   id: string;
@@ -13,7 +14,7 @@ type DbRankKeywordRow = {
   updated_at: string;
 };
 
-const MIGRATION_ERROR_MESSAGE = 'P3-01 migration（rank keywords）の適用後に再試行してください。';
+const MIGRATION_ERROR_MESSAGE = migrationRequiredMessage('順位チェック（キーワード管理）');
 
 const requireSupabase = () => {
   if (!isSupabaseConfigured || !supabase) {
@@ -139,4 +140,3 @@ export const rankKeywordService = {
     if (error) throw error;
   },
 };
-

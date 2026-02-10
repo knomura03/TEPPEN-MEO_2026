@@ -1,5 +1,6 @@
 import { OrgStorePolicy, UserStoreControl } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { migrationRequiredMessage } from './migrationRequiredMessage';
 
 type DbOrgStorePolicyRow = {
   org_id: string;
@@ -65,7 +66,7 @@ export const userStoreControlsService = {
       .maybeSingle();
     if (error && !isMissingSchemaError(error)) throw error;
     if (error && isMissingSchemaError(error)) {
-      throw new Error('P1-08拡張 migration（202602060009）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('ユーザーの利用上限設定'));
     }
     if (!data) {
       return {
@@ -104,7 +105,7 @@ export const userStoreControlsService = {
       (effectiveLimitResult.error && isMissingSchemaError(effectiveLimitResult.error)) ||
       (countResult.error && isMissingSchemaError(countResult.error))
     ) {
-      throw new Error('P1-08拡張 migration（202602060009）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('ユーザーの利用上限設定'));
     }
 
     const base: UserStoreControl = data
@@ -144,7 +145,7 @@ export const userStoreControlsService = {
     );
     if (error && !isMissingSchemaError(error)) throw error;
     if (error && isMissingSchemaError(error)) {
-      throw new Error('P1-08拡張 migration（202602060009）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('ユーザーの利用上限設定'));
     }
     return this.getUserControl(params.orgId, params.userId);
   },

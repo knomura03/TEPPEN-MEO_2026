@@ -1,5 +1,6 @@
 import { InboxAssignableUser, InboxMessage, InboxSlaStatus, ReplyDraftStatus, Role, SocialPlatform } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { migrationRequiredMessage } from './migrationRequiredMessage';
 
 type DbInboxMessageRow = {
   id: string;
@@ -231,7 +232,7 @@ export const inboxService = {
       })
       .eq('id', messageId);
     if (error && isMissingColumnError(error)) {
-      throw new Error('P1-05 migration（reply_draft列）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('受信箱（返信案の保存）'));
     }
     if (error) throw error;
   },
@@ -358,7 +359,7 @@ export const inboxService = {
       .eq('id', params.messageId);
 
     if (error && isMissingColumnError(error)) {
-      throw new Error('P2-04 migration（inbox workflow列）の適用後に再試行してください。');
+      throw new Error(migrationRequiredMessage('受信箱（担当/期限/タグ）'));
     }
     if (error) throw error;
 

@@ -7,6 +7,7 @@ import {
   RankCollectionRun,
 } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { migrationRequiredMessage } from './migrationRequiredMessage';
 
 type DbRankCollectionRunRow = {
   id: string;
@@ -58,8 +59,8 @@ type FunctionInvokeResult = {
   body: unknown;
 };
 
-const MIGRATION_ERROR_MESSAGE = 'P3-02 migration（rank daily collection）の適用後に再試行してください。';
-const COMPETITOR_MIGRATION_ERROR_MESSAGE = 'P3-03 migration（competitor collection）の適用後に再試行してください。';
+const MIGRATION_ERROR_MESSAGE = migrationRequiredMessage('順位チェック（順位収集）');
+const COMPETITOR_MIGRATION_ERROR_MESSAGE = migrationRequiredMessage('順位チェック（競合比較）');
 
 const requireSupabase = () => {
   if (!isSupabaseConfigured || !supabase) {
@@ -221,7 +222,7 @@ export const rankCollectionService = {
           return { run, results, competitorSnapshots };
         } catch (error) {
           const message = toErrorMessage(error);
-          if (message.includes('P3-03 migration')) {
+          if (message === COMPETITOR_MIGRATION_ERROR_MESSAGE) {
             return {
               run,
               results,

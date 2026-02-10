@@ -1,5 +1,6 @@
 import { BrandKit, PostContentLintResult, PostContentTemplate, SocialPlatform } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { migrationRequiredMessage } from './migrationRequiredMessage';
 
 type DbBrandKitRow = {
   id: string;
@@ -25,7 +26,7 @@ type DbPostTemplateRow = {
   updated_at: string;
 };
 
-const MIGRATION_ERROR_MESSAGE = 'P2-05 migration（brand kit / post templates）の適用後に再試行してください。';
+const MIGRATION_ERROR_MESSAGE = migrationRequiredMessage('ブランドキット（投稿テンプレート）');
 
 const requireSupabase = () => {
   if (!isSupabaseConfigured || !supabase) {

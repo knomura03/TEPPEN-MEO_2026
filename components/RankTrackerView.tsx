@@ -685,9 +685,9 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
     <div className={PAGE_CONTAINER_CLASS} data-testid="rank-tracker-view">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className={PAGE_HEADER_TITLE_CLASS}>順位チェック</h1>
+          <h1 className={PAGE_HEADER_TITLE_CLASS}>検索順位チェック</h1>
           <p className={PAGE_HEADER_DESCRIPTION_CLASS}>
-            Googleマップ検索での表示順位を、登録キーワードごとに確認できます。収集結果は履歴として残り、改善の優先順位付けに使えます。
+            Googleマップ検索で、店舗が何位に表示されているかをキーワードごとに確認できます。履歴比較で改善の優先順位を判断できます。
           </p>
         </div>
       </div>

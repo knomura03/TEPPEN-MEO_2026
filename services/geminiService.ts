@@ -25,7 +25,7 @@ export class GeminiService {
   }
 
   private normalizePlatformLabel(platform: string): string {
-    if (platform === 'GOOGLE_BUSINESS') return 'Google Business Profile';
+    if (platform === 'GOOGLE_BUSINESS') return 'Googleビジネスプロフィール';
     if (platform === 'INSTAGRAM') return 'Instagram';
     if (platform === 'FACEBOOK') return 'Facebook';
     if (platform === 'TIKTOK') return 'TikTok';

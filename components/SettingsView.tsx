@@ -84,7 +84,7 @@ const TEMPLATE_PLATFORM_OPTIONS: SocialPlatform[] = ['INSTAGRAM', 'FACEBOOK', 'G
 const TEMPLATE_PLATFORM_LABELS: Record<SocialPlatform, string> = {
   INSTAGRAM: 'Instagram',
   FACEBOOK: 'Facebook',
-  GOOGLE_BUSINESS: 'Google Business Profile',
+  GOOGLE_BUSINESS: 'Googleビジネスプロフィール',
   TIKTOK: 'TikTok',
 };
 

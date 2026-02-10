@@ -14,7 +14,7 @@ import { PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_
 const platformLabel: Record<SocialPlatform, string> = {
   INSTAGRAM: 'Instagram',
   FACEBOOK: 'Facebook',
-  GOOGLE_BUSINESS: 'Google Business Profile',
+  GOOGLE_BUSINESS: 'Googleビジネスプロフィール',
   TIKTOK: 'TikTok',
 };
 

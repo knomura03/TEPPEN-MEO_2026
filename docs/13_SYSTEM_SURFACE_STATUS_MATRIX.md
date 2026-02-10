@@ -1,6 +1,6 @@
 # TEPPEN MEO：画面/ボタン/機能/DB接続 状態台帳（正本）
 
-最終更新: 2026-02-10（UI文言/ガイド順/メニュー順序管理・アンケート拡張反映）
+最終更新: 2026-02-10（UI文言/ガイド要素フォーカス/プロフィール画像変更反映）
 
 ## 0. 運用ルール（必須）
 - この台帳は、実装・修正・設定変更のたびに**同一作業内で更新**する。
@@ -29,6 +29,8 @@
 | POST-03 | 新規投稿 | 投稿先選択 | MOCK_ONLY | なし | `MOCK_ACCOUNTS` 固定 | P2で実接続予定 |
 | POST-04 | 新規投稿 | 店舗グループ一括投稿 | CONNECTED | `store_groups`, `postsService.createBulk` | ADMIN/SUPERVISOR/MANAGERのみ利用可。失敗時ロールバック | P1-09 |
 | POST-07 | 新規投稿 | テンプレート適用/ブランド警告 | HYBRID | `brandKitService`, `brand_kits`, `post_templates` | migration `202602060014` 未適用環境は専用エラー。Supabase未設定時はテンプレ未登録表示 | P2-05 |
+| TEMPLATE-01 | 投稿テンプレート | テンプレート作成/更新/削除 | CONNECTED | `post_templates`, `brandKitService` | `202602060014` 未適用環境は専用エラー | UI改善 |
+| BRAND-01 | ブランドキット | 口調/禁止語/推奨ハッシュタグ/署名管理 | CONNECTED | `brand_kits`, `brandKitService` | `202602060014` 未適用環境は専用エラー | UI改善 |
 | POST-05 | 投稿一覧 | Instagram投稿実行（手動） | CONDITIONAL | `postPublishService`, Edge Function `instagram-publish-post`, `post_publish_logs` | `202602060011` + Function配備後に有効。条件未達時はMOCK記録で実行 | P2-02 |
 | POST-06 | 投稿一覧 | Facebook投稿実行（手動） | CONDITIONAL | `postPublishService`, Edge Function `facebook-publish-post`, `post_publish_logs` | Function配備後に有効。条件未達時はMOCK記録で実行 | P2-03 |
 | POSTLIST-01 | 投稿一覧 | 一覧表示/編集/削除 | HYBRID | `posts`, `post_media` | Supabase未設定時は `MOCK_POSTS` | P1 |
@@ -58,8 +60,9 @@
 | SET-05 | 設定>SNS連携 | Secret保存/接続テスト | CONDITIONAL | Edge Functions `admin-provider-secret-upsert`, `admin-provider-connection-test` | 実API read-only（GBP/FB/IG）で判定。Functions配備/Secrets登録/有効ログインセッションが必須。Gateway 401対策としてフロントはHTTP直叩き（`apikey`+`Authorization`）を使用 | Phase0/P2 |
 | SET-07 | 設定>SNS連携 | OAuth連携（開始/コールバック完了/解除） | CONDITIONAL | Edge Functions `oauth-start`, `oauth-callback` + RPC `oauth_disconnect_session` + `oauth_sessions` | `202602060010` 適用後に有効。認可コード貼り付けは廃止し、コールバックで自動完了 | P2-01 |
 | SET-06 | 設定>システム管理 | APIキー表示UI | UI_ONLY | なし | ダミー表示（`****************************`） | 未着手 |
-| SET-08 | 設定>システム管理 | ブランドキット/投稿テンプレ管理 | CONDITIONAL | `brand_kits`, `post_templates`, `brandKitService` | `202602060014` 適用後に有効。権限は内部（ADMIN/SUPERVISOR） | P2-05 |
-| SET-09 | 設定>システム管理 | サイドバーメニュー順序（D&D） | CONNECTED | `navigationOrderService`（localStorage） | ADMINのみ操作可。既定順は `ダッシュボード→新規投稿→投稿一覧→カレンダー→受信箱→アンケート→順位チェック→ユーザー管理→契約プラン` | UI改善 |
+| SET-08 | 設定>システム管理 | ブランド/テンプレ管理ページへの導線 | CONNECTED | 画面遷移（`BRAND_KIT`, `POST_TEMPLATES`） | 直接編集は専用ページに集約 | UI改善 |
+| SET-09 | 設定>システム管理 | サイドバーメニュー順序（D&D） | CONNECTED | `navigationOrderService`（localStorage） | ADMINのみ操作可。既定順は `ダッシュボード→新規投稿→投稿テンプレート→ブランドキット→投稿一覧→カレンダー→受信箱→アンケート→検索順位チェック→ユーザー管理→契約プラン` | UI改善 |
+| SET-10 | 設定>プロフィール | プロフィール画像変更 | CONNECTED | Supabase Storage `avatars`, `profiles.avatar_url`, `avatarService` | `202602100004` 適用後に有効。本人のみ更新可 | UI改善 |
 | USER-01 | ユーザー管理 | ユーザー一覧/削除 | HYBRID | `memberships`, `profiles` | Supabase未設定時は `MOCK_USERS` | P1 |
 | USER-02 | ユーザー管理 | 新規ユーザー招待 | CONDITIONAL | Edge Function `admin-create-user` | Function配備＋`SUPABASE_SERVICE_ROLE_KEY`必須 | P1 |
 | USER-03 | ユーザー管理 | 店舗グループCRUD | CONNECTED | `store_groups`, `store_group_stores` | USERは編集不可 | P1-08 |
@@ -110,7 +113,8 @@
 | `supabase/migrations/202602060020_p4_billing_pwa_foundation.sql` | P4 課金/PWA DB基盤 | 実装済み。未適用環境ではPhase4 DB監査が `PGRST205` で失敗する |
 | `supabase/migrations/202602090001_p4_roles_supervisor_and_plan_admin_gui.sql` | P4 ロール再編（SUPERVISOR）+ 契約プランGUI | 実装済み（要適用）。未適用環境ではロール再編/プラン管理GUIが正しく動作しない |
 | `supabase/migrations/202602090002_p4_real_oauth_callback_and_credentials_encryption.sql` | P4 実OAuthコールバック運用補助index | 2026-02-10 CLI適用済み（本番）。`oauth_sessions` / `integration_credentials` の参照最適化 |
-| `supabase/migrations/202602100001_p1_survey_customization_and_header_media.sql` | P1-10 アンケート文言カスタム + ヘッダー画像 | 実装済み（要適用）。未適用環境ではSURVEY-05を保存できない |
+| `supabase/migrations/202602100001_p1_survey_customization_and_header_media.sql` | P1-10 アンケート文言カスタム + ヘッダー画像 | 2026-02-10 本番適用済み（CLI確認） |
+| `supabase/migrations/202602100004_profile_avatar_storage.sql` | UI改善 プロフィール画像Storage/RLS | 2026-02-10 本番適用済み（CLI実行） |
 
 ## 5. 現時点のモック/未接続残件（優先順）
 1. ダッシュボードKPIが固定値（実データ未接続）

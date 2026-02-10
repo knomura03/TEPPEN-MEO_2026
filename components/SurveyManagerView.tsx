@@ -527,7 +527,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
           )}
 
           <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
-            <h3 className="text-sm font-bold text-gray-800 dark:text-white mb-3">指標（P1-03）</h3>
+            <h3 className="text-sm font-bold text-gray-800 dark:text-white mb-3">回答の集計</h3>
             {isLoadingAnalytics && <p className="text-xs text-gray-500 dark:text-gray-400">集計中...</p>}
             {!isLoadingAnalytics && analytics && (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
@@ -544,17 +544,17 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
                   <p className="text-base font-bold text-gray-800 dark:text-white">{analytics.completionRate}%</p>
                 </div>
                 <div className="p-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                  <p className="text-gray-500 dark:text-gray-400">高評価分岐</p>
+                  <p className="text-gray-500 dark:text-gray-400">高評価ルート</p>
                   <p className="text-base font-bold text-gray-800 dark:text-white">{analytics.positiveRate}% ({analytics.positiveCount})</p>
                 </div>
                 <div className="p-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                  <p className="text-gray-500 dark:text-gray-400">不満回収分岐</p>
+                  <p className="text-gray-500 dark:text-gray-400">改善ルート</p>
                   <p className="text-base font-bold text-gray-800 dark:text-white">{analytics.negativeRate}% ({analytics.negativeCount})</p>
                 </div>
                 <div className="p-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                   <p className="text-gray-500 dark:text-gray-400">遷移クリック</p>
                   <p className="text-base font-bold text-gray-800 dark:text-white">{analytics.redirectClickCount}</p>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">高評価内クリック率: {analytics.redirectClickRate}%</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">高評価ルート内クリック率: {analytics.redirectClickRate}%</p>
                 </div>
               </div>
             )}

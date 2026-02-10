@@ -574,6 +574,12 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
     return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200';
   };
 
+  const napResultStatusLabel = (status: NapConsistencyResult['status']) => {
+    if (status === 'MATCH') return '一致';
+    if (status === 'MISMATCH') return '不一致';
+    return '未設定';
+  };
+
   const selectedNapSummary = useMemo(() => {
     if (!selectedNapRunId) return null;
     return napRuns.find((run) => run.id === selectedNapRunId)?.summary || null;
@@ -703,7 +709,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
           <div>
             <h2 className="text-lg font-bold text-gray-800 dark:text-white">順位・競合ダッシュボード</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              直近の実行結果の推移と競合比較を表示します（モック/本番どちらのデータでも表示可能）。
+              直近の実行結果の推移と競合比較を表示します（テストデータ/本番データどちらでも表示可能）。
             </p>
           </div>
           <button
@@ -728,7 +734,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
           <p className="text-sm text-gray-500 dark:text-gray-400">ダッシュボードを読み込み中...</p>
         ) : dashboardRunDetails.length === 0 ? (
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            収集データがまだありません。まず「収集実行（MOCK）」を実行してください。
+            収集データがまだありません。まず「収集を実行（テストデータ）」を押してください。
           </p>
         ) : (
           <div className="space-y-4">
@@ -881,15 +887,15 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
               <p className="text-lg font-bold text-gray-800 dark:text-white">{selectedNapSummary.total}</p>
             </div>
             <div className="p-3 rounded-xl border border-green-200 dark:border-green-900/30 bg-green-50 dark:bg-green-900/10">
-              <p className="text-xs text-green-700 dark:text-green-300">MATCH</p>
+              <p className="text-xs text-green-700 dark:text-green-300">一致</p>
               <p className="text-lg font-bold text-green-800 dark:text-green-200">{selectedNapSummary.match}</p>
             </div>
             <div className="p-3 rounded-xl border border-yellow-200 dark:border-yellow-900/30 bg-yellow-50 dark:bg-yellow-900/10">
-              <p className="text-xs text-yellow-700 dark:text-yellow-300">MISMATCH</p>
+              <p className="text-xs text-yellow-700 dark:text-yellow-300">不一致</p>
               <p className="text-lg font-bold text-yellow-800 dark:text-yellow-200">{selectedNapSummary.mismatch}</p>
             </div>
             <div className="p-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/30">
-              <p className="text-xs text-gray-500 dark:text-gray-400">MISSING</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">未設定</p>
               <p className="text-lg font-bold text-gray-800 dark:text-white">{selectedNapSummary.missing}</p>
             </div>
           </div>
@@ -950,7 +956,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                                 : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
                           }`}
                         >
-                          {item.status}
+                          {napResultStatusLabel(item.status)}
                         </span>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] text-gray-600 dark:text-gray-300">
@@ -1092,7 +1098,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
           <div>
             <h2 className="text-lg font-bold text-gray-800 dark:text-white">日次順位収集</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              現在はモック収集のみ対応しています。本番収集は次の開発で対応予定です。
+              現在はテストデータでの収集のみ対応しています。本番収集は次の開発で対応予定です。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1111,10 +1117,10 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
               onClick={() => void handleRunCollectionMock()}
               disabled={isRunSubmitting || isRunLoading || !activeStoreId || !isSupabaseConfigured}
               data-testid="rank-run-execute"
-              className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <Play size={14} />
-              収集実行（MOCK）
+            className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <Play size={14} />
+              収集を実行（テストデータ）
             </button>
           </div>
         </div>

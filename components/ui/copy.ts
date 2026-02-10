@@ -20,7 +20,7 @@ export const COMMON_COPY = {
   providerManagementLabel: '連携先の管理',
   storeScopeLabel: '店舗ごと',
   oauthShortLabel: '連携認証',
-  runtimeShortLabel: '動作モード',
+  runtimeShortLabel: '利用状態',
   thresholdLabel: '口コミ案内の基準点',
   inboxLabel: '受信箱（コメント/メッセージ）',
   napLabel: '店舗情報（名称/住所/電話）',
@@ -39,4 +39,3 @@ export const TOUR_COPY = {
   previousLabel: '前へ',
   finishLabel: '完了',
 } as const;
-

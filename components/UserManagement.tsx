@@ -1267,7 +1267,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             <div>
               <h3 className="text-sm font-bold text-gray-900 dark:text-white">店舗グループ一括設定（機能公開）</h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                対象グループの全店舗へ、同じ機能公開状態を一括反映します（P1-09）。
+                対象グループの全店舗へ、同じ機能公開状態をまとめて反映します。
               </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

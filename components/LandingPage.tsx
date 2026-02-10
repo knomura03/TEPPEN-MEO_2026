@@ -44,7 +44,7 @@ const FEATURES: FeatureCard[] = [
     icon: MapPin,
   },
   {
-    title: 'MEOの状況把握（主要指標の可視化）',
+    title: 'Googleマップ集客の状況把握（主要指標の可視化）',
     description: 'マップ表示や導線の変化を見ながら改善アクションを決められます。',
     icon: TrendingUp,
   },
@@ -296,7 +296,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigateLogin }) => 
                 <p className="text-xs text-primary-700 dark:text-primary-200">今週の注力タスク</p>
                 <ul className="mt-2 space-y-1 text-sm font-medium text-primary-900 dark:text-primary-100">
                   <li>・高評価レビューへの返信強化</li>
-                  <li>・週末キャンペーン投稿の予約</li>
+                  <li>・週末のお知らせ投稿を予約</li>
                 </ul>
               </div>
             </div>

@@ -1423,7 +1423,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
             <div className="max-w-5xl space-y-6">
               <div>
                 <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-1">SNS連携設定</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">店舗ごとに接続状態を管理します。接続テストで利用可否を確認できます。</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">店舗ごとの接続状態を管理します。接続確認で利用できるかを確認できます。</p>
               </div>
               {!isSupabaseConfigured && (
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 text-sm rounded-xl p-4">
@@ -1473,11 +1473,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                           接続状態: {CONNECTION_STATUS_LABELS[provider.configuration?.connectionStatus || 'DISCONNECTED']}
                         </p>
                         <details className="text-xs text-gray-500 dark:text-gray-400">
-                          <summary className="cursor-pointer select-none">詳細情報を表示</summary>
+                          <summary className="cursor-pointer select-none">技術情報を表示（必要なときのみ）</summary>
                           <div className="mt-2 space-y-1">
-                            <p>認証方式: {PROVIDER_AUTH_LABELS[provider.catalog.authKind]}</p>
-                            <p>接続テスト: {TEST_MODE_LABELS[provider.readiness.testMode]}</p>
-                            <p>動作モード: {RUNTIME_MODE_LABELS[provider.readiness.runtimeMode]}</p>
+                            <p>ログイン方式: {PROVIDER_AUTH_LABELS[provider.catalog.authKind]}</p>
+                            <p>接続確認方式: {TEST_MODE_LABELS[provider.readiness.testMode]}</p>
+                            <p>利用状態: {RUNTIME_MODE_LABELS[provider.readiness.runtimeMode]}</p>
                             {provider.configuration?.lastError ? (
                               <p className="text-red-600 dark:text-red-300">エラー内容: {provider.configuration.lastError}</p>
                             ) : null}
@@ -1679,7 +1679,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       </div>
                     )}
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      実データ検証は、設定済みの連携先のみ対象です。未設定の連携先は自動でモック検証になり、Supabase未接続時はすべてモック表示です。
+                      実データで接続確認できるのは、設定済みの連携先のみです。未設定の連携先はテスト表示になり、Supabase未接続時はすべてテスト表示になります。
                     </p>
                   </div>
                 </div>
@@ -1923,7 +1923,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
               <div data-testid="oauth-modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
                 <div className="w-full max-w-xl rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-xl p-6 space-y-4">
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">OAuth連携: {oauthProviderLabel}</h3>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">ログイン連携: {oauthProviderLabel}</h3>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       認可画面を開いて許可すると、コールバックで連携が自動保存されます。完了後はこの画面に戻ります。
                     </p>
@@ -1957,7 +1957,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       disabled={!oauthAuthorizationUrl}
                       className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      認可画面を開く
+                      ログイン許可画面を開く
                     </button>
                   </div>
                 </div>

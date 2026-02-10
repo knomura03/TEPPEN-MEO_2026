@@ -67,6 +67,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const [isLoading, setIsLoading] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [controlDrafts, setControlDrafts] = useState<Record<string, ControlDraft>>({});
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<Role | 'ALL'>('ALL');
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteName, setInviteName] = useState('');
@@ -171,6 +173,20 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     [bulkSettingGroupId, storeGroups]
   );
   const canApplyBulkSetting = isInternal;
+  const filteredUserRows = useMemo(() => {
+    const normalizedSearch = userSearchTerm.trim().toLowerCase();
+    return userRows.filter((row) => {
+      if (roleFilter !== 'ALL' && row.user.role !== roleFilter) {
+        return false;
+      }
+      if (!normalizedSearch) {
+        return true;
+      }
+      const name = row.user.name.toLowerCase();
+      const email = row.user.email.toLowerCase();
+      return name.includes(normalizedSearch) || email.includes(normalizedSearch);
+    });
+  }, [roleFilter, userRows, userSearchTerm]);
 
   const syncControlDrafts = (rows: ManagedUserStoreSummary[]) => {
     const next: Record<string, ControlDraft> = {};
@@ -841,6 +857,42 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
         <StatCard title="今月の新規契約" value={newThisMonth} icon={Award} color="bg-purple-500" />
       </div>
 
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="md:col-span-2">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
+              ユーザー検索（名前 / メール）
+            </label>
+            <input
+              data-testid="user-filter-search"
+              type="text"
+              value={userSearchTerm}
+              onChange={(e) => setUserSearchTerm(e.target.value)}
+              placeholder="例: 山田 / example@company.com"
+              className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">権限ロール</label>
+            <select
+              data-testid="user-filter-role"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value as Role | 'ALL')}
+              className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+            >
+              <option value="ALL">すべて</option>
+              <option value={Role.ADMIN}>ADMIN</option>
+              <option value={Role.SUPERVISOR}>SUPERVISOR</option>
+              <option value={Role.MANAGER}>MANAGER</option>
+              <option value={Role.USER}>USER</option>
+            </select>
+          </div>
+        </div>
+        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          表示: {filteredUserRows.length} / {userRows.length}
+        </div>
+      </div>
+
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left min-w-[1120px]">
@@ -863,15 +915,15 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                   </td>
                 </tr>
               )}
-              {!isLoading && userRows.length === 0 && (
+              {!isLoading && filteredUserRows.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-6 py-6 text-sm text-gray-500 dark:text-gray-400">
-                    ユーザーがいません。
+                    条件に一致するユーザーがいません。
                   </td>
                 </tr>
               )}
 
-              {userRows.map((summary) => {
+              {filteredUserRows.map((summary) => {
                 const user = summary.user;
                 const draft =
                   controlDrafts[user.id] ||

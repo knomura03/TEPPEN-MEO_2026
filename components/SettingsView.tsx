@@ -1510,12 +1510,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
                           <h3 className="font-bold text-gray-800 dark:text-white">{provider.catalog.displayName}</h3>
-                          <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
-                            {provider.catalog.providerKey}
-                          </span>
-                          <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
-                            {PROVIDER_KIND_LABELS[provider.catalog.providerKind]}
-                          </span>
                           {canManageProviders && (
                             <span className="text-xs px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
                               公開範囲: {PROVIDER_VISIBILITY_LABELS[provider.catalog.defaultVisibility]}
@@ -1528,6 +1522,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                         <details className="text-xs text-gray-500 dark:text-gray-400">
                           <summary className="cursor-pointer select-none">技術情報を表示（必要なときのみ）</summary>
                           <div className="mt-2 space-y-1">
+                            <p>内部ID: {provider.catalog.providerKey}</p>
+                            <p>連携方式: {PROVIDER_KIND_LABELS[provider.catalog.providerKind]}</p>
                             <p>ログイン方式: {PROVIDER_AUTH_LABELS[provider.catalog.authKind]}</p>
                             <p>接続確認方式: {TEST_MODE_LABELS[provider.readiness.testMode]}</p>
                             <p>利用状態: {RUNTIME_MODE_LABELS[provider.readiness.runtimeMode]}</p>

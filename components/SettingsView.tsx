@@ -36,6 +36,7 @@ import { oauthConnectionService } from '../services/oauthConnectionService';
 import { brandKitService } from '../services/brandKitService';
 import { billingService } from '../services/billingService';
 import { getErrorMessage } from '../services/errorMessage';
+import { avatarService } from '../services/avatarService';
 import { ModalPortal } from './ModalPortal';
 import { NAV_LABELS } from './ui/copy';
 import {
@@ -182,11 +183,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   // Profile State
   const [name, setName] = useState(currentUser.name);
   const [email, setEmail] = useState(currentUser.email);
+  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || '');
   const [newEmail, setNewEmail] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   // Store Info State
   const [storeName, setStoreName] = useState('');
@@ -355,16 +359,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       const profile = await profilesService.upsertProfile(currentUser.id, {
         name: name.trim(),
         email: nextEmail ? nextEmail : null,
-        avatarUrl: currentUser.avatarUrl ?? null,
+        avatarUrl: avatarUrl || null,
       });
       const updatedUser: User = {
         ...currentUser,
         name: profile.name || name.trim(),
         email: profile.email || nextEmail || trimmedEmail,
-        avatarUrl: profile.avatarUrl || currentUser.avatarUrl,
+        avatarUrl: profile.avatarUrl || avatarUrl,
       };
       setName(updatedUser.name);
       setEmail(updatedUser.email);
+      setAvatarUrl(updatedUser.avatarUrl || '');
       onProfileUpdated?.(updatedUser);
       addNotification('プロフィール更新', 'ユーザー情報を保存しました。', 'SUCCESS');
     } catch (error) {
@@ -457,6 +462,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
         const profile = await profilesService.getProfile(currentUser.id);
         setName(profile?.name || currentUser.name);
         setEmail(profile?.email || currentUser.email);
+        setAvatarUrl(profile?.avatarUrl || currentUser.avatarUrl || '');
         setNewEmail('');
       } catch (error) {
         const message = getErrorMessage(error);
@@ -473,6 +479,63 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     void loadProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser.id]);
+
+  useEffect(() => {
+    setAvatarUrl(currentUser.avatarUrl || '');
+  }, [currentUser.avatarUrl]);
+
+  const handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      addNotification('入力エラー', '画像ファイル（PNG/JPEG/WebPなど）を選択してください。', 'WARNING');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      addNotification('入力エラー', '画像サイズは5MB以下にしてください。', 'WARNING');
+      event.target.value = '';
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      addNotification('未設定', 'Supabase未設定のため画像を変更できません。', 'WARNING');
+      event.target.value = '';
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const uploadedAvatarUrl = await avatarService.uploadForUser({
+        userId: currentUser.id,
+        file,
+        previousAvatarUrl: currentUser.avatarUrl || avatarUrl || null,
+      });
+
+      const profile = await profilesService.upsertProfile(currentUser.id, {
+        name: name.trim() || currentUser.name,
+        email: (email || currentUser.email || '').trim() || null,
+        avatarUrl: uploadedAvatarUrl,
+      });
+
+      const updatedUser: User = {
+        ...currentUser,
+        name: profile.name || name.trim() || currentUser.name,
+        email: profile.email || email || currentUser.email,
+        avatarUrl: profile.avatarUrl || uploadedAvatarUrl,
+      };
+
+      setAvatarUrl(updatedUser.avatarUrl || uploadedAvatarUrl);
+      onProfileUpdated?.(updatedUser);
+      addNotification('プロフィール画像更新', 'プロフィール画像を更新しました。', 'SUCCESS');
+    } catch (error) {
+      console.error('[SettingsView] Failed to upload avatar:', error);
+      addNotification('画像更新エラー', `プロフィール画像の更新に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`, 'ERROR');
+    } finally {
+      setIsUploadingAvatar(false);
+      event.target.value = '';
+    }
+  };
 
   useEffect(() => {
     const loadStoreInfo = async () => {
@@ -1287,12 +1350,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
               <form onSubmit={handleSaveProfile} className="space-y-6">
                 <div className="flex items-center gap-6">
                   <img 
-                    src={currentUser.avatarUrl} 
-                    alt="avatar" 
+                    src={avatarUrl || 'https://via.placeholder.com/80'} 
+                    alt="avatar"
                     className="w-20 h-20 rounded-full object-cover border-4 border-gray-100 dark:border-gray-700 shadow-sm"
                   />
-                  <button type="button" className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors">
-                    画像を変更
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarFileChange}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={isUploadingAvatar}
+                    className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isUploadingAvatar ? 'アップロード中...' : '画像を変更'}
                   </button>
                 </div>
 

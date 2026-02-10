@@ -1,6 +1,6 @@
 # TEPPEN MEO：画面/ボタン/機能/DB接続 状態台帳（正本）
 
-最終更新: 2026-02-09（Phase4基盤migration追加・最新監査結果を反映）
+最終更新: 2026-02-10（実OAuthコールバック導線・実API接続テスト反映）
 
 ## 0. 運用ルール（必須）
 - この台帳は、実装・修正・設定変更のたびに**同一作業内で更新**する。
@@ -54,8 +54,8 @@
 | SET-02 | 設定>店舗情報(MEO) | 店舗作成（0件復旧）/更新 | CONNECTED | RPC `create_store_for_actor`, `stores` | 上限超過時は明示エラー | P1-08拡張 |
 | SET-03 | 設定>SNS連携 | Provider追加/能力設定/表示状態 | CONDITIONAL | `provider_catalog`, `provider_capabilities` | DB適用＋権限設定が必要 | Phase0 |
 | SET-04 | 設定>SNS連携 | Provider設定JSON保存 | CONDITIONAL | `provider_configurations` | - | Phase0 |
-| SET-05 | 設定>SNS連携 | Secret保存/接続テスト | CONDITIONAL | Edge Functions `admin-provider-secret-upsert`, `admin-provider-connection-test` | Functions配備/Secrets登録/有効ログインセッションが必須。Gateway 401対策としてフロントは `functions.invoke` ではなくHTTP直叩き（`apikey`+`Authorization`）を使用。Functions設定の `Verify JWT=OFF` が前提 | Phase0 |
-| SET-07 | 設定>SNS連携 | OAuth連携（開始/完了/解除） | CONDITIONAL | RPC `oauth_start_session`, `oauth_complete_session`, `oauth_disconnect_session`, `oauth_sessions` | `202602060010` 適用後に有効。現段階はモック認可URL + 認可コード入力で共通導線を検証 | P2-01 |
+| SET-05 | 設定>SNS連携 | Secret保存/接続テスト | CONDITIONAL | Edge Functions `admin-provider-secret-upsert`, `admin-provider-connection-test` | 実API read-only（GBP/FB/IG）で判定。Functions配備/Secrets登録/有効ログインセッションが必須。Gateway 401対策としてフロントはHTTP直叩き（`apikey`+`Authorization`）を使用 | Phase0/P2 |
+| SET-07 | 設定>SNS連携 | OAuth連携（開始/コールバック完了/解除） | CONDITIONAL | Edge Functions `oauth-start`, `oauth-callback` + RPC `oauth_disconnect_session` + `oauth_sessions` | `202602060010` 適用後に有効。認可コード貼り付けは廃止し、コールバックで自動完了 | P2-01 |
 | SET-06 | 設定>システム管理 | APIキー表示UI | UI_ONLY | なし | ダミー表示（`****************************`） | 未着手 |
 | SET-08 | 設定>システム管理 | ブランドキット/投稿テンプレ管理 | CONDITIONAL | `brand_kits`, `post_templates`, `brandKitService` | `202602060014` 適用後に有効。権限は内部（ADMIN/SUPERVISOR） | P2-05 |
 | USER-01 | ユーザー・契約管理 | ユーザー一覧/削除 | HYBRID | `memberships`, `profiles` | Supabase未設定時は `MOCK_USERS` | P1 |
@@ -76,7 +76,9 @@
 | `admin-billing-plan-upsert` | `supabase/functions/admin-billing-plan-upsert/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-09 UTC, CLI実施）/ `Verify JWT=OFF` |
 | `admin-org-subscription-set-plan` | `supabase/functions/admin-org-subscription-set-plan/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-09 UTC, CLI実施）/ `Verify JWT=OFF` |
 | `admin-provider-secret-upsert` | `supabase/functions/admin-provider-secret-upsert/index.ts` | `SUPABASE_SERVICE_ROLE_KEY`, `PROVIDER_CONFIG_ENCRYPTION_KEY` | 配備済み（2026-02-06）/ Secrets登録済み（2026-02-06）/ `Verify JWT=OFF` 設定運用 |
-| `admin-provider-connection-test` | `supabase/functions/admin-provider-connection-test/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-06）/ `Verify JWT=OFF` 設定運用 |
+| `admin-provider-connection-test` | `supabase/functions/admin-provider-connection-test/index.ts` | `SUPABASE_SERVICE_ROLE_KEY`, `PROVIDER_CONFIG_ENCRYPTION_KEY` | 配備済み（2026-02-10 CLI再配備）/ 実API read-only接続テスト対応 / `Verify JWT=OFF` |
+| `oauth-start` | `supabase/functions/oauth-start/index.ts` | `SUPABASE_SERVICE_ROLE_KEY`（任意: `OAUTH_DEFAULT_RETURNTO`, `OAUTH_RETURNTO_ALLOWLIST`） | 配備済み（2026-02-10 CLI配備）/ `Verify JWT=OFF` |
+| `oauth-callback` | `supabase/functions/oauth-callback/index.ts` | `SUPABASE_SERVICE_ROLE_KEY`, `PROVIDER_CONFIG_ENCRYPTION_KEY`（任意: `OAUTH_DEFAULT_RETURNTO`, `OAUTH_RETURNTO_ALLOWLIST`） | 配備済み（2026-02-10 CLI配備）/ `Verify JWT=OFF` |
 | `instagram-publish-post` | `supabase/functions/instagram-publish-post/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |
 | `facebook-publish-post` | `supabase/functions/facebook-publish-post/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |
 | `facebook-reply-message` | `supabase/functions/facebook-reply-message/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |
@@ -105,6 +107,7 @@
 | `supabase/migrations/202602060019_p3_nap_alert_operations.sql` | P3-06 NAPアラート運用 | 実装済み。未適用環境ではNAPアラート表示/運用が実行できない |
 | `supabase/migrations/202602060020_p4_billing_pwa_foundation.sql` | P4 課金/PWA DB基盤 | 実装済み。未適用環境ではPhase4 DB監査が `PGRST205` で失敗する |
 | `supabase/migrations/202602090001_p4_roles_supervisor_and_plan_admin_gui.sql` | P4 ロール再編（SUPERVISOR）+ 契約プランGUI | 実装済み（要適用）。未適用環境ではロール再編/プラン管理GUIが正しく動作しない |
+| `supabase/migrations/202602090002_p4_real_oauth_callback_and_credentials_encryption.sql` | P4 実OAuthコールバック運用補助index | 2026-02-10 CLI適用済み（本番）。`oauth_sessions` / `integration_credentials` の参照最適化 |
 
 ## 5. 現時点のモック/未接続残件（優先順）
 1. ダッシュボードKPIが固定値（実データ未接続）

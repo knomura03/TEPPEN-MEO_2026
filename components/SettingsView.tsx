@@ -199,14 +199,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   const [providerSecretInput, setProviderSecretInput] = useState('');
   const [isSavingProviderConfig, setIsSavingProviderConfig] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
-  const [oauthStateToken, setOauthStateToken] = useState('');
   const [oauthAuthorizationUrl, setOauthAuthorizationUrl] = useState('');
   const [oauthProviderLabel, setOauthProviderLabel] = useState('');
-  const [oauthAuthCode, setOauthAuthCode] = useState('');
   const [isOAuthModalOpen, setIsOAuthModalOpen] = useState(false);
   const [isStartingOAuth, setIsStartingOAuth] = useState(false);
-  const [isCompletingOAuth, setIsCompletingOAuth] = useState(false);
   const [isDisconnectingOAuth, setIsDisconnectingOAuth] = useState(false);
+  const oauthQueryHandledRef = useRef<string | null>(null);
 
   // Feature flag state
   const [featureFlags, setFeatureFlags] = useState<FeatureFlag[]>([]);
@@ -607,12 +605,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   }, [activeOrgId, currentUser.role]);
 
   const closeOAuthModal = (force = false) => {
-    if (isCompletingOAuth && !force) return;
+    if (isStartingOAuth && !force) return;
     setIsOAuthModalOpen(false);
-    setOauthStateToken('');
     setOauthAuthorizationUrl('');
     setOauthProviderLabel('');
-    setOauthAuthCode('');
   };
 
   const handleToggleConnection = (providerCatalogId: string) => {
@@ -658,10 +654,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
           providerKey: target.catalog.providerKey,
         })
         .then((result) => {
-          setOauthStateToken(result.stateToken);
           setOauthAuthorizationUrl(result.authorizationUrl);
           setOauthProviderLabel(target.catalog.displayName);
-          setOauthAuthCode('');
           setIsOAuthModalOpen(true);
           addNotification('OAuth開始', `${target.catalog.displayName} の認可セッションを開始しました。`, 'INFO');
         })
@@ -695,32 +689,59 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       });
   };
 
-  const handleCompleteOAuth = async () => {
-    if (!oauthStateToken) {
-      addNotification('OAuthエラー', 'state token が見つかりません。連携をやり直してください。', 'ERROR');
-      return;
-    }
-    if (!oauthAuthCode.trim()) {
-      addNotification('入力エラー', '認可コードを入力してください。', 'WARNING');
-      return;
+  const handleOpenOAuthAuthorization = () => {
+    if (!oauthAuthorizationUrl || typeof window === 'undefined') return;
+    window.location.assign(oauthAuthorizationUrl);
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const currentSearch = window.location.search || '';
+    if (oauthQueryHandledRef.current === currentSearch) return;
+    oauthQueryHandledRef.current = currentSearch;
+
+    const params = new URLSearchParams(currentSearch);
+    const tab = params.get('tab');
+    if (tab === 'INTEGRATIONS') {
+      setActiveTab('INTEGRATIONS');
     }
 
-    setIsCompletingOAuth(true);
-    try {
-      await oauthConnectionService.complete({
-        stateToken: oauthStateToken,
-        authCode: oauthAuthCode.trim(),
-      });
-      addNotification('OAuth連携完了', `${oauthProviderLabel || 'Provider'} の接続が完了しました。`, 'SUCCESS');
-      closeOAuthModal(true);
-      await loadProviderCards();
-    } catch (error) {
-      console.error('[SettingsView] Failed to complete OAuth provider flow:', error);
-      addNotification('OAuth完了エラー', `OAuth連携の完了に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`, 'ERROR');
-    } finally {
-      setIsCompletingOAuth(false);
+    const oauthStatus = params.get('oauthStatus');
+    const oauthProvider = params.get('oauthProvider');
+    const oauthError = params.get('oauthError');
+
+    const decodeOAuthError = (value: string): string => {
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
+    };
+
+    if (oauthStatus === 'success') {
+      addNotification(
+        'OAuth連携完了',
+        `${oauthProvider || 'Provider'} の接続が完了しました。接続テストを実行して状態を確認してください。`,
+        'SUCCESS'
+      );
+      void loadProviderCards();
+    } else if (oauthStatus === 'error') {
+      const errorText = oauthError ? `（${decodeOAuthError(oauthError)}）` : '';
+      addNotification('OAuth連携エラー', `OAuth連携に失敗しました。${errorText}`, 'ERROR');
+      void loadProviderCards();
     }
-  };
+
+    if (!oauthStatus && !oauthError) return;
+
+    params.delete('oauthStatus');
+    params.delete('oauthProvider');
+    params.delete('oauthError');
+    const nextQuery = params.toString();
+    const nextPath = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
+    window.history.replaceState({}, '', nextPath);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addNotification]);
 
   const handleCreateProvider = async () => {
     if (!isSupabaseConfigured) {
@@ -1862,7 +1883,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                   <div>
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white">OAuth連携: {oauthProviderLabel}</h3>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      認可URLを開いた後、取得した認可コードを入力して接続を完了してください。
+                      認可画面を開いて許可すると、コールバックで連携が自動保存されます。完了後はこの画面に戻ります。
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -1878,35 +1899,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       {oauthAuthorizationUrl}
                     </a>
                   </div>
-                  <div className="space-y-2">
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">認可コード</label>
-                    <input
-                      data-testid="oauth-auth-code"
-                      type="text"
-                      value={oauthAuthCode}
-                      onChange={(e) => setOauthAuthCode(e.target.value)}
-                      placeholder="認可コードを貼り付け"
-                      className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
-                    />
-                  </div>
                   <div className="flex justify-end gap-2 pt-2">
                     <button
                       data-testid="oauth-cancel"
                       type="button"
                       onClick={closeOAuthModal}
-                      disabled={isCompletingOAuth}
                       className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-60"
                     >
                       キャンセル
                     </button>
                     <button
-                      data-testid="oauth-complete"
+                      data-testid="oauth-open-authorization"
                       type="button"
-                      onClick={() => void handleCompleteOAuth()}
-                      disabled={isCompletingOAuth || !oauthAuthCode.trim()}
+                      onClick={handleOpenOAuthAuthorization}
+                      disabled={!oauthAuthorizationUrl}
                       className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      {isCompletingOAuth ? '接続中...' : '接続を完了'}
+                      認可画面を開く
                     </button>
                   </div>
                 </div>

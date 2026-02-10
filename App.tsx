@@ -31,9 +31,29 @@ const resolvePublicSurveyToken = (): string | null => {
   return null;
 };
 
+const AVAILABLE_VIEWS: ViewState[] = [
+  'DASHBOARD',
+  'BILLING',
+  'CREATE_POST',
+  'POST_LIST',
+  'USER_MANAGEMENT',
+  'CALENDAR',
+  'INBOX',
+  'SURVEY',
+  'RANK_TRACKER',
+  'SETTINGS',
+];
+
+const resolveViewFromQuery = (): ViewState => {
+  if (typeof window === 'undefined') return 'DASHBOARD';
+  const view = new URLSearchParams(window.location.search).get('view');
+  if (!view) return 'DASHBOARD';
+  return AVAILABLE_VIEWS.includes(view as ViewState) ? (view as ViewState) : 'DASHBOARD';
+};
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
+  const [currentView, setCurrentView] = useState<ViewState>(() => resolveViewFromQuery());
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [publicSurveyToken, setPublicSurveyToken] = useState<string | null>(() => resolvePublicSurveyToken());
   
@@ -59,7 +79,10 @@ const App: React.FC = () => {
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
   useEffect(() => {
-    const handleRouteChange = () => setPublicSurveyToken(resolvePublicSurveyToken());
+    const handleRouteChange = () => {
+      setPublicSurveyToken(resolvePublicSurveyToken());
+      setCurrentView(resolveViewFromQuery());
+    };
     window.addEventListener('hashchange', handleRouteChange);
     window.addEventListener('popstate', handleRouteChange);
     return () => {
@@ -84,7 +107,7 @@ const App: React.FC = () => {
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
-    setCurrentView('DASHBOARD');
+    setCurrentView(resolveViewFromQuery());
   };
 
   const handleLogout = () => {

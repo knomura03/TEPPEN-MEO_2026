@@ -201,16 +201,22 @@
     ],
     "SETTINGS": [
       {
-        "title": "この画面でできること",
-        "content": "プロフィール、店舗、SNS連携の設定を変更できます。"
+        "title": "カテゴリを選ぶ",
+        "content": "左側のメニューから、設定したい項目（プロフィール・店舗・SNS連携など）を選びます。",
+        "targetId": "settings-tabs",
+        "position": "right"
       },
       {
-        "title": "SNS連携の確認",
-        "content": "保存後に接続確認を実行し、「接続済み」になっているか確認します。"
+        "title": "SNS連携の設定",
+        "content": "「SNS連携設定」を開き、保存後に接続確認を行って「接続済み」になっているかを確認します。",
+        "targetId": "settings-tab-integrations",
+        "position": "right"
       },
       {
-        "title": "困ったとき",
-        "content": "エラーが出たら、この画面で設定値と接続状態を見直してください。"
+        "title": "システム管理（内部）",
+        "content": "内部担当は「システム管理」からメニュー順の調整などを行えます。",
+        "targetId": "settings-tab-system",
+        "position": "right"
       }
     ]
   }

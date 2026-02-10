@@ -1178,9 +1178,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col md:flex-row min-h-[600px]">
         {/* Sidebar */}
         <div className="w-full md:w-64 bg-gray-50 dark:bg-gray-900/50 border-r border-gray-100 dark:border-gray-700 p-4">
-          <nav className="space-y-2">
+          <nav id="settings-tabs" className="space-y-2">
             {canShowProfileTab && (
               <button
+                id="settings-tab-profile"
                 data-testid="settings-tab-profile"
                 onClick={() => setActiveTab('PROFILE')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -1195,6 +1196,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
             )}
             {canShowStoreTab && (
               <button
+                id="settings-tab-store"
                 data-testid="settings-tab-store"
                 onClick={() => setActiveTab('STORE')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -1209,6 +1211,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
             )}
             {canShowIntegrationsTab && (
               <button
+                id="settings-tab-integrations"
                 data-testid="settings-tab-integrations"
                 onClick={() => setActiveTab('INTEGRATIONS')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -1223,6 +1226,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
             )}
             {canShowSystemTab && (
               <button
+                id="settings-tab-system"
                 data-testid="settings-tab-system"
                 onClick={() => setActiveTab('SYSTEM')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${

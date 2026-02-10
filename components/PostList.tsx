@@ -548,6 +548,7 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
         </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
           <input
+            id="post-list-filter-search"
             data-testid="post-filter-search"
             type="text"
             value={postSearchTerm}
@@ -556,6 +557,7 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
             className="w-full sm:w-64 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white"
           />
           <select
+            id="post-list-filter-status"
             data-testid="post-filter-status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as 'ALL' | 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'PENDING' | 'REJECTED' | 'FAILED')}
@@ -572,7 +574,7 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
         </div>
       </div>
 
-      <div className={`${PAGE_CARD_CLASS} overflow-hidden`}>
+      <div id="post-list-table" className={`${PAGE_CARD_CLASS} overflow-hidden`}>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">

@@ -122,29 +122,41 @@
     "POST_LIST": [
       {
         "title": "投稿の一覧管理",
-        "content": "投稿の状態を一覧で確認できます。まずは「承認待ち」や「エラー」を優先して処理します。"
+        "content": "投稿の状態を一覧で確認できます。まずは「承認待ち」や「エラー」を優先して処理します。",
+        "targetId": "post-list-table",
+        "position": "center"
       },
       {
         "title": "検索と状態絞り込み",
-        "content": "本文検索と状態フィルタで、対象投稿をすぐに絞り込めます。投稿数が増えても探しやすくなります。"
+        "content": "本文検索と状態フィルタで、対象投稿をすぐに絞り込めます。投稿数が増えても探しやすくなります。",
+        "targetId": "post-list-filter-search",
+        "position": "bottom"
       },
       {
         "title": "承認と公開の流れ",
-        "content": "承認、差し戻し、公開実行を一覧から操作できます。履歴を残しながら運用できます。"
+        "content": "承認、差し戻し、公開実行を一覧から操作できます。履歴を残しながら運用できます。",
+        "targetId": "post-list-table",
+        "position": "center"
       }
     ],
     "INBOX": [
       {
         "title": "受信内容の確認",
-        "content": "コメントやメッセージをまとめて確認できます。未対応のものから順番に処理します。"
+        "content": "コメントやメッセージをまとめて確認できます。未対応のものから順番に処理します。",
+        "targetId": "inbox-left-panel",
+        "position": "right"
       },
       {
         "title": "左側で絞り込み",
-        "content": "左側の検索・状態・媒体フィルタで対象を絞り込み、対応が必要なものを素早く見つけます。"
+        "content": "左側の検索・状態・媒体フィルタで対象を絞り込み、対応が必要なものを素早く見つけます。",
+        "targetId": "inbox-platform-filter",
+        "position": "right"
       },
       {
         "title": "返信の運用",
-        "content": "本文確認、返信案の作成、送信をこの画面で進めます。送信前に文面を最終確認してください。"
+        "content": "本文確認、返信案の作成、送信をこの画面で進めます。送信前に文面を最終確認してください。",
+        "targetId": "inbox-reply-form",
+        "position": "top"
       }
     ],
     "RANK_TRACKER": [

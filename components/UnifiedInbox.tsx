@@ -419,7 +419,10 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
       </section>
 
       <div className="h-[calc(100vh-220px)] flex flex-col md:flex-row bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-      <div className="w-full md:w-1/3 border-r border-gray-200 dark:border-gray-700 flex flex-col bg-gray-50 dark:bg-gray-800">
+      <div
+        id="inbox-left-panel"
+        className="w-full md:w-1/3 border-r border-gray-200 dark:border-gray-700 flex flex-col bg-gray-50 dark:bg-gray-800"
+      >
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
           <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-3">メッセージ一覧</h2>
           <div className="relative">
@@ -450,6 +453,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
           </div>
           <div className="mt-3">
             <select
+              id="inbox-platform-filter"
               data-testid="inbox-platform-filter"
               value={platformFilter}
               onChange={(e) => setPlatformFilter(e.target.value as 'ALL' | SocialPlatform)}
@@ -571,7 +575,10 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
             </div>
 
             <div className="flex-1 p-6 overflow-y-auto bg-gray-50 dark:bg-gray-900 space-y-6">
-              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
+              <div
+                id="inbox-workflow-panel"
+                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm"
+              >
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <h4 className="text-sm font-bold text-gray-800 dark:text-white">ワークフロー管理</h4>
                   <span className={`text-xs px-2 py-1 rounded-full ${slaBadgeClass[previewSlaStatus]}`}>
@@ -678,7 +685,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
               {selectedMessage.isReplied ? (
                 <p className="text-sm text-gray-500 dark:text-gray-400">このメッセージは返信済みです。</p>
               ) : (
-                <form onSubmit={handleReply} className="space-y-3">
+                <form id="inbox-reply-form" onSubmit={handleReply} className="space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <p className="text-xs text-gray-500 dark:text-gray-400">AI返信案は送信前に編集できます。</p>
                     <button
@@ -693,6 +700,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
                     </button>
                   </div>
                   <textarea
+                    id="inbox-reply-text"
                     data-testid="inbox-reply-text"
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}

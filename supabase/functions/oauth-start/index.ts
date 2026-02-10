@@ -14,7 +14,7 @@ const jsonResponse = (status: number, body: Record<string, unknown>) => {
 
 const extractBearerToken = (headerValue: string | null): string => {
   if (!headerValue) return '';
-  const matched = headerValue.match(/Bearer\\s+([^,\\s]+)/i);
+  const matched = headerValue.match(/Bearer\s+([^,\s]+)/i);
   if (matched?.[1]) return matched[1].trim();
   return headerValue.trim();
 };
@@ -324,4 +324,3 @@ Deno.serve(async (req) => {
     expiresAt,
   });
 });
-

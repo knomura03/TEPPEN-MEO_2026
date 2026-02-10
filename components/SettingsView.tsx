@@ -123,6 +123,8 @@ const RUNTIME_MODE_LABELS = {
   BLOCKED: '停止',
 } as const;
 
+const SETTINGS_STANDARD_TAB_CLASS = 'w-full max-w-2xl mr-auto ml-0 space-y-8';
+
 export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfileUpdated }) => {
   const { addNotification } = useNotification();
   const { activeStoreId, reloadStores, stores } = useStore();
@@ -1255,7 +1257,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
         {/* Content */}
         <div className="flex-1 p-8 overflow-y-auto">
           {activeTab === 'PROFILE' && (
-            <div className="max-w-2xl space-y-8">
+            <div className={SETTINGS_STANDARD_TAB_CLASS}>
                {/* Plan Info */}
                <div className="bg-gradient-to-r from-primary-600 to-primary-500 rounded-2xl p-6 text-white shadow-lg">
                    <div className="flex justify-between items-start">
@@ -1391,7 +1393,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
           )}
 
           {activeTab === 'STORE' && (
-              <div className="max-w-2xl space-y-8">
+              <div className={SETTINGS_STANDARD_TAB_CLASS}>
                   <div>
                     <h2 className={PAGE_SECTION_TITLE_CLASS}>店舗情報設定</h2>
                     <p className={PAGE_SECTION_DESCRIPTION_CLASS}>Googleマップ等に反映される正確な店舗情報を入力してください。</p>

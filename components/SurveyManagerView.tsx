@@ -6,6 +6,7 @@ import { buildPublicSurveyUrl, surveyService } from '../services/surveyService';
 import { surveyAssetService } from '../services/surveyAssetService';
 import { getErrorMessage } from '../services/errorMessage';
 import { PlusCircle, Save, Rocket, Archive, Copy, ExternalLink, Download, QrCode, FileText } from 'lucide-react';
+import { PAGE_CARD_PADDED_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS, PAGE_WARNING_CLASS } from './ui/pageLayout';
 
 interface SurveyManagerViewProps {
   currentUser: User;
@@ -294,22 +295,22 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className={PAGE_CONTAINER_CLASS}>
       <div>
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">アンケート管理</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+        <h1 className={PAGE_HEADER_TITLE_CLASS}>アンケート</h1>
+        <p className={PAGE_HEADER_DESCRIPTION_CLASS}>
           アンケートを作成して公開URLを発行します。公開中はユーザーごとに1件までです。
         </p>
       </div>
 
       {!activeStoreId && (
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 text-sm rounded-xl p-4">
+        <div className={PAGE_WARNING_CLASS}>
           店舗が選択されていません。右上の店舗セレクタから選択してください。
         </div>
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-5 space-y-4">
+        <div className={`${PAGE_CARD_PADDED_CLASS} space-y-4`}>
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-gray-800 dark:text-white">アンケート一覧</h2>
             <button
@@ -364,7 +365,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-5 space-y-5">
+        <div className={`${PAGE_CARD_PADDED_CLASS} space-y-5`}>
           <h2 className="text-lg font-bold text-gray-800 dark:text-white">作成・編集</h2>
 
           <div className="space-y-4">

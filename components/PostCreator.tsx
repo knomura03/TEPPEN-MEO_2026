@@ -10,6 +10,7 @@ import { brandKitService } from '../services/brandKitService';
 import { Send, Calendar, Image as ImageIcon, Sparkles, Loader2, X, Eye, MonitorSmartphone, UploadCloud } from 'lucide-react';
 import { useNotification } from '../contexts/NotificationContext';
 import { useStore } from '../contexts/StoreContext';
+import { PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
 
 interface PostCreatorProps {
   currentUser: User;
@@ -411,7 +412,10 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
   return (
     <div className="max-w-6xl mx-auto h-[calc(100vh-100px)] flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">新規投稿作成</h1>
+        <div>
+          <h1 className={PAGE_HEADER_TITLE_CLASS}>新規投稿</h1>
+          <p className={PAGE_HEADER_DESCRIPTION_CLASS}>投稿文を作成し、下書き保存や予約設定を行います。</p>
+        </div>
         <button 
           onClick={() => setShowAiModal(true)}
           className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded-lg hover:shadow-lg transition-all"

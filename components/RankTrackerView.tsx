@@ -22,6 +22,7 @@ import { competitorService } from '../services/competitorService';
 import { napConsistencyService } from '../services/napConsistencyService';
 import { napAlertService } from '../services/napAlertService';
 import { getErrorMessage } from '../services/errorMessage';
+import { PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
 
 interface RankTrackerViewProps {
   currentUser: User;
@@ -675,11 +676,11 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
   }, [dashboardRunDetails]);
 
   return (
-    <div className="space-y-6 animate-fade-in" data-testid="rank-tracker-view">
+    <div className={PAGE_CONTAINER_CLASS} data-testid="rank-tracker-view">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">順位チェック（キーワード管理）</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <h1 className={PAGE_HEADER_TITLE_CLASS}>順位チェック</h1>
+          <p className={PAGE_HEADER_DESCRIPTION_CLASS}>
             店舗ごとの検索キーワードと競合店舗を管理します。収集結果は実行ごとに履歴として確認できます。
           </p>
         </div>

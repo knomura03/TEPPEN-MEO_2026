@@ -10,6 +10,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { useStore } from '../contexts/StoreContext';
 import { postMediaService } from '../services/postMediaService';
 import { ModalPortal } from './ModalPortal';
+import { PAGE_CARD_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
 
 const formatDate = (date: Date) => {
   const y = date.getFullYear();
@@ -539,9 +540,12 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
   }, [postSearchTerm, posts, statusFilter]);
 
   return (
-    <div className="space-y-6">
+    <div className={PAGE_CONTAINER_CLASS}>
       <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">投稿管理</h1>
+        <div>
+          <h1 className={PAGE_HEADER_TITLE_CLASS}>投稿一覧</h1>
+          <p className={PAGE_HEADER_DESCRIPTION_CLASS}>投稿の確認、承認、編集、公開操作を行えます。</p>
+        </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
           <input
             data-testid="post-filter-search"
@@ -568,7 +572,7 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div className={`${PAGE_CARD_CLASS} overflow-hidden`}>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">

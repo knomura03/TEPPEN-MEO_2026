@@ -28,6 +28,7 @@ import { getErrorMessage } from '../services/errorMessage';
 import { useStore } from '../contexts/StoreContext';
 import { storeGroupsService } from '../services/storeGroupsService';
 import { ModalPortal } from './ModalPortal';
+import { PAGE_CARD_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS, PAGE_WARNING_CLASS } from './ui/pageLayout';
 
 interface UserManagementProps {
   currentUser: User;
@@ -799,7 +800,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   ).length;
 
   const StatCard = ({ title, value, icon: Icon, color }: any) => (
-    <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex items-center gap-4">
+    <div className={`${PAGE_CARD_CLASS} p-5 flex items-center gap-4`}>
       <div className={`p-3 rounded-xl ${color} bg-opacity-10 text-white`}>
         <Icon className={`w-6 h-6 ${color.replace('bg-', 'text-')}`} />
       </div>
@@ -811,11 +812,11 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   );
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className={PAGE_CONTAINER_CLASS}>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">ユーザー・契約管理</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <h1 className={PAGE_HEADER_TITLE_CLASS}>ユーザー・契約管理</h1>
+          <p className={PAGE_HEADER_DESCRIPTION_CLASS}>
             {isInternal
               ? '内部ユーザーとして、顧客/代理店を含むユーザーと契約を管理します。'
               : '自組織の顧客ユーザーを管理します。'}
@@ -840,7 +841,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       </div>
 
       {!activeOrgId && (
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 text-sm rounded-xl p-4">
+        <div className={PAGE_WARNING_CLASS}>
           店舗が選択されていません。右上の店舗セレクタから選択してください。
         </div>
       )}
@@ -857,7 +858,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
         <StatCard title="今月の新規契約" value={newThisMonth} icon={Award} color="bg-purple-500" />
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+      <div className={`${PAGE_CARD_CLASS} p-6`}>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="md:col-span-2">
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
@@ -881,10 +882,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
             >
               <option value="ALL">すべて</option>
-              <option value={Role.ADMIN}>ADMIN</option>
-              <option value={Role.SUPERVISOR}>SUPERVISOR</option>
-              <option value={Role.MANAGER}>MANAGER</option>
-              <option value={Role.USER}>USER</option>
+              <option value={Role.ADMIN}>{roleLabel(Role.ADMIN)}</option>
+              <option value={Role.SUPERVISOR}>{roleLabel(Role.SUPERVISOR)}</option>
+              <option value={Role.MANAGER}>{roleLabel(Role.MANAGER)}</option>
+              <option value={Role.USER}>{roleLabel(Role.USER)}</option>
             </select>
           </div>
         </div>

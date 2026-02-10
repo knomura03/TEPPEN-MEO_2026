@@ -14,6 +14,7 @@ import { SurveyManagerView } from './components/SurveyManagerView';
 import { PublicSurveyPage } from './components/PublicSurveyPage';
 import { RankTrackerView } from './components/RankTrackerView';
 import { BillingView } from './components/BillingView';
+import { LandingPage } from './components/LandingPage';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ToastContainer } from './components/Toast';
 import { StoreProvider } from './contexts/StoreContext';
@@ -51,8 +52,33 @@ const resolveViewFromQuery = (): ViewState => {
   return AVAILABLE_VIEWS.includes(view as ViewState) ? (view as ViewState) : 'DASHBOARD';
 };
 
+const getPathFromLocation = (): string => {
+  if (typeof window === 'undefined') return '/';
+  const hashPathMatch = window.location.hash.match(/^#(\/[^?]*)/);
+  if (hashPathMatch?.[1]) return hashPathMatch[1];
+  return window.location.pathname || '/';
+};
+
+const isLoginPath = (path: string): boolean => path === '/login' || path === '/login/';
+
+const hasViewQuery = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).has('view');
+};
+
+const navigate = (url: string, options?: { replace?: boolean }) => {
+  if (typeof window === 'undefined') return;
+  if (options?.replace) {
+    window.history.replaceState({}, '', url);
+  } else {
+    window.history.pushState({}, '', url);
+  }
+  window.dispatchEvent(new PopStateEvent('popstate'));
+};
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentPath, setCurrentPath] = useState<string>(() => getPathFromLocation());
   const [currentView, setCurrentView] = useState<ViewState>(() => resolveViewFromQuery());
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [publicSurveyToken, setPublicSurveyToken] = useState<string | null>(() => resolvePublicSurveyToken());
@@ -81,6 +107,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleRouteChange = () => {
       setPublicSurveyToken(resolvePublicSurveyToken());
+      setCurrentPath(getPathFromLocation());
       setCurrentView(resolveViewFromQuery());
     };
     window.addEventListener('hashchange', handleRouteChange);
@@ -105,14 +132,23 @@ const App: React.FC = () => {
     void checkAuth();
   }, [publicSurveyToken]);
 
+  useEffect(() => {
+    if (!currentUser) return;
+    if (!isLoginPath(currentPath)) return;
+    navigate('/?view=DASHBOARD', { replace: true });
+  }, [currentPath, currentUser]);
+
   const handleLogin = (user: User) => {
     setCurrentUser(user);
-    setCurrentView(resolveViewFromQuery());
+    setCurrentView('DASHBOARD');
+    navigate('/?view=DASHBOARD', { replace: true });
   };
 
   const handleLogout = () => {
     void authService.logout();
     setCurrentUser(null);
+    setCurrentView('DASHBOARD');
+    navigate('/', { replace: true });
   };
 
   if (publicSurveyToken) {
@@ -128,7 +164,10 @@ const App: React.FC = () => {
   }
 
   if (!currentUser) {
-    return <Login onLogin={handleLogin} />;
+    if (isLoginPath(currentPath) || hasViewQuery()) {
+      return <Login onLogin={handleLogin} onBackToLanding={() => navigate('/')} />;
+    }
+    return <LandingPage onNavigateLogin={() => navigate('/login')} />;
   }
 
   // 権限に基づいてビューをレンダリング

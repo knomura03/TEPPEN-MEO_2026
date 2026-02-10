@@ -12,6 +12,7 @@ import {
   Legend
 } from 'recharts';
 import { MapPin, Phone, Globe, Navigation, Search, Star, TrendingUp, Calendar as CalendarIcon, Filter } from 'lucide-react';
+import { PAGE_CARD_PADDED_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
 
 const dataPerformance = [
   { name: '1日', views: 4000, searches: 2400, actions: 1200 },
@@ -46,7 +47,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
   };
 
   const StatCard = ({ title, value, change, icon: Icon, colorClass }: any) => (
-    <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 transition-all hover:shadow-md">
+    <div className={`${PAGE_CARD_PADDED_CLASS} transition-all hover:shadow-md`}>
       <div className="flex items-start justify-between mb-4">
         <div className={`p-3 rounded-xl ${colorClass} bg-opacity-10`}>
           <Icon className={`h-6 w-6 ${colorClass.replace('bg-', 'text-')}`} />
@@ -64,12 +65,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
   );
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className={`${PAGE_CONTAINER_CLASS} lg:space-y-8`}>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">店舗パフォーマンス</h1>
-           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">MEO対策とSNS運用の統合分析レポート</p>
+           <h1 className={PAGE_HEADER_TITLE_CLASS}>ダッシュボード</h1>
+           <p className={PAGE_HEADER_DESCRIPTION_CLASS}>店舗パフォーマンスをひと目で確認できます。</p>
         </div>
         
         <div className="flex items-center gap-3 bg-white dark:bg-gray-800 p-1.5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
@@ -105,7 +106,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Chart */}
-        <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+        <div className={`lg:col-span-2 ${PAGE_CARD_PADDED_CLASS}`}>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-bold text-gray-800 dark:text-white">検索パフォーマンス推移</h2>
             <div className="flex gap-2 text-sm">
@@ -141,7 +142,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
         </div>
 
         {/* Search Breakdown */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col">
+        <div className={`${PAGE_CARD_PADDED_CLASS} flex flex-col`}>
           <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-6">検索タイプの内訳</h2>
           <div className="flex-1 flex flex-col justify-center space-y-8">
              <div className="relative pt-2">

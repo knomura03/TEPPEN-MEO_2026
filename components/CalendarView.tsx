@@ -9,6 +9,7 @@ import { useStore } from '../contexts/StoreContext';
 import { postMediaService } from '../services/postMediaService';
 import { geminiService } from '../services/geminiService';
 import { ModalPortal } from './ModalPortal';
+import { PAGE_CARD_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
 
 // Helpers
 const startOfMonth = (date: Date) => {
@@ -354,11 +355,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
       <div className="animate-fade-in flex flex-col space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-             <h1 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+             <h1 className={`${PAGE_HEADER_TITLE_CLASS} flex items-center gap-2`}>
               <CalendarIcon className="text-primary-500" />
-              運用カレンダー
+              カレンダー
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">投稿予定と配信計画を管理します。</p>
+            <p className={PAGE_HEADER_DESCRIPTION_CLASS}>投稿予定と配信計画を管理します。</p>
           </div>
           
           <div className="flex flex-wrap items-center gap-2">
@@ -386,7 +387,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
           </div>
         </div>
 
-        <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
+        <div className={`flex-1 ${PAGE_CARD_CLASS} flex flex-col overflow-hidden`}>
           {/* Weekday Headers */}
           <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
             {['日', '月', '火', '水', '木', '金', '土'].map((day, idx) => (

@@ -6,9 +6,10 @@ import { MapPin, Lock, User as UserIcon, Loader2 } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (user: User) => void;
+  onBackToLanding?: () => void;
 }
 
-export const Login: React.FC<LoginProps> = ({ onLogin }) => {
+export const Login: React.FC<LoginProps> = ({ onLogin, onBackToLanding }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('password');
   const [error, setError] = useState('');
@@ -53,6 +54,15 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary-500/20 rounded-full blur-3xl pointer-events-none z-0"></div>
 
       <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-3xl shadow-2xl p-8 border border-gray-100 dark:border-gray-700 relative z-10">
+        {onBackToLanding && (
+          <button
+            type="button"
+            onClick={onBackToLanding}
+            className="mb-6 text-sm font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+          >
+            ← トップへ戻る
+          </button>
+        )}
         <div className="text-center mb-10 pt-4">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 mb-6 shadow-xl shadow-primary-500/30 text-white">
             <MapPin className="h-10 w-10" />

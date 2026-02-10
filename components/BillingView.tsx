@@ -5,6 +5,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { billingService } from '../services/billingService';
 import { getErrorMessage } from '../services/errorMessage';
 import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
+import { PAGE_CARD_PADDED_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS, PAGE_WARNING_CLASS } from './ui/pageLayout';
 
 type BillingViewProps = {
   currentUser: User;
@@ -29,6 +30,16 @@ const formatAmount = (amount: number, currency: string): string => {
 };
 
 const normalizePlanCode = (raw: string): string => raw.trim().toUpperCase();
+
+const getSubscriptionStatusLabel = (status: string): string => {
+  if (status === 'ACTIVE') return '有効';
+  if (status === 'UNSET') return '未設定';
+  if (status === 'MOCK') return '検証';
+  if (status === 'TRIALING') return '試用中';
+  if (status === 'CANCELED') return '停止';
+  if (status === 'PAST_DUE') return '要確認';
+  return status || '未設定';
+};
 
 const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
   const { stores, activeStoreId } = useStore();
@@ -283,16 +294,16 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
   };
 
   return (
-    <div className="space-y-6" data-testid="billing-view-root">
-      <section className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-6">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">課金・請求</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+    <div className={PAGE_CONTAINER_CLASS} data-testid="billing-view-root">
+      <section className={PAGE_CARD_PADDED_CLASS}>
+        <h1 className={PAGE_HEADER_TITLE_CLASS}>契約プラン</h1>
+        <p className={PAGE_HEADER_DESCRIPTION_CLASS}>
           現在の契約プランを確認できます（請求は当面、別システムで管理）。
         </p>
       </section>
 
       {!activeOrgId && (
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 text-sm rounded-xl p-4">
+        <div className={PAGE_WARNING_CLASS}>
           店舗が選択されていません。右上の店舗セレクタから選択してください。
         </div>
       )}
@@ -300,7 +311,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <article
           data-testid="billing-plan-current"
-          className="lg:col-span-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-6"
+          className={`lg:col-span-2 ${PAGE_CARD_PADDED_CLASS}`}
         >
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -319,12 +330,12 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
             <span
               className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${statusBadgeClass}`}
             >
-              {subscriptionStatus}
+              {getSubscriptionStatusLabel(subscriptionStatus)}
             </span>
           </div>
         </article>
 
-        <article className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-6">
+        <article className={PAGE_CARD_PADDED_CLASS}>
           <p className="text-sm text-gray-500 dark:text-gray-400">請求</p>
           <p className="text-xl font-bold text-gray-900 dark:text-gray-100 mt-2">別システム管理</p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
@@ -343,7 +354,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
       </section>
 
       {isInternal && (
-        <section className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-6 space-y-5">
+        <section className={`${PAGE_CARD_PADDED_CLASS} space-y-5`}>
           <div>
             <h4 className="text-lg font-bold text-gray-900 dark:text-gray-100">内部: 契約プラン管理</h4>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">

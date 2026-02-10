@@ -9,6 +9,7 @@ import { geminiService } from '../services/geminiService';
 import { useStore } from '../contexts/StoreContext';
 import { messageReplyService } from '../services/messageReplyService';
 import { getErrorMessage } from '../services/errorMessage';
+import { PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
 
 const platformLabel: Record<SocialPlatform, string> = {
   INSTAGRAM: 'Instagram',
@@ -411,10 +412,16 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
   };
 
   return (
-    <div className="h-[calc(100vh-100px)] flex flex-col md:flex-row bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div className={PAGE_CONTAINER_CLASS} id="page-main-content">
+      <section>
+        <h1 className={PAGE_HEADER_TITLE_CLASS}>受信箱</h1>
+        <p className={PAGE_HEADER_DESCRIPTION_CLASS}>コメントやメッセージを確認し、担当・期限・返信を管理できます。</p>
+      </section>
+
+      <div className="h-[calc(100vh-220px)] flex flex-col md:flex-row bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
       <div className="w-full md:w-1/3 border-r border-gray-200 dark:border-gray-700 flex flex-col bg-gray-50 dark:bg-gray-800">
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-          <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-3">受信箱</h2>
+          <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-3">メッセージ一覧</h2>
           <div className="relative">
             <Search className="absolute left-3 top-2.5 text-gray-400 h-4 w-4" />
             <input
@@ -718,6 +725,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 };

@@ -737,7 +737,7 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">内容</label>
                 <textarea
@@ -866,7 +866,7 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
                 </button>
               </div>
 
-              <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+              <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
                 {isLoadingHistory ? (
                   <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
                     <Loader2 className="animate-spin" size={16} />

@@ -800,7 +800,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   ).length;
 
   const StatCard = ({ title, value, icon: Icon, color }: any) => (
-    <div className={`${PAGE_CARD_CLASS} p-5 flex items-center gap-4`}>
+    <div className={`${PAGE_CARD_CLASS} p-6 flex items-center gap-4`}>
       <div className={`p-3 rounded-xl ${color} bg-opacity-10 text-white`}>
         <Icon className={`w-6 h-6 ${color.replace('bg-', 'text-')}`} />
       </div>

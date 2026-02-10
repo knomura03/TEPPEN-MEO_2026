@@ -1456,7 +1456,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                     data-testid={`provider-card-${provider.catalog.providerKey}`}
                     data-provider-key={provider.catalog.providerKey}
                     onClick={() => setSelectedProviderId(provider.catalog.id)}
-                    className={`p-5 bg-white dark:bg-gray-700 border rounded-2xl shadow-sm transition-all cursor-pointer ${
+                    className={`p-6 bg-white dark:bg-gray-700 border rounded-2xl shadow-sm transition-all cursor-pointer ${
                       selectedProviderId === provider.catalog.id
                         ? 'border-primary-300 ring-1 ring-primary-200 dark:border-primary-500 dark:ring-primary-900/40'
                         : 'border-gray-100 dark:border-gray-600'
@@ -1560,7 +1560,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
 
               {canManageProviders && (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pt-4 border-t border-gray-100 dark:border-gray-700">
-                  <div className="p-5 bg-gray-50 dark:bg-gray-900/40 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-4">
+                  <div className="p-6 bg-gray-50 dark:bg-gray-900/40 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-4">
                     <h3 className="font-bold text-gray-800 dark:text-white">連携先追加（管理者）</h3>
                     <div className="grid gap-3">
                       <input
@@ -1624,7 +1624,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                     </button>
                   </div>
 
-                  <div className="p-5 bg-gray-50 dark:bg-gray-900/40 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-4">
+                  <div className="p-6 bg-gray-50 dark:bg-gray-900/40 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-4">
                     <h3 className="font-bold text-gray-800 dark:text-white">連携先設定（管理者）</h3>
                     {selectedProviderCard && (
                       <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -1758,7 +1758,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                </div>
 
                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                 <div className="p-5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl space-y-4">
+                 <div className="p-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl space-y-4">
                    <div className="flex items-center justify-between gap-3">
                      <h2 className={PAGE_SECTION_TITLE_CLASS}>ブランドキット</h2>
                      {isLoadingBrandAssets && <span className="text-xs text-gray-500 dark:text-gray-400">読み込み中...</span>}
@@ -1830,7 +1830,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                    )}
                  </div>
 
-                 <div className="p-5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl space-y-4">
+                 <div className="p-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl space-y-4">
                    <h2 className={PAGE_SECTION_TITLE_CLASS}>投稿テンプレート</h2>
                    <p className="text-xs text-gray-500 dark:text-gray-400">
                      新規投稿画面のテンプレート候補として表示されます。削除は論理削除です。

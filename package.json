@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "guides:validate": "tsx scripts/guides/validateTourSteps.ts",
     "smoke:contracts": "node scripts/contract-smoke.js",
     "audit:phase1": "tsx scripts/audit/runPhaseAudit.ts phase1",
     "audit:phase2": "tsx scripts/audit/runPhaseAudit.ts phase2",

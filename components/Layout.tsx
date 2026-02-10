@@ -13,7 +13,6 @@ import {
   Moon,
   Sun,
   HelpCircle,
-  MapPin,
   Settings,
   Search,
   TrendingUp,
@@ -25,6 +24,8 @@ import { StoreSelector } from './StoreSelector';
 import { useStore } from '../contexts/StoreContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { featureFlagsService, resolveFeatureState } from '../services/featureFlagsService';
+import { NAV_LABELS } from './ui/copy';
+import { formatRoleLabel, formatViewLabel } from './ui/formatters';
 
 interface LayoutProps {
   currentUser: User;
@@ -108,6 +109,12 @@ export const Layout: React.FC<LayoutProps> = ({
 
   const startTour = () => setShowTour(true);
 
+  const handleLogoutClick = () => {
+    const accepted = window.confirm('ログアウトしますか？');
+    if (!accepted) return;
+    onLogout();
+  };
+
   useEffect(() => {
     const loadFlags = async () => {
       if (!isSupabaseConfigured || !activeOrgId) {
@@ -128,15 +135,15 @@ export const Layout: React.FC<LayoutProps> = ({
   }, [activeOrgId, activeStore?.id]);
 
   const menuItems = [
-    { id: 'DASHBOARD', label: 'ダッシュボード', icon: LayoutDashboard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'dashboard' },
-    { id: 'BILLING', label: '課金・請求', icon: CreditCard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'billing' },
-    { id: 'CALENDAR', label: 'カレンダー', icon: Calendar, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'calendar' },
-    { id: 'SURVEY', label: 'アンケート', icon: ClipboardList, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'survey' },
-    { id: 'CREATE_POST', label: '新規投稿', icon: PenSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'create_post' },
-    { id: 'POST_LIST', label: '投稿一覧', icon: List, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'post_list' },
-    { id: 'INBOX', label: '統合受信箱', icon: MessageSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'inbox' },
-    { id: 'RANK_TRACKER', label: '順位計測', icon: TrendingUp, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'rank_tracker' },
-    { id: 'USER_MANAGEMENT', label: 'ユーザー・契約管理', icon: Users, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER], featureKey: 'user_management' },
+    { id: 'DASHBOARD', label: NAV_LABELS.DASHBOARD, icon: LayoutDashboard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'dashboard' },
+    { id: 'BILLING', label: NAV_LABELS.BILLING, icon: CreditCard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'billing' },
+    { id: 'CALENDAR', label: NAV_LABELS.CALENDAR, icon: Calendar, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'calendar' },
+    { id: 'SURVEY', label: NAV_LABELS.SURVEY, icon: ClipboardList, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'survey' },
+    { id: 'CREATE_POST', label: NAV_LABELS.CREATE_POST, icon: PenSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'create_post' },
+    { id: 'POST_LIST', label: NAV_LABELS.POST_LIST, icon: List, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'post_list' },
+    { id: 'INBOX', label: NAV_LABELS.INBOX, icon: MessageSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'inbox' },
+    { id: 'RANK_TRACKER', label: NAV_LABELS.RANK_TRACKER, icon: TrendingUp, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'rank_tracker' },
+    { id: 'USER_MANAGEMENT', label: NAV_LABELS.USER_MANAGEMENT, icon: Users, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER], featureKey: 'user_management' },
   ];
 
   const canAccess = (allowedRoles: Role[]) => allowedRoles.includes(currentUser.role);
@@ -149,19 +156,6 @@ export const Layout: React.FC<LayoutProps> = ({
     if (visibility === 'HIDDEN') return false;
     if (visibility === 'ADMIN_ONLY') return currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR;
     return true;
-  };
-
-  const viewLabels: Record<string, string> = {
-    'DASHBOARD': 'ダッシュボード',
-    'BILLING': '課金・請求',
-    'CALENDAR': 'カレンダー',
-    'SURVEY': 'アンケート',
-    'CREATE_POST': '新規投稿',
-    'POST_LIST': '投稿一覧',
-    'INBOX': '統合受信箱',
-    'RANK_TRACKER': '順位計測',
-    'USER_MANAGEMENT': 'ユーザー・契約管理',
-    'SETTINGS': '設定'
   };
 
   const hasStoresError = isSupabaseConfigured && !isLoadingStores && Boolean(storesError);
@@ -180,13 +174,7 @@ export const Layout: React.FC<LayoutProps> = ({
       {/* Sidebar for Desktop */}
       <aside className="hidden md:flex flex-col w-72 bg-white dark:bg-gray-800 border-r border-gray-100 dark:border-gray-700 shadow-sm z-10">
         <div className="p-6 flex items-center gap-3">
-          <div className="bg-gradient-to-tr from-primary-600 to-primary-400 p-2.5 rounded-xl shadow-lg shadow-primary-200 dark:shadow-none">
-            <MapPin className="text-white h-6 w-6" />
-          </div>
-          <div>
-            <span className="block text-xl font-bold text-gray-800 dark:text-white tracking-tight leading-none">TEPPEN</span>
-            <span className="text-xs font-bold text-primary-600 dark:text-primary-400 tracking-widest">MEO PLATFORM</span>
-          </div>
+          <img src="/logo.svg" alt="TEPPEN MEO PLATFORM" className="h-9 w-auto" />
         </div>
 
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto py-4">
@@ -238,7 +226,7 @@ export const Layout: React.FC<LayoutProps> = ({
                    {currentUser.role === Role.SUPERVISOR && <span className="w-2 h-2 rounded-full bg-purple-500"></span>}
                    {currentUser.role === Role.MANAGER && <span className="w-2 h-2 rounded-full bg-blue-500"></span>}
                    {currentUser.role === Role.USER && <span className="w-2 h-2 rounded-full bg-green-500"></span>}
-                   {currentUser.role.toLowerCase()}
+                   {formatRoleLabel(currentUser.role)}
                 </p>
               </div>
               <Settings size={16} className="text-gray-400 group-hover:text-primary-500" />
@@ -246,7 +234,7 @@ export const Layout: React.FC<LayoutProps> = ({
           )}
           
           <button
-            onClick={onLogout}
+            onClick={handleLogoutClick}
             className="w-full flex items-center justify-center space-x-2 px-4 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
           >
             <LogOut size={14} />
@@ -260,10 +248,7 @@ export const Layout: React.FC<LayoutProps> = ({
         {/* Mobile Header */}
         <header className="md:hidden bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 p-4 flex items-center justify-between z-20 shadow-sm">
           <div className="flex items-center space-x-2">
-            <div className="bg-primary-600 p-1.5 rounded-lg">
-                <MapPin className="text-white h-5 w-5" />
-            </div>
-            <span className="font-bold text-gray-800 dark:text-white tracking-tight">TEPPEN MEO</span>
+            <img src="/logo.svg" alt="TEPPEN MEO PLATFORM" className="h-7 w-auto" />
           </div>
           <div className="flex items-center gap-3">
             <NotificationCenter />
@@ -276,7 +261,7 @@ export const Layout: React.FC<LayoutProps> = ({
         {/* Desktop Header Bar (New) */}
         <header className="hidden md:flex items-center justify-between py-4 px-8 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800 sticky top-0 z-20">
             <h2 className="text-xl font-bold text-gray-800 dark:text-white tracking-tight">
-                {viewLabels[currentView] || 'TEPPEN MEO'}
+                {formatViewLabel(currentView)}
             </h2>
             <div className="flex items-center gap-4">
                 <StoreSelector />
@@ -284,8 +269,9 @@ export const Layout: React.FC<LayoutProps> = ({
                     <Search className="absolute left-3 top-2.5 text-gray-400 h-4 w-4" />
                     <input 
                         type="text" 
-                        placeholder="検索..." 
-                        className="w-64 pl-10 pr-4 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+                        placeholder="検索（準備中）"
+                        disabled
+                        className="w-64 pl-10 pr-4 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-gray-400 cursor-not-allowed"
                     />
                 </div>
                 <div className="h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
@@ -332,7 +318,7 @@ export const Layout: React.FC<LayoutProps> = ({
                    </button>
                 </div>
                 <button
-                  onClick={onLogout}
+                  onClick={handleLogoutClick}
                   className="w-full flex items-center justify-center space-x-3 px-4 py-3 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10 rounded-xl"
                 >
                   <LogOut size={20} />

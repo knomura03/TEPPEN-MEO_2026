@@ -11,7 +11,7 @@ interface OnboardingTourProps {
 }
 
 const POPUP_WIDTH = 360;
-const POPUP_HEIGHT = 260;
+const POPUP_HEIGHT = 340;
 const VIEWPORT_PADDING = 16;
 const TARGET_GAP = 12;
 
@@ -137,7 +137,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({ onComplete, isOp
       )}
 
       <div
-        className="absolute bg-white dark:bg-gray-800 p-6 rounded-xl shadow-2xl w-[360px] max-w-[calc(100vw-32px)] pointer-events-auto transition-all duration-300 border border-gray-100 dark:border-gray-700"
+        className="absolute bg-white dark:bg-gray-800 p-6 rounded-xl shadow-2xl w-[360px] max-w-[calc(100vw-32px)] max-h-[calc(100vh-32px)] overflow-y-auto pointer-events-auto transition-all duration-300 border border-gray-100 dark:border-gray-700"
         style={popoverStyle}
       >
         <button

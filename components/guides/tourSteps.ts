@@ -62,14 +62,170 @@ const SIDEBAR_STEPS: TourStep[] = [
   },
 ];
 
-export const getTourStepsForView = (view: ViewState): TourStep[] => {
-  const pageStep: TourStep = {
-    id: `page-${view.toLowerCase()}`,
-    title: `${NAV_LABELS[view]}の使い方`,
-    content: PAGE_SUMMARY_BY_VIEW[view],
-    targetId: 'page-main-content',
-    position: 'center',
-  };
+type PageStepTemplate = {
+  title: string;
+  content: string;
+  targetId?: string;
+  position?: TourPlacement;
+};
 
-  return [pageStep, ...SIDEBAR_STEPS];
+const PAGE_STEPS_BY_VIEW: Record<ViewState, PageStepTemplate[]> = {
+  DASHBOARD: [
+    {
+      title: 'この画面で分かること',
+      content: '店舗の重要な数字をまとめて確認できます。まずは全体の増減を見て、優先して手を打つ項目を決めます。',
+    },
+    {
+      title: '期間の切り替え',
+      content: '「過去7日間 / 過去30日間」を切り替えると、直近の変化と中長期の傾向を比較できます。',
+    },
+    {
+      title: '最初に見る3つ',
+      content: '「マップ表示回数」「ルート検索数」「通話クリック」を最初に確認すると、集客の変化を早く把握できます。',
+    },
+  ],
+  BILLING: [
+    {
+      title: '契約プランの確認',
+      content: '現在の契約プラン名、金額、状態を確認できます。まずは「未設定」になっていないかを確認します。',
+    },
+    {
+      title: '内部担当の操作範囲',
+      content: '管理者向けに、プランの新規作成・編集・割り当て変更ができます。顧客ユーザーは閲覧中心です。',
+    },
+    {
+      title: '変更履歴の確認',
+      content: '画面下部の履歴で、いつ誰がプランを変更したかを確認できます。トラブル時の確認に使います。',
+    },
+  ],
+  CALENDAR: [
+    {
+      title: '投稿予定の全体確認',
+      content: '月単位で投稿予定を確認できます。投稿が偏っていないか、空白日がないかを確認します。',
+    },
+    {
+      title: '日付を押して投稿作成',
+      content: 'カレンダーの日付を押すと、その日付で投稿作成を開始できます。予約漏れを防ぐのに便利です。',
+    },
+    {
+      title: '絞り込みの使い方',
+      content: '媒体ごとの絞り込みを使うと、InstagramやFacebookなど媒体別に予定を確認できます。',
+    },
+  ],
+  SURVEY: [
+    {
+      title: 'アンケートの基本操作',
+      content: 'アンケートの作成、公開、編集、保存をこの画面で行います。文面を短く分かりやすくするのがコツです。',
+    },
+    {
+      title: '公開導線の確認',
+      content: '公開URL、QR画像、POP印刷から配布導線を作れます。店舗で使うものを選んで準備します。',
+    },
+    {
+      title: '回答の集計を見る',
+      content: '回答数やルート内クリック率を見ながら、質問文や誘導文を改善していきます。',
+    },
+  ],
+  CREATE_POST: [
+    {
+      title: '投稿作成の流れ',
+      content: '投稿先、本文、日時を決めて下書き保存または予約します。最低限この3点を埋めると進められます。',
+    },
+    {
+      title: '文章作成の補助',
+      content: 'テンプレート適用やAI生成を使って、投稿文のたたき台を作れます。最後に必ず目視で確認します。',
+    },
+    {
+      title: '配信対象の切り替え',
+      content: '選択中の店舗に投稿するか、店舗グループへまとめて投稿するかを選べます。',
+    },
+  ],
+  POST_LIST: [
+    {
+      title: '投稿の一覧管理',
+      content: '投稿の状態を一覧で確認できます。まずは「承認待ち」や「エラー」を優先して処理します。',
+    },
+    {
+      title: '検索と状態絞り込み',
+      content: '本文検索と状態フィルタで、対象投稿をすぐに絞り込めます。投稿数が増えても探しやすくなります。',
+    },
+    {
+      title: '承認と公開の流れ',
+      content: '承認、差し戻し、公開実行を一覧から操作できます。履歴を残しながら運用できます。',
+    },
+  ],
+  INBOX: [
+    {
+      title: '受信内容の確認',
+      content: 'コメントやメッセージをまとめて確認できます。未対応のものから順番に処理します。',
+    },
+    {
+      title: '左側で絞り込み',
+      content: '左側の検索・状態・媒体フィルタで対象を絞り込み、対応が必要なものを素早く見つけます。',
+    },
+    {
+      title: '返信の運用',
+      content: '本文確認、返信案の作成、送信をこの画面で進めます。送信前に文面を最終確認してください。',
+    },
+  ],
+  RANK_TRACKER: [
+    {
+      title: '順位確認の目的',
+      content: 'キーワードごとの検索順位を確認し、改善の優先順位を決めます。',
+    },
+    {
+      title: '収集実行の使い分け',
+      content: 'テストデータで動作確認してから、本番データ収集へ進むと安全に運用できます。',
+    },
+    {
+      title: '一致状況の確認',
+      content: '店舗情報の一致/不一致を確認し、必要に応じて店舗情報の修正タスクを切り出します。',
+    },
+  ],
+  USER_MANAGEMENT: [
+    {
+      title: 'ユーザー管理の基本',
+      content: 'ユーザーの追加、権限変更、契約関連の確認を行います。内部担当はここが主な管理画面です。',
+    },
+    {
+      title: '検索と絞り込み',
+      content: '名前・メール検索とロール絞り込みで、対象ユーザーを素早く見つけられます。',
+    },
+    {
+      title: '店舗グループ一括設定',
+      content: '対象グループの全店舗へ、同じ機能公開状態をまとめて反映できます。',
+    },
+  ],
+  SETTINGS: [
+    {
+      title: '設定画面で行うこと',
+      content: 'プロフィール、店舗、SNS連携、運用設定をまとめて管理します。',
+    },
+    {
+      title: 'SNS連携の手順',
+      content: '設定保存後に接続確認を行い、接続状態が「CONNECTED」になっているかを確認します。',
+    },
+    {
+      title: '運用時の確認ポイント',
+      content: 'エラー表示や警告表示を見つけたら、まずこの画面で設定値と接続状態を見直します。',
+    },
+  ],
+};
+
+export const getTourStepsForView = (view: ViewState): TourStep[] => {
+  const pageTemplates = PAGE_STEPS_BY_VIEW[view];
+  const pageSteps = (pageTemplates?.length ? pageTemplates : [
+    {
+      title: `${NAV_LABELS[view]}の使い方`,
+      content: PAGE_SUMMARY_BY_VIEW[view],
+    },
+  ]).map((step, index) => ({
+    id: `page-${view.toLowerCase()}-${index + 1}`,
+    title: step.title,
+    content: step.content,
+    targetId: step.targetId || 'page-main-content',
+    position: step.position || 'center',
+  }));
+
+  return [...pageSteps, ...SIDEBAR_STEPS];
 };

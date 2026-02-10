@@ -25,6 +25,11 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
   const [analytics, setAnalytics] = useState<SurveyAnalytics | null>(null);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
   const [isGeneratingAsset, setIsGeneratingAsset] = useState(false);
+  const getSurveyStatusLabel = (status: Survey['status']) => {
+    if (status === 'PUBLISHED') return '公開中';
+    if (status === 'DRAFT') return '下書き';
+    return 'アーカイブ';
+  };
 
   const selectedSurvey = useMemo(
     () => surveys.find((survey) => survey.id === selectedSurveyId) || null,
@@ -345,11 +350,11 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
                           : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
                     }`}
                   >
-                    {survey.status}
+                    {getSurveyStatusLabel(survey.status)}
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  回答数: {survey.responseCount} / 高評価しきい値: {survey.positiveThreshold} / 更新: {survey.updatedAt.toLocaleString('ja-JP')}
+                  回答数: {survey.responseCount} / 口コミ案内の基準点: {survey.positiveThreshold}点 / 更新: {survey.updatedAt.toLocaleString('ja-JP')}
                 </p>
               </button>
             ))}
@@ -400,7 +405,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                高評価しきい値（この点数以上で口コミ導線）
+                口コミ案内の基準点（この点数以上で案内）
               </label>
               <select
                 data-testid="survey-positive-threshold"

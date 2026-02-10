@@ -55,7 +55,7 @@ const BULK_FEATURE_OPTIONS: { key: string; label: string; description: string }[
   { key: 'survey', label: 'アンケート', description: 'メニュー表示: アンケート' },
   { key: 'create_post', label: '新規投稿', description: 'メニュー表示: 新規投稿' },
   { key: 'post_list', label: '投稿一覧', description: 'メニュー表示: 投稿一覧' },
-  { key: 'inbox', label: '統合受信箱', description: 'メニュー表示: 統合受信箱' },
+  { key: 'inbox', label: '受信箱', description: 'メニュー表示: 受信箱' },
 ];
 
 export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) => {
@@ -959,7 +959,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex flex-col">
                         <span className="text-sm font-bold text-gray-800 dark:text-white">{user.plan || 'FREE'}</span>
-                        <span className="text-xs text-gray-400">次回更新: 外部運用</span>
+                        <span className="text-xs text-gray-400">請求管理: 別システム</span>
                       </div>
                     </td>
 
@@ -1309,9 +1309,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                   onChange={(e) => setBulkSettingState(e.target.value as VisibilityState)}
                   className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm"
                 >
-                  <option value="HIDDEN">HIDDEN</option>
-                  <option value="ADMIN_ONLY">ADMIN_ONLY</option>
-                  <option value="ENABLED">ENABLED</option>
+                  <option value="HIDDEN">非表示</option>
+                  <option value="ADMIN_ONLY">内部のみ</option>
+                  <option value="ENABLED">全体公開</option>
                 </select>
               </div>
             </div>

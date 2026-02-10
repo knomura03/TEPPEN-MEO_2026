@@ -287,7 +287,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
       <section className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-6">
         <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">課金・請求</h3>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          現在の契約プランを確認できます（請求は当面、外部運用）。
+          現在の契約プランを確認できます（請求は当面、別システムで管理）。
         </p>
       </section>
 
@@ -305,7 +305,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-widest text-primary-600 dark:text-primary-400 font-bold">
-                Current Plan
+                現在の契約プラン
               </p>
               <h4 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">
                 {isLoadingSubscription ? '読み込み中...' : subscriptionPlanCode || '未設定'}
@@ -326,7 +326,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
 
         <article className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-6">
           <p className="text-sm text-gray-500 dark:text-gray-400">請求</p>
-          <p className="text-xl font-bold text-gray-900 dark:text-gray-100 mt-2">外部運用</p>
+          <p className="text-xl font-bold text-gray-900 dark:text-gray-100 mt-2">別システム管理</p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
             請求・入金管理は当面、システム外で行います。
           </p>
@@ -376,7 +376,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
                           {plan.code}
                           {!plan.isActive && (
                             <span className="ml-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                              INACTIVE
+                              停止中
                             </span>
                           )}
                         </div>
@@ -398,7 +398,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-                    code
+                    プランコード
                   </label>
                   <input
                     value={planFormCode}
@@ -409,7 +409,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-                    name
+                    プラン名
                   </label>
                   <input
                     value={planFormName}
@@ -420,7 +420,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-                    amountMonthly
+                    月額
                   </label>
                   <input
                     type="number"
@@ -432,7 +432,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-                    currency
+                    通貨
                   </label>
                   <select
                     value={planFormCurrency}
@@ -456,7 +456,7 @@ const BillingView: React.FC<BillingViewProps> = ({ currentUser }) => {
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-                    description（任意）
+                    説明（任意）
                   </label>
                   <input
                     value={planFormDescription}

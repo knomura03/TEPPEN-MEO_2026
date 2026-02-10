@@ -218,10 +218,10 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
       const results = await napConsistencyService.listResultsByRun(nextSelectedRunId);
       setSelectedNapResults(results);
     } catch (error) {
-      console.error('[RankTrackerView] Failed to load NAP runs:', error);
+      console.error('[RankTrackerView] Failed to load business profile runs:', error);
       addNotification(
         '読み込みエラー',
-        `NAP整合性チェック履歴の取得に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`,
+        `店舗情報チェック履歴の取得に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`,
         'ERROR'
       );
       setNapRuns([]);
@@ -242,10 +242,10 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
       const alerts = await napAlertService.listActiveByStore(activeStoreId);
       setNapAlerts(alerts);
     } catch (error) {
-      console.error('[RankTrackerView] Failed to load NAP alerts:', error);
+      console.error('[RankTrackerView] Failed to load business profile alerts:', error);
       addNotification(
         '読み込みエラー',
-        `NAPアラートの取得に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`,
+        `店舗情報アラートの取得に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`,
         'ERROR'
       );
       setNapAlerts([]);
@@ -263,10 +263,10 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
       const results = await napConsistencyService.listResultsByRun(runId);
       setSelectedNapResults(results);
     } catch (error) {
-      console.error('[RankTrackerView] Failed to load NAP results:', error);
+      console.error('[RankTrackerView] Failed to load business profile results:', error);
       addNotification(
         '読み込みエラー',
-        `NAP結果の取得に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`,
+        `店舗情報チェック結果の取得に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`,
         'ERROR'
       );
       setSelectedNapResults([]);
@@ -497,15 +497,15 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
       });
       const hasIssues = result.summary.mismatch + result.summary.missing > 0;
       addNotification(
-        hasIssues ? 'NAPチェック（注意）' : 'NAPチェック完了',
-        result.message || 'NAP整合性チェックを実行しました。',
+        hasIssues ? '店舗情報チェック（要確認）' : '店舗情報チェック完了',
+        result.message || '店舗情報チェックを実行しました。',
         hasIssues ? 'WARNING' : 'SUCCESS'
       );
       await loadNapRuns();
       await loadNapAlerts();
     } catch (error) {
-      console.error('[RankTrackerView] Failed to run NAP consistency check:', error);
-      addNotification('NAPチェックエラー', getErrorMessage(error) || 'NAP整合性チェックの実行に失敗しました。', 'ERROR');
+      console.error('[RankTrackerView] Failed to run business profile check:', error);
+      addNotification('店舗情報チェックエラー', getErrorMessage(error) || '店舗情報チェックの実行に失敗しました。', 'ERROR');
     } finally {
       setIsNapSubmitting(false);
     }
@@ -519,11 +519,11 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
     setNapAlertUpdatingId(alert.id);
     try {
       await napAlertService.updateStatus({ id: alert.id, status: nextStatus, updatedBy: currentUser.id });
-      addNotification('更新', 'NAPアラート状態を更新しました。', 'SUCCESS');
+      addNotification('更新', '店舗情報アラートの状態を更新しました。', 'SUCCESS');
       await loadNapAlerts();
     } catch (error) {
-      console.error('[RankTrackerView] Failed to update NAP alert status:', error);
-      addNotification('更新エラー', getErrorMessage(error) || 'NAPアラート状態の更新に失敗しました。', 'ERROR');
+      console.error('[RankTrackerView] Failed to update business profile alert status:', error);
+      addNotification('更新エラー', getErrorMessage(error) || '店舗情報アラート状態の更新に失敗しました。', 'ERROR');
     } finally {
       setNapAlertUpdatingId(null);
     }
@@ -540,9 +540,9 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
   };
 
   const runStatusLabel = (status: RankCollectionRun['status']) => {
-    if (status === 'SUCCESS') return 'SUCCESS';
-    if (status === 'FAILED') return 'FAILED';
-    return 'RUNNING';
+    if (status === 'SUCCESS') return '完了';
+    if (status === 'FAILED') return '失敗';
+    return '実行中';
   };
 
   const runStatusClassName = (status: RankCollectionRun['status']) => {
@@ -552,9 +552,19 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
   };
 
   const napStatusLabel = (status: NapConsistencyRun['status']) => {
-    if (status === 'SUCCESS') return 'SUCCESS';
-    if (status === 'FAILED') return 'FAILED';
-    return 'RUNNING';
+    if (status === 'SUCCESS') return '完了';
+    if (status === 'FAILED') return '失敗';
+    return '実行中';
+  };
+
+  const collectionModeLabel = (mode: RankCollectionRun['mode']) => {
+    if (mode === 'REAL') return '本番';
+    return '検証';
+  };
+
+  const collectionTriggerLabel = (triggerType: RankCollectionRun['triggerType']) => {
+    if (triggerType === 'SCHEDULED') return '定期実行';
+    return '手動実行';
   };
 
   const napStatusClassName = (status: NapConsistencyRun['status']) => {
@@ -668,9 +678,9 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
     <div className="space-y-6 animate-fade-in" data-testid="rank-tracker-view">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">順位計測（キーワード管理）</h1>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">順位チェック（キーワード管理）</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            店舗ごとの順位計測キーワードと競合ターゲットを管理します。収集結果はrun単位で履歴化されます。
+            店舗ごとの検索キーワードと競合店舗を管理します。収集結果は実行ごとに履歴として確認できます。
           </p>
         </div>
       </div>
@@ -690,9 +700,9 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-gray-800 dark:text-white">順位/競合ダッシュボード（P3-04）</h2>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white">順位・競合ダッシュボード</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              直近runの推移と競合比較を可視化します（MOCK/REALの保存データ共通）。
+              直近の実行結果の推移と競合比較を表示します（モック/本番どちらのデータでも表示可能）。
             </p>
           </div>
           <button
@@ -723,25 +733,25 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
               <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
-                <p className="text-xs text-gray-500 dark:text-gray-400">最新run 平均順位</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">最新実行の平均順位</p>
                 <p className="text-xl font-bold text-gray-800 dark:text-white mt-1">
                   {typeof latestRunKeywordAverage === 'number' ? `${latestRunKeywordAverage}位` : '-'}
                 </p>
               </div>
               <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
-                <p className="text-xs text-gray-500 dark:text-gray-400">最新run 最上位キーワード</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">最新実行の最上位キーワード</p>
                 <p className="text-sm font-semibold text-gray-800 dark:text-white mt-1 break-words">
                   {latestRunBestKeyword ? `${latestRunBestKeyword.keyword}（${latestRunBestKeyword.position}位）` : '-'}
                 </p>
               </div>
               <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
-                <p className="text-xs text-gray-500 dark:text-gray-400">最新run 競合平均順位</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">最新実行の競合平均順位</p>
                 <p className="text-xl font-bold text-gray-800 dark:text-white mt-1">
                   {typeof latestRunCompetitorAverage === 'number' ? `${latestRunCompetitorAverage}位` : '-'}
                 </p>
               </div>
               <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
-                <p className="text-xs text-gray-500 dark:text-gray-400">可視化対象run</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">表示対象の実行回数</p>
                 <p className="text-xl font-bold text-gray-800 dark:text-white mt-1">{dashboardRunDetails.length}件</p>
               </div>
             </div>
@@ -780,7 +790,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
               </div>
 
               <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/20">
-                <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">最新run 競合比較（順位）</p>
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">最新実行の競合比較（順位）</p>
                 {latestCompetitorBars.length > 0 ? (
                   <div className="h-72">
                     <ResponsiveContainer width="100%" height="100%">
@@ -803,7 +813,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
               <table className="min-w-full text-xs border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
                 <thead className="bg-gray-50 dark:bg-gray-900/40">
                   <tr>
-                    <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300">run日時</th>
+                    <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300">実行日時</th>
                     <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300">順位平均</th>
                     <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300">競合平均</th>
                     <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300">キーワード件数</th>
@@ -834,9 +844,9 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-gray-800 dark:text-white">NAP整合性チェック（P3-05）</h2>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white">店舗情報チェック（名前/住所/電話）</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              店舗NAP（名前/住所/電話）と媒体設定値の一致状況をrun履歴で管理します。
+              店舗情報（名前/住所/電話）と媒体設定値の一致状況を実行履歴で確認します。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -858,7 +868,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
               className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Play size={14} />
-              NAPチェック実行
+              店舗情報チェック実行
             </button>
           </div>
         </div>
@@ -885,9 +895,9 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
         )}
 
         {isNapLoading ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">NAPチェック履歴を読み込み中...</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">店舗情報チェック履歴を読み込み中...</p>
         ) : napRuns.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">NAPチェック履歴はまだありません。</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">店舗情報チェック履歴はまだありません。</p>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -912,7 +922,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                     <span className="text-[10px] text-gray-500 dark:text-gray-400">{run.startedAt.toLocaleString('ja-JP')}</span>
                   </div>
                   <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2">
-                    MATCH {run.summary.match} / MISMATCH {run.summary.mismatch} / MISSING {run.summary.missing}
+                    一致 {run.summary.match} / 不一致 {run.summary.mismatch} / 未設定 {run.summary.missing}
                   </p>
                   {run.message && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 break-words">{run.message}</p>}
                 </button>
@@ -920,7 +930,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
             </div>
 
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">選択runの詳細</p>
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">選択中の実行詳細</p>
               {selectedNapRunId && selectedNapResults.length > 0 ? (
                 <div className="max-h-80 overflow-y-auto pr-1 space-y-2">
                   {selectedNapResults.map((item) => (
@@ -944,7 +954,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] text-gray-600 dark:text-gray-300">
                         <div>
-                          <p className="font-semibold text-gray-700 dark:text-gray-200">店舗NAP</p>
+                          <p className="font-semibold text-gray-700 dark:text-gray-200">店舗情報</p>
                           <p>名前: {item.expectedName || '-'}</p>
                           <p>住所: {item.expectedAddress || '-'}</p>
                           <p>電話: {item.expectedPhone || '-'}</p>
@@ -966,7 +976,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400">runを選択すると詳細を表示します。</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">実行履歴を選択すると詳細を表示します。</p>
               )}
             </div>
           </div>
@@ -976,9 +986,9 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-gray-800 dark:text-white">NAPアラート（P3-06）</h2>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white">店舗情報アラート</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              NAP不整合（MISMATCH）/未設定（MISSING）をアラートとして永続化し、ACK/解消で運用します。
+              店舗情報の不一致・未設定をアラートとして保持し、確認済み/解消を管理します。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1079,9 +1089,9 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-gray-800 dark:text-white">日次順位収集（P3-02）</h2>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white">日次順位収集</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              現在はMOCK収集のみ対応。REAL収集は後続チケットで拡張します。
+              現在はモック収集のみ対応しています。本番収集は次の開発で対応予定です。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1115,7 +1125,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">実行履歴</p>
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">収集履歴</p>
               {collectionRuns.map((run) => (
                 <button
                   key={run.id}
@@ -1136,7 +1146,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                     <span className="text-[10px] text-gray-500 dark:text-gray-400">{run.startedAt.toLocaleString('ja-JP')}</span>
                   </div>
                   <p className="text-xs text-gray-600 dark:text-gray-300 mt-2">
-                    mode: {run.mode} / trigger: {run.triggerType}
+                    モード: {collectionModeLabel(run.mode)} / 実行種別: {collectionTriggerLabel(run.triggerType)}
                   </p>
                   {run.message && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 break-words">{run.message}</p>
@@ -1146,7 +1156,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
             </div>
 
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">選択中runの収集結果</p>
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">選択中の実行結果</p>
               {selectedRunId && (selectedRunResults.length > 0 || selectedRunCompetitorSnapshots.length > 0) ? (
                 <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
                   <div>
@@ -1165,7 +1175,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                               </span>
                             </div>
                             <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                              mode: {result.mode} / status: {result.status}
+                              モード: {collectionModeLabel(result.mode)} / 状態: {runStatusLabel(result.status)}
                             </p>
                             {result.message && (
                               <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 break-words">{result.message}</p>
@@ -1199,7 +1209,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                               口コミ: {snapshot.reviewCount}件 / 評価: {typeof snapshot.rating === 'number' ? snapshot.rating.toFixed(1) : '-'}
                             </p>
                             <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                              mode: {snapshot.mode} / status: {snapshot.status}
+                              モード: {collectionModeLabel(snapshot.mode)} / 状態: {runStatusLabel(snapshot.status)}
                             </p>
                             {snapshot.message && (
                               <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 break-words">{snapshot.message}</p>
@@ -1213,7 +1223,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400">runを選択すると結果を表示します。</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">収集履歴を選択すると結果を表示します。</p>
               )}
             </div>
           </div>
@@ -1222,7 +1232,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-gray-800 dark:text-white">競合ターゲット（P3-03）</h2>
+          <h2 className="text-lg font-bold text-gray-800 dark:text-white">競合ターゲット</h2>
           <span className="text-xs text-gray-500 dark:text-gray-400">収集実行時に競合指標を同時保存します</span>
         </div>
 

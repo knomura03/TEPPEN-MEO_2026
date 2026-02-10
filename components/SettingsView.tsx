@@ -57,11 +57,11 @@ const FEATURE_FLAG_OPTIONS: { key: string; label: string; description: string }[
   { key: 'survey', label: 'アンケート', description: 'メニュー: アンケート' },
   { key: 'create_post', label: '新規投稿', description: 'メニュー: 新規投稿' },
   { key: 'post_list', label: '投稿一覧', description: 'メニュー: 投稿一覧' },
-  { key: 'inbox', label: '統合受信箱', description: 'メニュー: 統合受信箱' },
-  { key: 'rank_tracker', label: '順位計測', description: 'メニュー: 順位計測' },
+  { key: 'inbox', label: '受信箱', description: 'メニュー: 受信箱' },
+  { key: 'rank_tracker', label: '順位チェック', description: 'メニュー: 順位チェック' },
   { key: 'user_management', label: 'ユーザー管理', description: 'メニュー: ユーザー・契約管理' },
   { key: 'settings_system', label: 'システム管理', description: '設定タブ: システム管理' },
-  { key: 'provider_management', label: 'Provider管理', description: 'SNS連携設定タブの管理機能' },
+  { key: 'provider_management', label: '連携先管理', description: 'SNS連携設定タブの管理機能' },
 ];
 
 const TEMPLATE_PLATFORM_OPTIONS: SocialPlatform[] = ['INSTAGRAM', 'FACEBOOK', 'GOOGLE_BUSINESS', 'TIKTOK'];
@@ -72,6 +72,41 @@ const TEMPLATE_PLATFORM_LABELS: Record<SocialPlatform, string> = {
   GOOGLE_BUSINESS: 'Google Business Profile',
   TIKTOK: 'TikTok',
 };
+
+const PROVIDER_KIND_LABELS: Record<ProviderKind, string> = {
+  NATIVE: '標準連携',
+  GENERIC: '汎用連携',
+};
+
+const PROVIDER_AUTH_LABELS: Record<ProviderAuthKind, string> = {
+  OAUTH2: 'ログイン連携',
+  API_KEY: 'APIキー',
+  WEBHOOK: 'Webhook',
+  NONE: '不要',
+};
+
+const PROVIDER_VISIBILITY_LABELS: Record<VisibilityState, string> = {
+  HIDDEN: '非表示',
+  ADMIN_ONLY: '内部のみ',
+  ENABLED: '全体公開',
+};
+
+const CONNECTION_STATUS_LABELS = {
+  CONNECTED: '接続済み',
+  DISCONNECTED: '未接続',
+  ERROR: 'エラー',
+} as const;
+
+const TEST_MODE_LABELS = {
+  REAL: '実接続',
+  MOCK: '検証',
+} as const;
+
+const RUNTIME_MODE_LABELS = {
+  ACTIVE: '有効',
+  DEGRADED: '一部制限',
+  BLOCKED: '停止',
+} as const;
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfileUpdated }) => {
   const { addNotification } = useNotification();
@@ -529,7 +564,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       }
     } catch (error) {
       console.error('[SettingsView] Failed to load provider cards:', error);
-      addNotification('読み込みエラー', 'Provider設定の取得に失敗しました。', 'ERROR');
+      addNotification('読み込みエラー', '連携先設定の取得に失敗しました。', 'ERROR');
     } finally {
       setIsLoadingIntegrations(false);
     }
@@ -722,7 +757,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     if (oauthStatus === 'success') {
       addNotification(
         'OAuth連携完了',
-        `${oauthProvider || 'Provider'} の接続が完了しました。接続テストを実行して状態を確認してください。`,
+        `${oauthProvider || '連携先'} の接続が完了しました。接続テストを実行して状態を確認してください。`,
         'SUCCESS'
       );
       void loadProviderCards();
@@ -745,20 +780,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
 
   const handleCreateProvider = async () => {
     if (!isSupabaseConfigured) {
-      addNotification('未設定', 'Supabase未設定のため、Providerを追加できません。', 'WARNING');
+      addNotification('未設定', 'Supabase未設定のため、連携先を追加できません。', 'WARNING');
       return;
     }
     if (!activeOrgId) {
-      addNotification('組織未選択', '店舗を選択してからProviderを追加してください。', 'WARNING');
+      addNotification('組織未選択', '店舗を選択してから連携先を追加してください。', 'WARNING');
       return;
     }
     if (!newProviderKey.trim() || !newProviderName.trim()) {
-      addNotification('入力エラー', 'Provider key と表示名を入力してください。', 'WARNING');
+      addNotification('入力エラー', '連携先キーと表示名を入力してください。', 'WARNING');
       return;
     }
     const normalizedKey = newProviderKey.trim().toUpperCase();
     if (!/^[A-Z0-9_]+$/.test(normalizedKey)) {
-      addNotification('入力エラー', 'Provider key は英大文字・数字・アンダースコアのみ使用できます。', 'WARNING');
+      addNotification('入力エラー', '連携先キーは英大文字・数字・アンダースコアのみ使用できます。', 'WARNING');
       return;
     }
 
@@ -780,7 +815,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
           canFetchMetrics: newCanFetchMetrics,
         },
       });
-      addNotification('Provider追加', `${normalizedKey} を追加しました。`, 'SUCCESS');
+      addNotification('連携先追加', `${normalizedKey} を追加しました。`, 'SUCCESS');
       setNewProviderKey('');
       setNewProviderName('');
       setNewProviderKind('GENERIC');
@@ -794,7 +829,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       await loadProviderCards();
     } catch (error) {
       console.error('[SettingsView] Failed to create provider:', error);
-      addNotification('追加エラー', `Provider追加に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`, 'ERROR');
+      addNotification('追加エラー', `連携先の追加に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`, 'ERROR');
     } finally {
       setIsCreatingProvider(false);
     }
@@ -803,7 +838,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   const handleChangeProviderVisibility = async (providerCatalogId: string, visibility: VisibilityState) => {
     try {
       await providerCatalogService.updateVisibility(providerCatalogId, visibility);
-      addNotification('公開状態更新', 'Providerの公開状態を更新しました。', 'SUCCESS');
+      addNotification('公開状態更新', '連携先の公開状態を更新しました。', 'SUCCESS');
       await loadProviderCards();
     } catch (error) {
       console.error('[SettingsView] Failed to update provider visibility:', error);
@@ -838,7 +873,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
 
   const handleSaveProviderConfiguration = async () => {
     if (!isSupabaseConfigured) {
-      addNotification('未設定', 'Supabase未設定のため、Provider設定を保存できません。', 'WARNING');
+      addNotification('未設定', 'Supabase未設定のため、連携先設定を保存できません。', 'WARNING');
       return;
     }
     if (!activeStoreId) {
@@ -846,7 +881,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       return;
     }
     if (!selectedProviderCard) {
-      addNotification('選択エラー', 'Providerを選択してください。', 'WARNING');
+      addNotification('選択エラー', '連携先を選択してください。', 'WARNING');
       return;
     }
     let parsedConfig: Record<string, unknown> = {};
@@ -875,7 +910,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       await loadProviderCards();
     } catch (error) {
       console.error('[SettingsView] Failed to save provider configuration:', error);
-      addNotification('保存エラー', `Provider設定の保存に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`, 'ERROR');
+      addNotification('保存エラー', `連携先設定の保存に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`, 'ERROR');
     } finally {
       setIsSavingProviderConfig(false);
       setProviderSecretInput('');
@@ -888,7 +923,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       return;
     }
     if (!selectedProviderCard) {
-      addNotification('選択エラー', 'Providerを選択してください。', 'WARNING');
+      addNotification('選択エラー', '連携先を選択してください。', 'WARNING');
       return;
     }
     if (!selectedProviderCard.configuration?.id) {
@@ -1055,14 +1090,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   const saveProviderDisabledReason = !isSupabaseConfigured
     ? 'Supabase未設定のため保存できません。'
     : !selectedProviderCard
-      ? 'Providerを選択してください。'
+      ? '連携先を選択してください。'
       : !activeStoreId
         ? '店舗選択後に保存できます。'
         : null;
   const testProviderDisabledReason = !isSupabaseConfigured
     ? 'Supabase未設定のため接続テストできません。'
     : !selectedProviderCard
-      ? 'Providerを選択してください。'
+      ? '連携先を選択してください。'
       : !selectedProviderCard.configuration?.id
         ? '先に「設定を保存」を実行してください。'
         : null;
@@ -1309,7 +1344,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
 
                   <form onSubmit={handleSaveStore} className="space-y-6">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">店舗名 (NAP: Name)</label>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">店舗名（名前）</label>
                         <input 
                             type="text" 
                             value={storeName}
@@ -1320,7 +1355,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">住所 (NAP: Address)</label>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">住所</label>
                         <div className="relative">
                             <MapPin className="absolute left-3 top-3 text-gray-400" size={18} />
                             <input 
@@ -1336,7 +1371,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
 
                       <div className="grid grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">電話番号 (NAP: Phone)</label>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">電話番号</label>
                             <input 
                                 type="text" 
                                 value={phone}
@@ -1387,8 +1422,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
           {activeTab === 'INTEGRATIONS' && (
             <div className="max-w-5xl space-y-6">
               <div>
-                <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-1">Provider連携設定</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">store単位で接続状態を管理し、検証モードと本番モードを可視化します。</p>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-1">SNS連携設定</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">店舗ごとに接続状態を管理します。接続テストで利用可否を確認できます。</p>
               </div>
               {!isSupabaseConfigured && (
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 text-sm rounded-xl p-4">
@@ -1397,7 +1432,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
               )}
               {isSupabaseConfigured && !activeStoreId && (
                 <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 text-sm rounded-xl p-4">
-                  店舗が選択されていません。右上の店舗セレクタで選択するか、先に「店舗情報(MEO)」で店舗を作成してください。
+                  店舗が選択されていません。右上の店舗セレクタで選択するか、先に「店舗情報設定」で店舗を作成してください。
                 </div>
               )}
               {isLoadingIntegrations && (
@@ -1416,7 +1451,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                         ? 'border-primary-300 ring-1 ring-primary-200 dark:border-primary-500 dark:ring-primary-900/40'
                         : 'border-gray-100 dark:border-gray-600'
                     }`}
-                    title="クリックでこのProviderを下の設定パネルで編集します。"
+                    title="クリックでこの連携先を下の設定パネルで編集します。"
                   >
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                       <div className="space-y-2">
@@ -1426,21 +1461,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                             {provider.catalog.providerKey}
                           </span>
                           <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
-                            {provider.catalog.providerKind}
+                            {PROVIDER_KIND_LABELS[provider.catalog.providerKind]}
                           </span>
                           {canManageProviders && (
                             <span className="text-xs px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
-                              公開: {provider.catalog.defaultVisibility}
+                              公開範囲: {PROVIDER_VISIBILITY_LABELS[provider.catalog.defaultVisibility]}
                             </span>
                           )}
                         </div>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          auth: {provider.catalog.authKind} / test: {provider.readiness.testMode} / runtime: {provider.readiness.runtimeMode}
+                          接続状態: {CONNECTION_STATUS_LABELS[provider.configuration?.connectionStatus || 'DISCONNECTED']}
                         </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          connection: {provider.configuration?.connectionStatus || 'DISCONNECTED'}
-                          {provider.configuration?.lastError ? ` / error: ${provider.configuration.lastError}` : ''}
-                        </p>
+                        <details className="text-xs text-gray-500 dark:text-gray-400">
+                          <summary className="cursor-pointer select-none">詳細情報を表示</summary>
+                          <div className="mt-2 space-y-1">
+                            <p>認証方式: {PROVIDER_AUTH_LABELS[provider.catalog.authKind]}</p>
+                            <p>接続テスト: {TEST_MODE_LABELS[provider.readiness.testMode]}</p>
+                            <p>動作モード: {RUNTIME_MODE_LABELS[provider.readiness.runtimeMode]}</p>
+                            {provider.configuration?.lastError ? (
+                              <p className="text-red-600 dark:text-red-300">エラー内容: {provider.configuration.lastError}</p>
+                            ) : null}
+                          </div>
+                        </details>
                         <p
                           data-testid={`provider-connection-status-${provider.catalog.providerKey}`}
                           className="sr-only"
@@ -1462,9 +1504,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                             onChange={(e) => void handleChangeProviderVisibility(provider.catalog.id, e.target.value as VisibilityState)}
                             className="px-3 py-2 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
                           >
-                            <option value="HIDDEN">HIDDEN</option>
-                            <option value="ADMIN_ONLY">ADMIN_ONLY</option>
-                            <option value="ENABLED">ENABLED</option>
+                            <option value="HIDDEN">非表示</option>
+                            <option value="ADMIN_ONLY">内部のみ</option>
+                            <option value="ENABLED">全体公開</option>
                           </select>
                         )}
                         {provider.isConnected ? (
@@ -1502,18 +1544,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                   </div>
                 ))}
                 {!isLoadingIntegrations && visibleProviderCards.length === 0 && (
-                  <div className="text-sm text-gray-500 dark:text-gray-400">表示可能なproviderがありません。</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">表示可能な連携先がありません。</div>
                 )}
               </div>
 
               {canManageProviders && (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pt-4 border-t border-gray-100 dark:border-gray-700">
                   <div className="p-5 bg-gray-50 dark:bg-gray-900/40 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-4">
-                    <h3 className="font-bold text-gray-800 dark:text-white">Provider追加（Admin）</h3>
+                    <h3 className="font-bold text-gray-800 dark:text-white">連携先追加（管理者）</h3>
                     <div className="grid gap-3">
                       <input
                         type="text"
-                        placeholder="Provider key（例: X_REVIEWS）"
+                        placeholder="連携先キー（例: X_REVIEWS）"
                         value={newProviderKey}
                         onChange={(e) => setNewProviderKey(e.target.value)}
                         className="w-full p-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
@@ -1531,35 +1573,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                           onChange={(e) => setNewProviderKind(e.target.value as ProviderKind)}
                           className="p-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                         >
-                          <option value="GENERIC">GENERIC</option>
-                          <option value="NATIVE">NATIVE</option>
+                          <option value="GENERIC">汎用連携</option>
+                          <option value="NATIVE">標準連携</option>
                         </select>
                         <select
                           value={newProviderAuthKind}
                           onChange={(e) => setNewProviderAuthKind(e.target.value as ProviderAuthKind)}
                           className="p-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                         >
-                          <option value="API_KEY">API_KEY</option>
-                          <option value="OAUTH2">OAUTH2</option>
-                          <option value="WEBHOOK">WEBHOOK</option>
-                          <option value="NONE">NONE</option>
+                          <option value="API_KEY">APIキー</option>
+                          <option value="OAUTH2">ログイン連携</option>
+                          <option value="WEBHOOK">Webhook</option>
+                          <option value="NONE">不要</option>
                         </select>
                         <select
                           value={newProviderVisibility}
                           onChange={(e) => setNewProviderVisibility(e.target.value as VisibilityState)}
                           className="p-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                         >
-                          <option value="ADMIN_ONLY">ADMIN_ONLY</option>
-                          <option value="HIDDEN">HIDDEN</option>
-                          <option value="ENABLED">ENABLED</option>
+                          <option value="ADMIN_ONLY">内部のみ</option>
+                          <option value="HIDDEN">非表示</option>
+                          <option value="ENABLED">全体公開</option>
                         </select>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={newCanConnect} onChange={(e) => setNewCanConnect(e.target.checked)} />connect</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={newCanSyncInbox} onChange={(e) => setNewCanSyncInbox(e.target.checked)} />sync inbox</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={newCanPublish} onChange={(e) => setNewCanPublish(e.target.checked)} />publish</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={newCanReply} onChange={(e) => setNewCanReply(e.target.checked)} />reply</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={newCanFetchMetrics} onChange={(e) => setNewCanFetchMetrics(e.target.checked)} />metrics</label>
+                        <label className="flex items-center gap-2"><input type="checkbox" checked={newCanConnect} onChange={(e) => setNewCanConnect(e.target.checked)} />接続</label>
+                        <label className="flex items-center gap-2"><input type="checkbox" checked={newCanSyncInbox} onChange={(e) => setNewCanSyncInbox(e.target.checked)} />受信箱連携</label>
+                        <label className="flex items-center gap-2"><input type="checkbox" checked={newCanPublish} onChange={(e) => setNewCanPublish(e.target.checked)} />投稿</label>
+                        <label className="flex items-center gap-2"><input type="checkbox" checked={newCanReply} onChange={(e) => setNewCanReply(e.target.checked)} />返信</label>
+                        <label className="flex items-center gap-2"><input type="checkbox" checked={newCanFetchMetrics} onChange={(e) => setNewCanFetchMetrics(e.target.checked)} />指標取得</label>
                       </div>
                     </div>
                     <button
@@ -1568,12 +1610,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       title={createProviderDisabledReason || undefined}
                       className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      {isCreatingProvider ? '追加中...' : 'Providerを追加'}
+                      {isCreatingProvider ? '追加中...' : '連携先を追加'}
                     </button>
                   </div>
 
                   <div className="p-5 bg-gray-50 dark:bg-gray-900/40 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-4">
-                    <h3 className="font-bold text-gray-800 dark:text-white">Provider設定（Admin）</h3>
+                    <h3 className="font-bold text-gray-800 dark:text-white">連携先設定（管理者）</h3>
                     {selectedProviderCard && (
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         編集中: {selectedProviderCard.catalog.displayName} ({selectedProviderCard.catalog.providerKey})
@@ -1585,7 +1627,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       onChange={(e) => setSelectedProviderId(e.target.value)}
                       className="w-full p-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
                     >
-                      <option value="">Providerを選択してください</option>
+                      <option value="">連携先を選択してください</option>
                       {providerCards.map((card) => (
                         <option key={card.catalog.id} value={card.catalog.id}>
                           {card.catalog.displayName} ({card.catalog.providerKey})
@@ -1637,7 +1679,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       </div>
                     )}
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      実データ検証は GUI設定済み provider のみ対象です。未設定providerは自動でモック検証になります。Supabase未接続時はすべてモック表示です。
+                      実データ検証は、設定済みの連携先のみ対象です。未設定の連携先は自動でモック検証になり、Supabase未接続時はすべてモック表示です。
                     </p>
                   </div>
                 </div>
@@ -1676,17 +1718,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                  </div>
 
                  <div className="space-y-4">
-                  <h2 className="text-xl font-bold text-gray-800 dark:text-white">機能公開制御（Feature Flag）</h2>
-                  {isLoadingFlags && <p className="text-sm text-gray-500 dark:text-gray-400">Feature flagを読み込み中...</p>}
+                  <h2 className="text-xl font-bold text-gray-800 dark:text-white">機能公開設定</h2>
+                  {isLoadingFlags && <p className="text-sm text-gray-500 dark:text-gray-400">機能公開設定を読み込み中...</p>}
                   <div className="space-y-2">
                     {FEATURE_FLAG_OPTIONS.map((option) => {
                       const currentState = resolveFeatureState(featureFlags, option.key, activeStoreId || undefined);
-                      const defaultState = DEFAULT_FEATURE_VISIBILITY[option.key] || 'ENABLED';
+                      const defaultState = (DEFAULT_FEATURE_VISIBILITY[option.key] || 'ENABLED') as VisibilityState;
                       return (
                         <div key={option.key} className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 p-3 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl">
                           <div>
                             <p className="text-sm font-medium text-gray-800 dark:text-white">{option.label}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">{option.description} / default: {defaultState}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{option.description} / 初期値: {PROVIDER_VISIBILITY_LABELS[defaultState]}</p>
                           </div>
                           <select
                             value={currentState}
@@ -1694,9 +1736,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                             onChange={(e) => void handleUpdateFeatureFlag(option.key, e.target.value as VisibilityState)}
                             className="px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-60"
                           >
-                            <option value="HIDDEN">HIDDEN</option>
-                            <option value="ADMIN_ONLY">ADMIN_ONLY</option>
-                            <option value="ENABLED">ENABLED</option>
+                            <option value="HIDDEN">非表示</option>
+                            <option value="ADMIN_ONLY">内部のみ</option>
+                            <option value="ENABLED">全体公開</option>
                           </select>
                         </div>
                       );

@@ -358,7 +358,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
               <CalendarIcon className="text-primary-500" />
               運用カレンダー
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">キャンペーン計画と投稿スケジュールの管理</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">投稿予定と配信計画を管理します。</p>
           </div>
           
           <div className="flex flex-wrap items-center gap-2">

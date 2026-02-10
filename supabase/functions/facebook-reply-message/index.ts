@@ -1,5 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+import { decodeMaybeEncryptedPayload } from '../_shared/crypto.ts';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -42,17 +44,12 @@ const resolveAuthenticatedUserId = async (
   return { userId: data.user.id, error: null };
 };
 
-const decodeBase64Text = (input: string): string => {
-  const binary = atob(input);
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-};
-
-const parseCredentialPayload = (
-  encoded: string
-): { accessToken: string; credentialPayload: Record<string, unknown> } => {
+const parseCredentialPayload = async (
+  encoded: string,
+  encryptionKey: string
+): Promise<{ accessToken: string; credentialPayload: Record<string, unknown> }> => {
   try {
-    const decodedText = decodeBase64Text(encoded);
+    const decodedText = await decodeMaybeEncryptedPayload(encoded, encryptionKey);
     const parsed = JSON.parse(decodedText) as { auth_code?: unknown; credential_payload?: unknown };
     const credentialPayload =
       parsed.credential_payload && typeof parsed.credential_payload === 'object'
@@ -101,8 +98,12 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const encryptionKey = Deno.env.get('PROVIDER_CONFIG_ENCRYPTION_KEY');
   if (!supabaseUrl || !serviceRoleKey) {
     return jsonResponse(500, { error: 'Missing Supabase env vars' });
+  }
+  if (!encryptionKey) {
+    return jsonResponse(500, { error: 'Missing PROVIDER_CONFIG_ENCRYPTION_KEY' });
   }
 
   const authResult = await resolveAuthenticatedUserId(req, supabaseUrl, serviceRoleKey);
@@ -162,10 +163,10 @@ Deno.serve(async (req) => {
   }
   const canReply = memberships.some((row: { role: string }) => {
     const role = (row.role || '').toUpperCase();
-    return role === 'ADMIN' || role === 'MANAGER';
+    return role === 'ADMIN' || role === 'SUPERVISOR' || role === 'MANAGER';
   });
   if (!canReply) {
-    return jsonResponse(403, { error: 'Only ADMIN/MANAGER can reply to Facebook messages' });
+    return jsonResponse(403, { error: 'Only ADMIN/SUPERVISOR/MANAGER can reply to Facebook messages' });
   }
 
   const { data: providerCatalog, error: providerCatalogError } = await supabaseAdmin
@@ -214,7 +215,7 @@ Deno.serve(async (req) => {
     return jsonResponse(400, { error: 'Facebook credential not found' });
   }
 
-  const parsedCredential = parseCredentialPayload(String(credential.encrypted_payload || ''));
+  const parsedCredential = await parseCredentialPayload(String(credential.encrypted_payload || ''), encryptionKey);
   const accessToken = parsedCredential.accessToken;
   if (!accessToken) {
     return jsonResponse(400, { error: 'Facebook access token is missing' });

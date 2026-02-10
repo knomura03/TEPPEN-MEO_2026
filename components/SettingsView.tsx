@@ -36,6 +36,13 @@ import { brandKitService } from '../services/brandKitService';
 import { billingService } from '../services/billingService';
 import { getErrorMessage } from '../services/errorMessage';
 import { ModalPortal } from './ModalPortal';
+import {
+  PAGE_CONTAINER_CLASS,
+  PAGE_HEADER_DESCRIPTION_CLASS,
+  PAGE_HEADER_TITLE_CLASS,
+  PAGE_SECTION_DESCRIPTION_CLASS,
+  PAGE_SECTION_TITLE_CLASS,
+} from './ui/pageLayout';
 
 interface SettingsViewProps {
   currentUser: User;
@@ -1123,8 +1130,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   }, [activeTab, visibleTabs]);
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <h1 className="text-2xl font-bold text-gray-800 dark:text-white">設定</h1>
+    <div className={PAGE_CONTAINER_CLASS}>
+      <section>
+        <h1 className={PAGE_HEADER_TITLE_CLASS}>設定</h1>
+        <p className={PAGE_HEADER_DESCRIPTION_CLASS}>プロフィール、店舗、SNS連携、システム設定を管理します。</p>
+      </section>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col md:flex-row min-h-[600px]">
         {/* Sidebar */}
@@ -1199,7 +1209,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                        <div>
                            <p className="text-primary-100 text-sm font-medium mb-1">現在のプラン</p>
                            <h3 className="text-2xl font-bold">
-                             {(isOrgPlanMissing ? '未設定' : (orgPlanCode || currentUser.plan || 'FREE'))} PLAN
+                             {(isOrgPlanMissing ? '未設定' : (orgPlanCode || currentUser.plan || 'FREE'))} プラン
                            </h3>
                            <p className="text-sm text-primary-100 mt-2">次回更新日: {orgPlanNextRenewal}</p>
                            {isOrgPlanMissing && isInternal && (
@@ -1215,8 +1225,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                </div>
 
               <div>
-                <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-1">基本情報</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">アカウントの表示名や連絡先情報を管理します。</p>
+                <h2 className={PAGE_SECTION_TITLE_CLASS}>基本情報</h2>
+                <p className={PAGE_SECTION_DESCRIPTION_CLASS}>アカウントの表示名や連絡先情報を管理します。</p>
               </div>
 
               <form onSubmit={handleSaveProfile} className="space-y-6">
@@ -1330,8 +1340,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
           {activeTab === 'STORE' && (
               <div className="max-w-2xl space-y-8">
                   <div>
-                    <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-1">店舗情報設定</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Googleマップ等に反映される正確な店舗情報を入力してください。</p>
+                    <h2 className={PAGE_SECTION_TITLE_CLASS}>店舗情報設定</h2>
+                    <p className={PAGE_SECTION_DESCRIPTION_CLASS}>Googleマップ等に反映される正確な店舗情報を入力してください。</p>
                   </div>
                   {!activeStoreId && (
                     <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 text-sm rounded-xl p-4">
@@ -1422,8 +1432,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
           {activeTab === 'INTEGRATIONS' && (
             <div className="max-w-5xl space-y-6">
               <div>
-                <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-1">SNS連携設定</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">店舗ごとの接続状態を管理します。接続確認で利用できるかを確認できます。</p>
+                <h2 className={PAGE_SECTION_TITLE_CLASS}>SNS連携設定</h2>
+                <p className={PAGE_SECTION_DESCRIPTION_CLASS}>店舗ごとの接続状態を管理します。接続確認で利用できるかを確認できます。</p>
               </div>
               {!isSupabaseConfigured && (
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 text-sm rounded-xl p-4">
@@ -1699,7 +1709,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
 
                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                  <div className="space-y-4">
-                   <h2 className="text-xl font-bold text-gray-800 dark:text-white">API設定（将来拡張）</h2>
+                   <h2 className={PAGE_SECTION_TITLE_CLASS}>API設定（将来拡張）</h2>
                    <div>
                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Google Gemini API Key</label>
                      <div className="flex gap-2">
@@ -1718,7 +1728,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                  </div>
 
                  <div className="space-y-4">
-                  <h2 className="text-xl font-bold text-gray-800 dark:text-white">機能公開設定</h2>
+                  <h2 className={PAGE_SECTION_TITLE_CLASS}>機能公開設定</h2>
                   {isLoadingFlags && <p className="text-sm text-gray-500 dark:text-gray-400">機能公開設定を読み込み中...</p>}
                   <div className="space-y-2">
                     {FEATURE_FLAG_OPTIONS.map((option) => {
@@ -1750,7 +1760,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                  <div className="p-5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl space-y-4">
                    <div className="flex items-center justify-between gap-3">
-                     <h2 className="text-xl font-bold text-gray-800 dark:text-white">ブランドキット</h2>
+                     <h2 className={PAGE_SECTION_TITLE_CLASS}>ブランドキット</h2>
                      {isLoadingBrandAssets && <span className="text-xs text-gray-500 dark:text-gray-400">読み込み中...</span>}
                    </div>
                    <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -1821,7 +1831,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                  </div>
 
                  <div className="p-5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl space-y-4">
-                   <h2 className="text-xl font-bold text-gray-800 dark:text-white">投稿テンプレート</h2>
+                   <h2 className={PAGE_SECTION_TITLE_CLASS}>投稿テンプレート</h2>
                    <p className="text-xs text-gray-500 dark:text-gray-400">
                      新規投稿画面のテンプレート候補として表示されます。削除は論理削除です。
                    </p>
@@ -1909,7 +1919,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                </div>
 
                <div>
-                  <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-4">システムメンテナンス</h2>
+                  <h2 className={`${PAGE_SECTION_TITLE_CLASS} mb-4`}>システムメンテナンス</h2>
                   <div className="flex gap-4">
                     <button className="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50">キャッシュクリア</button>
                     <button className="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50">ログダウンロード</button>

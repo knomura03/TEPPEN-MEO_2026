@@ -412,7 +412,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
   };
 
   return (
-    <div className={PAGE_CONTAINER_CLASS} id="page-main-content">
+    <div className={PAGE_CONTAINER_CLASS}>
       <section>
         <h1 className={PAGE_HEADER_TITLE_CLASS}>受信箱</h1>
         <p className={PAGE_HEADER_DESCRIPTION_CLASS}>コメントやメッセージを確認し、担当・期限・返信を管理できます。</p>

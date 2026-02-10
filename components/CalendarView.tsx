@@ -9,7 +9,7 @@ import { useStore } from '../contexts/StoreContext';
 import { postMediaService } from '../services/postMediaService';
 import { geminiService } from '../services/geminiService';
 import { ModalPortal } from './ModalPortal';
-import { PAGE_CARD_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
+import { PAGE_CARD_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
 
 // Helpers
 const startOfMonth = (date: Date) => {
@@ -351,8 +351,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
   };
 
   return (
-    <div className="h-full flex flex-col space-y-4">
-      <div className="animate-fade-in flex flex-col space-y-4">
+    <div className={`${PAGE_CONTAINER_CLASS} h-full flex flex-col`}>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
              <h1 className={`${PAGE_HEADER_TITLE_CLASS} flex items-center gap-2`}>
@@ -467,7 +466,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
             })}
           </div>
         </div>
-      </div>
 
       {isCreateModalOpen && (
         <ModalPortal>

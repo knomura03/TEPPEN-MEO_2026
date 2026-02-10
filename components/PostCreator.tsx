@@ -10,7 +10,7 @@ import { brandKitService } from '../services/brandKitService';
 import { Send, Calendar, Image as ImageIcon, Sparkles, Loader2, X, Eye, MonitorSmartphone, UploadCloud } from 'lucide-react';
 import { useNotification } from '../contexts/NotificationContext';
 import { useStore } from '../contexts/StoreContext';
-import { PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
+import { PAGE_CARD_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
 
 interface PostCreatorProps {
   currentUser: User;
@@ -410,8 +410,8 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
   );
 
   return (
-    <div className="max-w-6xl mx-auto h-[calc(100vh-100px)] flex flex-col">
-      <div className="flex items-center justify-between mb-4">
+    <div className={`${PAGE_CONTAINER_CLASS} max-w-6xl mx-auto h-[calc(100vh-100px)] flex flex-col`}>
+      <div className="flex items-center justify-between">
         <div>
           <h1 className={PAGE_HEADER_TITLE_CLASS}>新規投稿</h1>
           <p className={PAGE_HEADER_DESCRIPTION_CLASS}>投稿文を作成し、下書き保存や予約設定を行います。</p>
@@ -427,7 +427,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 overflow-hidden">
         {/* Editor Column */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 overflow-y-auto">
+        <div className={`${PAGE_CARD_CLASS} p-6 overflow-y-auto`}>
             <form onSubmit={handleSubmit} className="space-y-6">
             {/* Platform Selection */}
             <div>

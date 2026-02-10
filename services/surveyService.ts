@@ -277,9 +277,9 @@ export const surveyService = {
     rating: number;
     branchType: SurveyBranchType;
     comment?: string;
-  }): Promise<SurveyResponse> {
+  }): Promise<void> {
     const client = requireSupabase();
-    const { data, error } = await client
+    const { error } = await client
       .from('survey_responses')
       .insert({
         survey_id: params.surveyId,
@@ -287,11 +287,8 @@ export const surveyService = {
         branch_type: params.branchType,
         comment: params.comment || null,
         source: 'PUBLIC_URL',
-      })
-      .select('id, survey_id, rating, branch_type, comment, source, created_at')
-      .single();
+      });
     if (error) throw error;
-    return mapSurveyResponse(data as DbSurveyResponseRow);
   },
 
   async trackPublicEvent(params: {

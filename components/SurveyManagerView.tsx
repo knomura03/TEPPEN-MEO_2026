@@ -844,6 +844,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
             </button>
 
             <button
+              data-testid="survey-archive"
               type="button"
               onClick={() => void handleArchive()}
               disabled={isSubmitting || !selectedSurvey || selectedSurvey.status === 'ARCHIVED'}
@@ -868,7 +869,10 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
           {selectedSurvey?.status === 'PUBLISHED' && selectedSurvey.publicToken && (
             <div className="p-4 rounded-xl border border-green-200 dark:border-green-900/40 bg-green-50 dark:bg-green-900/20">
               <p className="text-sm font-medium text-green-800 dark:text-green-300">公開URL</p>
-              <p className="text-xs text-green-700 dark:text-green-300 break-all mt-1">
+              <p
+                data-testid="survey-public-url"
+                className="text-xs text-green-700 dark:text-green-300 break-all mt-1"
+              >
                 {buildPublicSurveyUrl(selectedSurvey.publicToken)}
               </p>
               <div className="flex flex-wrap gap-2 mt-3">

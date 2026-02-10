@@ -176,15 +176,21 @@
     "USER_MANAGEMENT": [
       {
         "title": "ユーザー管理の基本",
-        "content": "ユーザーの追加、権限変更、契約関連の確認を行います。内部担当はここが主な管理画面です。"
+        "content": "ユーザーの追加、権限変更、契約関連の確認を行います。内部担当はここが主な管理画面です。",
+        "targetId": "user-management-actions",
+        "position": "bottom"
       },
       {
         "title": "検索と絞り込み",
-        "content": "名前・メール検索とロール絞り込みで、対象ユーザーを素早く見つけられます。"
+        "content": "名前・メール検索とロール絞り込みで、対象ユーザーを素早く見つけられます。",
+        "targetId": "user-filter-search",
+        "position": "bottom"
       },
       {
         "title": "店舗グループ一括設定",
-        "content": "対象グループの全店舗へ、同じ機能公開状態をまとめて反映できます。"
+        "content": "対象グループの全店舗へ、同じ機能公開状態をまとめて反映できます。",
+        "targetId": "store-group-bulk-settings",
+        "position": "top"
       }
     ],
     "SETTINGS": [

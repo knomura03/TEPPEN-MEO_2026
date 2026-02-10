@@ -822,7 +822,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               : '自組織の顧客ユーザーを管理します。'}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div id="user-management-actions" className="flex gap-3">
           <button
             onClick={handleExport}
             className="flex items-center space-x-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-white px-4 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-600 transition-all"
@@ -865,6 +865,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               ユーザー検索（名前 / メール）
             </label>
             <input
+              id="user-filter-search"
               data-testid="user-filter-search"
               type="text"
               value={userSearchTerm}
@@ -876,6 +877,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">権限ロール</label>
             <select
+              id="user-filter-role"
               data-testid="user-filter-role"
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value as Role | 'ALL')}
@@ -1263,7 +1265,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
           )}
         </div>
         <div className="px-6 pb-6 border-t border-gray-100 dark:border-gray-700">
-          <div className="pt-4 space-y-4">
+          <div id="store-group-bulk-settings" className="pt-4 space-y-4">
             <div>
               <h3 className="text-sm font-bold text-gray-900 dark:text-white">店舗グループ一括設定（機能公開）</h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">

@@ -11,5 +11,9 @@ begin
     insert into storage.buckets (id, name, public)
     values ('post-media', 'post-media', false);
   end if;
-end $$;
 
+  if not exists (select 1 from storage.buckets where id = 'survey-media') then
+    insert into storage.buckets (id, name, public)
+    values ('survey-media', 'survey-media', true);
+  end if;
+end $$;

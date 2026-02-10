@@ -8,6 +8,14 @@ type DbSurveyRow = {
   title: string;
   description: string | null;
   review_redirect_url: string | null;
+  header_image_url: string | null;
+  header_image_storage_path: string | null;
+  question_text: string | null;
+  thanks_title: string | null;
+  thanks_body: string | null;
+  thanks_positive_message: string | null;
+  thanks_negative_message: string | null;
+  thanks_button_text: string | null;
   positive_threshold: number;
   status: SurveyStatus;
   public_token: string | null;
@@ -34,6 +42,30 @@ const requireSupabase = () => {
   return supabase;
 };
 
+const SURVEY_SELECT_COLUMNS = [
+  'id',
+  'store_id',
+  'author_user_id',
+  'title',
+  'description',
+  'review_redirect_url',
+  'header_image_url',
+  'header_image_storage_path',
+  'question_text',
+  'thanks_title',
+  'thanks_body',
+  'thanks_positive_message',
+  'thanks_negative_message',
+  'thanks_button_text',
+  'positive_threshold',
+  'status',
+  'public_token',
+  'published_at',
+  'created_at',
+  'updated_at',
+  'survey_responses(id)',
+].join(', ');
+
 const mapSurvey = (row: DbSurveyRow): Survey => ({
   id: row.id,
   storeId: row.store_id,
@@ -41,6 +73,14 @@ const mapSurvey = (row: DbSurveyRow): Survey => ({
   title: row.title,
   description: row.description || undefined,
   reviewRedirectUrl: row.review_redirect_url || undefined,
+  headerImageUrl: row.header_image_url || undefined,
+  headerImageStoragePath: row.header_image_storage_path || undefined,
+  questionText: row.question_text || undefined,
+  thanksTitle: row.thanks_title || undefined,
+  thanksBody: row.thanks_body || undefined,
+  thanksPositiveMessage: row.thanks_positive_message || undefined,
+  thanksNegativeMessage: row.thanks_negative_message || undefined,
+  thanksButtonText: row.thanks_button_text || undefined,
   positiveThreshold: row.positive_threshold,
   status: row.status,
   publicToken: row.public_token || undefined,
@@ -97,13 +137,11 @@ export const surveyService = {
     const client = requireSupabase();
     const { data, error } = await client
       .from('surveys')
-      .select(
-        'id, store_id, author_user_id, title, description, review_redirect_url, positive_threshold, status, public_token, published_at, created_at, updated_at, survey_responses(id)'
-      )
+      .select(SURVEY_SELECT_COLUMNS)
       .eq('store_id', storeId)
       .order('updated_at', { ascending: false });
     if (error) throw error;
-    return ((data || []) as DbSurveyRow[]).map(mapSurvey);
+    return ((data || []) as unknown as DbSurveyRow[]).map(mapSurvey);
   },
 
   async createDraft(params: {
@@ -112,6 +150,14 @@ export const surveyService = {
     title: string;
     description?: string;
     reviewRedirectUrl?: string;
+    headerImageUrl?: string;
+    headerImageStoragePath?: string;
+    questionText?: string;
+    thanksTitle?: string;
+    thanksBody?: string;
+    thanksPositiveMessage?: string;
+    thanksNegativeMessage?: string;
+    thanksButtonText?: string;
     positiveThreshold?: number;
   }): Promise<Survey> {
     const client = requireSupabase();
@@ -123,15 +169,21 @@ export const surveyService = {
         title: params.title,
         description: params.description || null,
         review_redirect_url: params.reviewRedirectUrl || null,
+        header_image_url: params.headerImageUrl || null,
+        header_image_storage_path: params.headerImageStoragePath || null,
+        question_text: params.questionText || null,
+        thanks_title: params.thanksTitle || null,
+        thanks_body: params.thanksBody || null,
+        thanks_positive_message: params.thanksPositiveMessage || null,
+        thanks_negative_message: params.thanksNegativeMessage || null,
+        thanks_button_text: params.thanksButtonText || null,
         positive_threshold: params.positiveThreshold ?? 4,
         status: 'DRAFT',
       })
-      .select(
-        'id, store_id, author_user_id, title, description, review_redirect_url, positive_threshold, status, public_token, published_at, created_at, updated_at, survey_responses(id)'
-      )
+      .select(SURVEY_SELECT_COLUMNS)
       .single();
     if (error) throw error;
-    return mapSurvey(data as DbSurveyRow);
+    return mapSurvey(data as unknown as DbSurveyRow);
   },
 
   async updateDraft(params: {
@@ -139,6 +191,14 @@ export const surveyService = {
     title: string;
     description?: string;
     reviewRedirectUrl?: string;
+    headerImageUrl?: string;
+    headerImageStoragePath?: string;
+    questionText?: string;
+    thanksTitle?: string;
+    thanksBody?: string;
+    thanksPositiveMessage?: string;
+    thanksNegativeMessage?: string;
+    thanksButtonText?: string;
     positiveThreshold: number;
   }): Promise<Survey> {
     const client = requireSupabase();
@@ -148,16 +208,22 @@ export const surveyService = {
         title: params.title,
         description: params.description || null,
         review_redirect_url: params.reviewRedirectUrl || null,
+        header_image_url: params.headerImageUrl || null,
+        header_image_storage_path: params.headerImageStoragePath || null,
+        question_text: params.questionText || null,
+        thanks_title: params.thanksTitle || null,
+        thanks_body: params.thanksBody || null,
+        thanks_positive_message: params.thanksPositiveMessage || null,
+        thanks_negative_message: params.thanksNegativeMessage || null,
+        thanks_button_text: params.thanksButtonText || null,
         positive_threshold: params.positiveThreshold,
       })
       .eq('id', params.surveyId)
       .neq('status', 'ARCHIVED')
-      .select(
-        'id, store_id, author_user_id, title, description, review_redirect_url, positive_threshold, status, public_token, published_at, created_at, updated_at, survey_responses(id)'
-      )
+      .select(SURVEY_SELECT_COLUMNS)
       .single();
     if (error) throw error;
-    return mapSurvey(data as DbSurveyRow);
+    return mapSurvey(data as unknown as DbSurveyRow);
   },
 
   async publish(surveyId: string): Promise<Survey> {
@@ -171,14 +237,12 @@ export const surveyService = {
         published_at: new Date().toISOString(),
       })
       .eq('id', surveyId)
-      .select(
-        'id, store_id, author_user_id, title, description, review_redirect_url, positive_threshold, status, public_token, published_at, created_at, updated_at, survey_responses(id)'
-      )
+      .select(SURVEY_SELECT_COLUMNS)
       .single();
     if (error) {
       throw new Error(parsePublishConstraintError(error));
     }
-    return mapSurvey(data as DbSurveyRow);
+    return mapSurvey(data as unknown as DbSurveyRow);
   },
 
   async archive(surveyId: string): Promise<Survey> {
@@ -189,27 +253,23 @@ export const surveyService = {
         status: 'ARCHIVED',
       })
       .eq('id', surveyId)
-      .select(
-        'id, store_id, author_user_id, title, description, review_redirect_url, positive_threshold, status, public_token, published_at, created_at, updated_at, survey_responses(id)'
-      )
+      .select(SURVEY_SELECT_COLUMNS)
       .single();
     if (error) throw error;
-    return mapSurvey(data as DbSurveyRow);
+    return mapSurvey(data as unknown as DbSurveyRow);
   },
 
   async getPublishedByToken(publicToken: string): Promise<Survey | null> {
     const client = requireSupabase();
     const { data, error } = await client
       .from('surveys')
-      .select(
-        'id, store_id, author_user_id, title, description, review_redirect_url, positive_threshold, status, public_token, published_at, created_at, updated_at, survey_responses(id)'
-      )
+      .select(SURVEY_SELECT_COLUMNS)
       .eq('public_token', publicToken)
       .eq('status', 'PUBLISHED')
       .maybeSingle();
     if (error) throw error;
     if (!data) return null;
-    return mapSurvey(data as DbSurveyRow);
+    return mapSurvey(data as unknown as DbSurveyRow);
   },
 
   async submitResponse(params: {

@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SurveyAnalytics, User, Survey } from '../types';
 import { useStore } from '../contexts/StoreContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { buildPublicSurveyUrl, surveyService } from '../services/surveyService';
 import { surveyAssetService } from '../services/surveyAssetService';
+import { surveyMediaService } from '../services/surveyMediaService';
+import { DEFAULT_SURVEY_COPY } from '../services/surveyCopy';
 import { getErrorMessage } from '../services/errorMessage';
 import { PlusCircle, Save, Rocket, Archive, Copy, ExternalLink, Download, QrCode, FileText } from 'lucide-react';
 import { PAGE_CARD_PADDED_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS, PAGE_WARNING_CLASS } from './ui/pageLayout';
@@ -11,6 +13,25 @@ import { PAGE_CARD_PADDED_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_C
 interface SurveyManagerViewProps {
   currentUser: User;
 }
+
+type HeaderImageMode = 'NONE' | 'UPLOAD' | 'URL';
+
+const MAX_HEADER_IMAGE_BYTES = 3 * 1024 * 1024;
+const ALLOWED_HEADER_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+const trimToUndefined = (value: string): string | undefined => {
+  const normalized = value.trim();
+  return normalized ? normalized : undefined;
+};
+
+const isHttpUrl = (value: string): boolean => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
 
 export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUser }) => {
   const { activeStoreId } = useStore();
@@ -22,10 +43,21 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [reviewRedirectUrl, setReviewRedirectUrl] = useState('');
+  const [questionText, setQuestionText] = useState('');
+  const [thanksTitle, setThanksTitle] = useState('');
+  const [thanksBody, setThanksBody] = useState('');
+  const [thanksPositiveMessage, setThanksPositiveMessage] = useState('');
+  const [thanksNegativeMessage, setThanksNegativeMessage] = useState('');
+  const [thanksButtonText, setThanksButtonText] = useState('');
+  const [headerImageMode, setHeaderImageMode] = useState<HeaderImageMode>('NONE');
+  const [headerImageUrlInput, setHeaderImageUrlInput] = useState('');
+  const [headerImagePreviewUrl, setHeaderImagePreviewUrl] = useState('');
+  const [headerImageFile, setHeaderImageFile] = useState<File | null>(null);
   const [positiveThreshold, setPositiveThreshold] = useState(4);
   const [analytics, setAnalytics] = useState<SurveyAnalytics | null>(null);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
   const [isGeneratingAsset, setIsGeneratingAsset] = useState(false);
+  const headerImageObjectUrlRef = useRef<string | null>(null);
   const getSurveyStatusLabel = (status: Survey['status']) => {
     if (status === 'PUBLISHED') return '公開中';
     if (status === 'DRAFT') return '下書き';
@@ -36,6 +68,66 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
     () => surveys.find((survey) => survey.id === selectedSurveyId) || null,
     [surveys, selectedSurveyId]
   );
+
+  const clearObjectPreviewUrl = () => {
+    if (headerImageObjectUrlRef.current) {
+      URL.revokeObjectURL(headerImageObjectUrlRef.current);
+      headerImageObjectUrlRef.current = null;
+    }
+  };
+
+  const setPreviewWithFile = (file: File) => {
+    clearObjectPreviewUrl();
+    const nextObjectUrl = URL.createObjectURL(file);
+    headerImageObjectUrlRef.current = nextObjectUrl;
+    setHeaderImagePreviewUrl(nextObjectUrl);
+  };
+
+  const buildDraftPayload = (overrides?: {
+    headerImageUrl?: string;
+    headerImageStoragePath?: string;
+  }) => {
+    return {
+      title: title.trim(),
+      description: trimToUndefined(description),
+      reviewRedirectUrl: trimToUndefined(reviewRedirectUrl),
+      questionText: trimToUndefined(questionText),
+      thanksTitle: trimToUndefined(thanksTitle),
+      thanksBody: trimToUndefined(thanksBody),
+      thanksPositiveMessage: trimToUndefined(thanksPositiveMessage),
+      thanksNegativeMessage: trimToUndefined(thanksNegativeMessage),
+      thanksButtonText: trimToUndefined(thanksButtonText),
+      positiveThreshold,
+      headerImageUrl: overrides?.headerImageUrl,
+      headerImageStoragePath: overrides?.headerImageStoragePath,
+    };
+  };
+
+  const resolveStaticImagePreference = (): { headerImageUrl?: string; headerImageStoragePath?: string } | null => {
+    if (headerImageMode === 'NONE') {
+      return { headerImageUrl: undefined, headerImageStoragePath: undefined };
+    }
+    if (headerImageMode === 'URL') {
+      const normalizedUrl = trimToUndefined(headerImageUrlInput);
+      if (!normalizedUrl) {
+        addNotification('入力エラー', 'ヘッダー画像URLを入力してください。', 'WARNING');
+        return null;
+      }
+      if (!isHttpUrl(normalizedUrl)) {
+        addNotification('入力エラー', 'ヘッダー画像URLは http:// または https:// で入力してください。', 'WARNING');
+        return null;
+      }
+      return { headerImageUrl: normalizedUrl, headerImageStoragePath: undefined };
+    }
+    if (!selectedSurvey?.headerImageStoragePath && !headerImageFile) {
+      addNotification('入力エラー', 'アップロード画像を選択してください。', 'WARNING');
+      return null;
+    }
+    return {
+      headerImageUrl: selectedSurvey?.headerImageUrl,
+      headerImageStoragePath: selectedSurvey?.headerImageStoragePath,
+    };
+  };
 
   const loadSurveys = async () => {
     if (!activeStoreId) {
@@ -65,18 +157,57 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
 
   useEffect(() => {
     if (!selectedSurvey) {
+      clearObjectPreviewUrl();
       setTitle('');
       setDescription('');
       setReviewRedirectUrl('');
+      setQuestionText('');
+      setThanksTitle('');
+      setThanksBody('');
+      setThanksPositiveMessage('');
+      setThanksNegativeMessage('');
+      setThanksButtonText('');
+      setHeaderImageMode('NONE');
+      setHeaderImageUrlInput('');
+      setHeaderImagePreviewUrl('');
+      setHeaderImageFile(null);
       setPositiveThreshold(4);
       setAnalytics(null);
       return;
     }
+    clearObjectPreviewUrl();
     setTitle(selectedSurvey.title);
     setDescription(selectedSurvey.description || '');
     setReviewRedirectUrl(selectedSurvey.reviewRedirectUrl || '');
+    setQuestionText(selectedSurvey.questionText || '');
+    setThanksTitle(selectedSurvey.thanksTitle || '');
+    setThanksBody(selectedSurvey.thanksBody || '');
+    setThanksPositiveMessage(selectedSurvey.thanksPositiveMessage || '');
+    setThanksNegativeMessage(selectedSurvey.thanksNegativeMessage || '');
+    setThanksButtonText(selectedSurvey.thanksButtonText || '');
+    if (selectedSurvey.headerImageStoragePath && selectedSurvey.headerImageUrl) {
+      setHeaderImageMode('UPLOAD');
+      setHeaderImageUrlInput('');
+      setHeaderImagePreviewUrl(selectedSurvey.headerImageUrl);
+    } else if (selectedSurvey.headerImageUrl) {
+      setHeaderImageMode('URL');
+      setHeaderImageUrlInput(selectedSurvey.headerImageUrl);
+      setHeaderImagePreviewUrl(selectedSurvey.headerImageUrl);
+    } else {
+      setHeaderImageMode('NONE');
+      setHeaderImageUrlInput('');
+      setHeaderImagePreviewUrl('');
+    }
+    setHeaderImageFile(null);
     setPositiveThreshold(selectedSurvey.positiveThreshold);
   }, [selectedSurvey]);
+
+  useEffect(() => {
+    return () => {
+      clearObjectPreviewUrl();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const loadAnalytics = async () => {
@@ -98,6 +229,47 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
     void loadAnalytics();
   }, [selectedSurvey, addNotification]);
 
+  const handleChangeHeaderImageMode = (mode: HeaderImageMode) => {
+    setHeaderImageMode(mode);
+    setHeaderImageFile(null);
+    clearObjectPreviewUrl();
+
+    if (mode === 'NONE') {
+      setHeaderImageUrlInput('');
+      setHeaderImagePreviewUrl('');
+      return;
+    }
+    if (mode === 'URL') {
+      const currentUrl = selectedSurvey?.headerImageStoragePath ? '' : (selectedSurvey?.headerImageUrl || '');
+      setHeaderImageUrlInput(currentUrl);
+      setHeaderImagePreviewUrl(currentUrl);
+      return;
+    }
+    setHeaderImageUrlInput('');
+    setHeaderImagePreviewUrl(selectedSurvey?.headerImageStoragePath ? (selectedSurvey.headerImageUrl || '') : '');
+  };
+
+  const handleSelectHeaderImageFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_HEADER_IMAGE_TYPES.has(file.type)) {
+      addNotification('入力エラー', 'ヘッダー画像は JPEG / PNG / WEBP のみ対応です。', 'WARNING');
+      event.currentTarget.value = '';
+      return;
+    }
+    if (file.size > MAX_HEADER_IMAGE_BYTES) {
+      addNotification('入力エラー', 'ヘッダー画像は3MB以下にしてください。', 'WARNING');
+      event.currentTarget.value = '';
+      return;
+    }
+
+    setHeaderImageMode('UPLOAD');
+    setHeaderImageFile(file);
+    setPreviewWithFile(file);
+    event.currentTarget.value = '';
+  };
+
   const handleCreateDraft = async () => {
     if (!activeStoreId) {
       addNotification('店舗未選択', '店舗を選択してから作成してください。', 'WARNING');
@@ -108,16 +280,61 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
       return;
     }
 
+    let initialImagePayload: { headerImageUrl?: string; headerImageStoragePath?: string } = {
+      headerImageUrl: undefined,
+      headerImageStoragePath: undefined,
+    };
+    if (headerImageMode === 'URL') {
+      const normalizedUrl = trimToUndefined(headerImageUrlInput);
+      if (!normalizedUrl) {
+        addNotification('入力エラー', 'ヘッダー画像URLを入力してください。', 'WARNING');
+        return;
+      }
+      if (!isHttpUrl(normalizedUrl)) {
+        addNotification('入力エラー', 'ヘッダー画像URLは http:// または https:// で入力してください。', 'WARNING');
+        return;
+      }
+      initialImagePayload = { headerImageUrl: normalizedUrl, headerImageStoragePath: undefined };
+    } else if (headerImageMode === 'UPLOAD' && !headerImageFile) {
+      addNotification('入力エラー', 'アップロード画像を選択してください。', 'WARNING');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const created = await surveyService.createDraft({
+      let created = await surveyService.createDraft({
         storeId: activeStoreId,
         authorUserId: currentUser.id,
-        title: title.trim(),
-        description: description.trim() || undefined,
-        reviewRedirectUrl: reviewRedirectUrl.trim() || undefined,
-        positiveThreshold,
+        ...buildDraftPayload(initialImagePayload),
       });
+
+      if (headerImageMode === 'UPLOAD' && headerImageFile) {
+        const uploaded = await surveyMediaService.uploadHeaderImage({
+          storeId: activeStoreId,
+          surveyId: created.id,
+          file: headerImageFile,
+        });
+        try {
+          created = await surveyService.updateDraft({
+            surveyId: created.id,
+            ...buildDraftPayload({
+              headerImageUrl: uploaded.publicUrl,
+              headerImageStoragePath: uploaded.storagePath,
+            }),
+          });
+        } catch (updateError) {
+          try {
+            await surveyMediaService.deleteHeaderImage(uploaded.storagePath);
+          } catch {
+            // ignore
+          }
+          throw updateError;
+        }
+        clearObjectPreviewUrl();
+        setHeaderImageFile(null);
+        setHeaderImagePreviewUrl(uploaded.publicUrl);
+      }
+
       addNotification('アンケート作成', '下書きを作成しました。', 'SUCCESS');
       await loadSurveys();
       setSelectedSurveyId(created.id);
@@ -139,17 +356,69 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
       return;
     }
 
+    const existingStoragePath = selectedSurvey.headerImageStoragePath;
+    let staticImagePreference = resolveStaticImagePreference();
+    if (headerImageMode === 'UPLOAD' && headerImageFile) {
+      staticImagePreference = {
+        headerImageUrl: selectedSurvey.headerImageUrl,
+        headerImageStoragePath: selectedSurvey.headerImageStoragePath,
+      };
+    }
+    if (!staticImagePreference) {
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      await surveyService.updateDraft({
+      let updated = await surveyService.updateDraft({
         surveyId: selectedSurvey.id,
-        title: title.trim(),
-        description: description.trim() || undefined,
-        reviewRedirectUrl: reviewRedirectUrl.trim() || undefined,
-        positiveThreshold,
+        ...buildDraftPayload(staticImagePreference),
       });
+
+      if (headerImageMode === 'UPLOAD' && headerImageFile) {
+        const uploaded = await surveyMediaService.uploadHeaderImage({
+          storeId: selectedSurvey.storeId,
+          surveyId: selectedSurvey.id,
+          file: headerImageFile,
+        });
+        try {
+          updated = await surveyService.updateDraft({
+            surveyId: selectedSurvey.id,
+            ...buildDraftPayload({
+              headerImageUrl: uploaded.publicUrl,
+              headerImageStoragePath: uploaded.storagePath,
+            }),
+          });
+        } catch (updateError) {
+          try {
+            await surveyMediaService.deleteHeaderImage(uploaded.storagePath);
+          } catch {
+            // ignore
+          }
+          throw updateError;
+        }
+
+        if (existingStoragePath && existingStoragePath !== uploaded.storagePath) {
+          try {
+            await surveyMediaService.deleteHeaderImage(existingStoragePath);
+          } catch (deleteError) {
+            addNotification('画像削除警告', `旧ヘッダー画像の削除に失敗しました。${getErrorMessage(deleteError) ? `（${getErrorMessage(deleteError)}）` : ''}`, 'WARNING');
+          }
+        }
+        clearObjectPreviewUrl();
+        setHeaderImageFile(null);
+        setHeaderImagePreviewUrl(uploaded.publicUrl);
+      } else if ((headerImageMode === 'NONE' || headerImageMode === 'URL') && existingStoragePath) {
+        try {
+          await surveyMediaService.deleteHeaderImage(existingStoragePath);
+        } catch (deleteError) {
+          addNotification('画像削除警告', `旧ヘッダー画像の削除に失敗しました。${getErrorMessage(deleteError) ? `（${getErrorMessage(deleteError)}）` : ''}`, 'WARNING');
+        }
+      }
+
       addNotification('保存完了', 'アンケート下書きを更新しました。', 'SUCCESS');
       await loadSurveys();
+      setSelectedSurveyId(updated.id);
     } catch (error) {
       console.error('[SurveyManagerView] Failed to update survey:', error);
       addNotification('保存エラー', `アンケート更新に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`, 'ERROR');
@@ -418,6 +687,125 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
                 <option value={4}>4点以上</option>
                 <option value={5}>5点のみ</option>
               </select>
+            </div>
+
+            <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">ヘッダー画像（1枚）</label>
+                <select
+                  value={headerImageMode}
+                  onChange={(e) => handleChangeHeaderImageMode(e.target.value as HeaderImageMode)}
+                  className="w-full p-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="NONE">画像なし</option>
+                  <option value="UPLOAD">画像をアップロード</option>
+                  <option value="URL">画像URLを指定</option>
+                </select>
+              </div>
+
+              {headerImageMode === 'UPLOAD' && (
+                <div>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleSelectHeaderImageFile}
+                    className="w-full text-sm text-gray-700 dark:text-gray-300 file:mr-3 file:px-3 file:py-2 file:border-0 file:rounded-lg file:bg-primary-100 file:text-primary-700 dark:file:bg-primary-900/40 dark:file:text-primary-200"
+                  />
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">対応形式: JPEG/PNG/WEBP（3MB以下）</p>
+                </div>
+              )}
+
+              {headerImageMode === 'URL' && (
+                <div>
+                  <input
+                    type="url"
+                    value={headerImageUrlInput}
+                    onChange={(e) => {
+                      const nextValue = e.target.value;
+                      setHeaderImageUrlInput(nextValue);
+                      setHeaderImagePreviewUrl(nextValue.trim());
+                    }}
+                    placeholder="https://..."
+                    className="w-full p-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+              )}
+
+              {headerImagePreviewUrl && (
+                <div className="space-y-2">
+                  <img
+                    src={headerImagePreviewUrl}
+                    alt="ヘッダー画像プレビュー"
+                    className="w-full max-h-44 object-cover rounded-xl border border-gray-200 dark:border-gray-700 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleChangeHeaderImageMode('NONE')}
+                    className="px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30 rounded-lg"
+                  >
+                    画像を外す（保存時に反映）
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">設問文言</label>
+              <input
+                value={questionText}
+                onChange={(e) => setQuestionText(e.target.value)}
+                className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder={DEFAULT_SURVEY_COPY.questionText}
+              />
+            </div>
+
+            <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 space-y-3">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">サンクスページ文言</p>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">タイトル</label>
+                <input
+                  value={thanksTitle}
+                  onChange={(e) => setThanksTitle(e.target.value)}
+                  className="w-full p-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder={DEFAULT_SURVEY_COPY.thanksTitle}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">本文（共通）</label>
+                <textarea
+                  value={thanksBody}
+                  onChange={(e) => setThanksBody(e.target.value)}
+                  className="w-full h-20 p-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder={DEFAULT_SURVEY_COPY.thanksBody}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">高評価時メッセージ</label>
+                <textarea
+                  value={thanksPositiveMessage}
+                  onChange={(e) => setThanksPositiveMessage(e.target.value)}
+                  className="w-full h-20 p-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder={DEFAULT_SURVEY_COPY.thanksPositiveMessage}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">低評価時メッセージ</label>
+                <textarea
+                  value={thanksNegativeMessage}
+                  onChange={(e) => setThanksNegativeMessage(e.target.value)}
+                  className="w-full h-20 p-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder={DEFAULT_SURVEY_COPY.thanksNegativeMessage}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">高評価時ボタン文言</label>
+                <input
+                  value={thanksButtonText}
+                  onChange={(e) => setThanksButtonText(e.target.value)}
+                  className="w-full p-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder={DEFAULT_SURVEY_COPY.thanksButtonText}
+                />
+              </div>
             </div>
           </div>
 

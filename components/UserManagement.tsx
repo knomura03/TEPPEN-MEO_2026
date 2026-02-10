@@ -815,10 +815,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     <div className={PAGE_CONTAINER_CLASS}>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className={PAGE_HEADER_TITLE_CLASS}>ユーザー・契約管理</h1>
+          <h1 className={PAGE_HEADER_TITLE_CLASS}>ユーザー管理</h1>
           <p className={PAGE_HEADER_DESCRIPTION_CLASS}>
             {isInternal
-              ? '内部ユーザーとして、顧客/代理店を含むユーザーと契約を管理します。'
+              ? '内部ユーザーとして、顧客企業のユーザーと契約プランを管理します。'
               : '自組織の顧客ユーザーを管理します。'}
           </p>
         </div>
@@ -848,14 +848,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       {isInternal && activeOrgId && isOrgPlanMissing && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-sm rounded-xl p-4">
           このORGは契約プランが未設定です。内部ユーザーが最初の顧客ユーザー（MANAGER/USER）を作成する場合、`planCode` が必須になります。
-          事前に「課金・請求」画面でORGへプランを割り当てる運用がおすすめです。
+          事前に「契約プラン」画面でORGへプランを割り当てる運用がおすすめです。
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard title="総契約アカウント" value={totalUsers} icon={UsersIcon} color="bg-blue-500" />
-        <StatCard title="直近7日登録" value={activeUsers} icon={TrendingUp} color="bg-green-500" />
-        <StatCard title="今月の新規契約" value={newThisMonth} icon={Award} color="bg-purple-500" />
+        <StatCard title="総ユーザー数" value={totalUsers} icon={UsersIcon} color="bg-blue-500" />
+        <StatCard title="直近7日でログイン" value={activeUsers} icon={TrendingUp} color="bg-green-500" />
+        <StatCard title="今月の新規ユーザー" value={newThisMonth} icon={Award} color="bg-purple-500" />
       </div>
 
       <div className={`${PAGE_CARD_CLASS} p-6`}>

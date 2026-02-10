@@ -687,7 +687,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
         <div>
           <h1 className={PAGE_HEADER_TITLE_CLASS}>順位チェック</h1>
           <p className={PAGE_HEADER_DESCRIPTION_CLASS}>
-            店舗ごとの検索キーワードと競合店舗を管理します。収集結果は実行ごとに履歴として確認できます。
+            Googleマップ検索での表示順位を、登録キーワードごとに確認できます。収集結果は履歴として残り、改善の優先順位付けに使えます。
           </p>
         </div>
       </div>

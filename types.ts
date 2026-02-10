@@ -403,6 +403,14 @@ export interface Survey {
   title: string;
   description?: string;
   reviewRedirectUrl?: string;
+  headerImageUrl?: string;
+  headerImageStoragePath?: string;
+  questionText?: string;
+  thanksTitle?: string;
+  thanksBody?: string;
+  thanksPositiveMessage?: string;
+  thanksNegativeMessage?: string;
+  thanksButtonText?: string;
   positiveThreshold: number;
   status: SurveyStatus;
   publicToken?: string;

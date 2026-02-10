@@ -26,6 +26,11 @@ import { isSupabaseConfigured } from '../services/supabaseClient';
 import { featureFlagsService, resolveFeatureState } from '../services/featureFlagsService';
 import { NAV_LABELS } from './ui/copy';
 import { formatRoleLabel, formatViewLabel } from './ui/formatters';
+import {
+  SIDEBAR_NAV_ORDER_UPDATED_EVENT,
+  applySidebarNavOrder,
+  getSidebarNavOrder,
+} from '../services/navigationOrderService';
 
 interface LayoutProps {
   currentUser: User;
@@ -38,17 +43,19 @@ interface LayoutProps {
 }
 
 interface NavItemProps {
-  item: {
-    id: string;
-    label: string;
-    icon: React.ElementType;
-    allowed: Role[];
-    featureKey: string;
-  };
+  item: MenuItem;
   currentView: ViewState;
   onNavigate: (view: ViewState) => void;
   onCloseMobileMenu: () => void;
 }
+
+type MenuItem = {
+  id: ViewState;
+  label: string;
+  icon: React.ElementType;
+  allowed: Role[];
+  featureKey: string;
+};
 
 const NavItem: React.FC<NavItemProps> = ({ 
   item, 
@@ -59,7 +66,7 @@ const NavItem: React.FC<NavItemProps> = ({
   <button
     id={`nav-${item.id}`}
     onClick={() => {
-      onNavigate(item.id as ViewState);
+      onNavigate(item.id);
       onCloseMobileMenu();
     }}
     className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
@@ -87,6 +94,7 @@ export const Layout: React.FC<LayoutProps> = ({
   const [showTour, setShowTour] = useState(false);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlag[]>([]);
   const [isLoadingFlags, setIsLoadingFlags] = useState(false);
+  const [sidebarOrder, setSidebarOrder] = useState(() => getSidebarNavOrder());
 
   const activeStore = useMemo(() => {
     if (!activeStoreId) return null;
@@ -100,6 +108,17 @@ export const Layout: React.FC<LayoutProps> = ({
     if (!hasSeenTour) {
       setShowTour(true);
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncSidebarOrder = () => {
+      setSidebarOrder(getSidebarNavOrder());
+    };
+    window.addEventListener(SIDEBAR_NAV_ORDER_UPDATED_EVENT, syncSidebarOrder);
+    return () => {
+      window.removeEventListener(SIDEBAR_NAV_ORDER_UPDATED_EVENT, syncSidebarOrder);
+    };
   }, []);
 
   const handleTourComplete = () => {
@@ -134,17 +153,20 @@ export const Layout: React.FC<LayoutProps> = ({
     void loadFlags();
   }, [activeOrgId, activeStore?.id]);
 
-  const menuItems = [
-    { id: 'DASHBOARD', label: NAV_LABELS.DASHBOARD, icon: LayoutDashboard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'dashboard' },
-    { id: 'BILLING', label: NAV_LABELS.BILLING, icon: CreditCard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'billing' },
-    { id: 'CALENDAR', label: NAV_LABELS.CALENDAR, icon: Calendar, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'calendar' },
-    { id: 'SURVEY', label: NAV_LABELS.SURVEY, icon: ClipboardList, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'survey' },
-    { id: 'CREATE_POST', label: NAV_LABELS.CREATE_POST, icon: PenSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'create_post' },
-    { id: 'POST_LIST', label: NAV_LABELS.POST_LIST, icon: List, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'post_list' },
-    { id: 'INBOX', label: NAV_LABELS.INBOX, icon: MessageSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'inbox' },
-    { id: 'RANK_TRACKER', label: NAV_LABELS.RANK_TRACKER, icon: TrendingUp, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'rank_tracker' },
-    { id: 'USER_MANAGEMENT', label: NAV_LABELS.USER_MANAGEMENT, icon: Users, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER], featureKey: 'user_management' },
-  ];
+  const menuItems = useMemo<MenuItem[]>(
+    () => [
+      { id: 'DASHBOARD', label: NAV_LABELS.DASHBOARD, icon: LayoutDashboard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'dashboard' },
+      { id: 'CREATE_POST', label: NAV_LABELS.CREATE_POST, icon: PenSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'create_post' },
+      { id: 'POST_LIST', label: NAV_LABELS.POST_LIST, icon: List, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'post_list' },
+      { id: 'CALENDAR', label: NAV_LABELS.CALENDAR, icon: Calendar, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'calendar' },
+      { id: 'INBOX', label: NAV_LABELS.INBOX, icon: MessageSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'inbox' },
+      { id: 'SURVEY', label: NAV_LABELS.SURVEY, icon: ClipboardList, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'survey' },
+      { id: 'RANK_TRACKER', label: NAV_LABELS.RANK_TRACKER, icon: TrendingUp, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'rank_tracker' },
+      { id: 'USER_MANAGEMENT', label: NAV_LABELS.USER_MANAGEMENT, icon: Users, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER], featureKey: 'user_management' },
+      { id: 'BILLING', label: NAV_LABELS.BILLING, icon: CreditCard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'billing' },
+    ],
+    []
+  );
 
   const canAccess = (allowedRoles: Role[]) => allowedRoles.includes(currentUser.role);
   const getFeatureVisibility = (featureKey: string): VisibilityState => {
@@ -160,7 +182,8 @@ export const Layout: React.FC<LayoutProps> = ({
 
   const hasStoresError = isSupabaseConfigured && !isLoadingStores && Boolean(storesError);
   const needsStoreBootstrap = isSupabaseConfigured && !isLoadingStores && stores.length === 0 && !storesError;
-  const visibleMenuItems = menuItems.filter((item) => canAccess(item.allowed) && canUseFeature(item.featureKey));
+  const orderedMenuItems = useMemo(() => applySidebarNavOrder(menuItems, sidebarOrder), [menuItems, sidebarOrder]);
+  const visibleMenuItems = orderedMenuItems.filter((item) => canAccess(item.allowed) && canUseFeature(item.featureKey));
   const canOpenSettings =
     canUseFeature('settings_profile') ||
     canUseFeature('settings_store') ||

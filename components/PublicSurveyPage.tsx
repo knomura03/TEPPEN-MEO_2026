@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Survey } from '../types';
 import { surveyService } from '../services/surveyService';
+import { resolveSurveyCopy } from '../services/surveyCopy';
 import { getErrorMessage } from '../services/errorMessage';
 
 interface PublicSurveyPageProps {
@@ -16,6 +17,21 @@ export const PublicSurveyPage: React.FC<PublicSurveyPageProps> = ({ publicToken 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const hasTrackedViewRef = useRef(false);
+  const redirectTimeoutRef = useRef<number | null>(null);
+
+  const surveyCopy = useMemo(() => {
+    if (!survey) {
+      return {
+        questionText: '総合満足度を教えてください（1〜5）',
+        thanksTitle: 'ご回答ありがとうございました',
+        thanksBody: '貴重なご意見をありがとうございます。今後のサービス改善に活用します。',
+        thanksPositiveMessage: '口コミページへ自動で移動します。移動しない場合は下のボタンを押してください。',
+        thanksNegativeMessage: '頂いたご意見は店舗改善の優先タスクとして確認します。',
+        thanksButtonText: 'Google口コミページへ進む',
+      };
+    }
+    return resolveSurveyCopy(survey);
+  }, [survey]);
 
   const shouldShowReviewLink = useMemo(() => {
     if (!survey) return false;
@@ -57,6 +73,14 @@ export const PublicSurveyPage: React.FC<PublicSurveyPageProps> = ({ publicToken 
     });
   }, [survey, publicToken]);
 
+  useEffect(() => {
+    return () => {
+      if (redirectTimeoutRef.current) {
+        window.clearTimeout(redirectTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!survey) return;
@@ -81,9 +105,12 @@ export const PublicSurveyPage: React.FC<PublicSurveyPageProps> = ({ publicToken 
           eventType: 'REDIRECT_CLICK',
           metadata: { source: 'auto' },
         });
-        window.setTimeout(() => {
+        if (redirectTimeoutRef.current) {
+          window.clearTimeout(redirectTimeoutRef.current);
+        }
+        redirectTimeoutRef.current = window.setTimeout(() => {
           window.location.assign(survey.reviewRedirectUrl!);
-        }, 1500);
+        }, 5000);
       }
     } catch (error) {
       console.error('[PublicSurveyPage] Failed to submit response:', error);
@@ -118,6 +145,13 @@ export const PublicSurveyPage: React.FC<PublicSurveyPageProps> = ({ publicToken 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 md:p-10">
       <div className="max-w-2xl mx-auto bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl shadow-sm p-6 md:p-8">
+        {survey.headerImageUrl && (
+          <img
+            src={survey.headerImageUrl}
+            alt="アンケートヘッダー画像"
+            className="w-full max-h-60 object-cover rounded-xl border border-gray-200 dark:border-gray-700 mb-5"
+          />
+        )}
         {!isCompleted ? (
           <>
             <h1 className="text-2xl font-bold text-gray-800 dark:text-white">{survey.title}</h1>
@@ -128,7 +162,7 @@ export const PublicSurveyPage: React.FC<PublicSurveyPageProps> = ({ publicToken 
             <form onSubmit={handleSubmit} className="space-y-6 mt-8">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  総合満足度を教えてください（1〜5）
+                  {surveyCopy.questionText}
                 </label>
                 <div className="flex gap-2">
                   {[1, 2, 3, 4, 5].map((value) => (
@@ -182,14 +216,14 @@ export const PublicSurveyPage: React.FC<PublicSurveyPageProps> = ({ publicToken 
           </>
         ) : (
           <div className="space-y-4">
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">ご回答ありがとうございました</h1>
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">{surveyCopy.thanksTitle}</h1>
             <p className="text-sm text-gray-600 dark:text-gray-300">
-              貴重なご意見をありがとうございます。今後のサービス改善に活用します。
+              {surveyCopy.thanksBody}
             </p>
             {shouldShowReviewLink && survey.reviewRedirectUrl ? (
               <>
                 <p className="text-sm text-green-700 dark:text-green-300">
-                  口コミページへ自動で移動します。移動しない場合は下のボタンを押してください。
+                  {surveyCopy.thanksPositiveMessage}
                 </p>
                 <a
                   href={survey.reviewRedirectUrl}
@@ -204,12 +238,12 @@ export const PublicSurveyPage: React.FC<PublicSurveyPageProps> = ({ publicToken 
                   }}
                   className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-medium"
                 >
-                  Google口コミページへ進む
+                  {surveyCopy.thanksButtonText}
                 </a>
               </>
             ) : (
               <p className="text-sm text-gray-600 dark:text-gray-300">
-                頂いたご意見は店舗改善の優先タスクとして確認します。
+                {surveyCopy.thanksNegativeMessage}
               </p>
             )}
           </div>

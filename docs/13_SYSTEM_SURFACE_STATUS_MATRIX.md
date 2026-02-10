@@ -1,6 +1,6 @@
 # TEPPEN MEO：画面/ボタン/機能/DB接続 状態台帳（正本）
 
-最終更新: 2026-02-10（実OAuthコールバック導線・実API接続テスト反映）
+最終更新: 2026-02-10（UI文言/ガイド順/メニュー順序管理・アンケート拡張反映）
 
 ## 0. 運用ルール（必須）
 - この台帳は、実装・修正・設定変更のたびに**同一作業内で更新**する。
@@ -35,10 +35,10 @@
 | POSTLIST-02 | 投稿一覧 | 承認申請/承認/差し戻し | HYBRID | `posts`（承認列）, `post_approval_comments` | migration未適用時は専用エラー表示 | P1-06/07 |
 | CAL-01 | カレンダー | 日付セル投稿表示 | HYBRID | `posts` | Supabase未設定時は `MOCK_POSTS` | P1 |
 | CAL-02 | カレンダー | カレンダーから投稿作成 | HYBRID | `posts`, `post_media` | 投稿先は `MOCK_ACCOUNTS` | P1（P2拡張余地） |
-| INBOX-01 | 統合受信箱 | 受信一覧/返信送信 | HYBRID | `inbox_messages` | Supabase未設定時は `MOCK_MESSAGES` | P1 |
-| INBOX-02 | 統合受信箱 | AI返信案作成/承認送信 | HYBRID | Gemini API, `inbox_messages.reply_draft_*` | Geminiキー未設定時は生成不可 | P1-05 |
-| INBOX-03 | 統合受信箱 | Facebook返信実行（手動） | CONDITIONAL | `messageReplyService`, Edge Function `facebook-reply-message`, `inbox_reply_logs` | `202602060012` + Function配備後に有効。条件未達時はMOCK返信で記録 | P2-03 |
-| INBOX-04 | 統合受信箱 | タグ/担当/SLA管理 | CONNECTED | `inbox_messages.tags`, `assigned_user_id`, `due_at`, `sla_status`, `inboxService.updateWorkflow` | `202602060013` 未適用環境では保存不可（専用エラー） | P2-04 |
+| INBOX-01 | 受信箱 | 受信一覧/返信送信 | HYBRID | `inbox_messages` | Supabase未設定時は `MOCK_MESSAGES` | P1 |
+| INBOX-02 | 受信箱 | AI返信案作成/承認送信 | HYBRID | Gemini API, `inbox_messages.reply_draft_*` | Geminiキー未設定時は生成不可 | P1-05 |
+| INBOX-03 | 受信箱 | Facebook返信実行（手動） | CONDITIONAL | `messageReplyService`, Edge Function `facebook-reply-message`, `inbox_reply_logs` | `202602060012` + Function配備後に有効。条件未達時はMOCK返信で記録 | P2-03 |
+| INBOX-04 | 受信箱 | タグ/担当/対応期限管理 | CONNECTED | `inbox_messages.tags`, `assigned_user_id`, `due_at`, `sla_status`, `inboxService.updateWorkflow` | `202602060013` 未適用環境では保存不可（専用エラー） | P2-04 |
 | RANK-01 | 順位計測 | キーワードCRUD | CONDITIONAL | `rankKeywordService`, `rank_keywords` | `202602060015` 未適用環境では保存不可（専用エラー）。`rank_tracker` が `HIDDEN/ADMIN_ONLY` の場合は非表示 | P3-01 |
 | RANK-02 | 順位計測 | 日次順位収集（手動実行/履歴/結果） | CONDITIONAL | `rankCollectionService`, Edge Function `rank-collect`, `rank_collection_runs`, `rank_collection_results` | `202602060016` 未適用環境では実行不可。現時点はMOCK収集のみ、REAL指定は明示FAILED | P3-02 |
 | RANK-03 | 順位計測 | 競合ターゲット管理/競合比較収集 | CONDITIONAL | `competitorService`, `competitor_targets`, `competitor_metric_snapshots`, Edge Function `rank-collect` | `202602060017` 未適用環境では実行不可。現時点はMOCK収集のみ、REAL指定は明示FAILED | P3-03 |
@@ -49,6 +49,7 @@
 | SURVEY-02 | アンケート管理 | 分岐しきい値 | CONNECTED | `surveys.positive_threshold`, `survey_responses.branch_type` | migration未適用時は失敗 | P1-02 |
 | SURVEY-03 | アンケート管理 | 指標カード/CSV出力 | CONNECTED | `survey_events`, `survey_responses` | - | P1-03 |
 | SURVEY-04 | アンケート管理 | QR/POP生成 | CONNECTED | `surveyAssetService`（クライアント生成） | ブラウザ印刷許可が必要 | P1-04 |
+| SURVEY-05 | アンケート管理 | 設問文言/サンクス文言/ヘッダー画像設定 | CONDITIONAL | `surveys.(question_text, thanks_*, header_image_*)`, Supabase Storage `survey-media` | `202602100001` 未適用環境では保存不可。画像は JPEG/PNG/WEBP（3MB以下） | P1-10 |
 | SURVEY-PUB-01 | 公開アンケート | 公開URL回答 | CONNECTED | `surveys`, `survey_responses`, `survey_events` | - | P1-01〜03 |
 | SET-01 | 設定>プロフィール | 名前/メール/パスワード更新 | CONNECTED | Supabase Auth, `profiles` | - | 基盤 |
 | SET-02 | 設定>店舗情報(MEO) | 店舗作成（0件復旧）/更新 | CONNECTED | RPC `create_store_for_actor`, `stores` | 上限超過時は明示エラー | P1-08拡張 |
@@ -58,14 +59,15 @@
 | SET-07 | 設定>SNS連携 | OAuth連携（開始/コールバック完了/解除） | CONDITIONAL | Edge Functions `oauth-start`, `oauth-callback` + RPC `oauth_disconnect_session` + `oauth_sessions` | `202602060010` 適用後に有効。認可コード貼り付けは廃止し、コールバックで自動完了 | P2-01 |
 | SET-06 | 設定>システム管理 | APIキー表示UI | UI_ONLY | なし | ダミー表示（`****************************`） | 未着手 |
 | SET-08 | 設定>システム管理 | ブランドキット/投稿テンプレ管理 | CONDITIONAL | `brand_kits`, `post_templates`, `brandKitService` | `202602060014` 適用後に有効。権限は内部（ADMIN/SUPERVISOR） | P2-05 |
-| USER-01 | ユーザー・契約管理 | ユーザー一覧/削除 | HYBRID | `memberships`, `profiles` | Supabase未設定時は `MOCK_USERS` | P1 |
-| USER-02 | ユーザー・契約管理 | 新規ユーザー招待 | CONDITIONAL | Edge Function `admin-create-user` | Function配備＋`SUPABASE_SERVICE_ROLE_KEY`必須 | P1 |
-| USER-03 | ユーザー・契約管理 | 店舗グループCRUD | CONNECTED | `store_groups`, `store_group_stores` | USERは編集不可 | P1-08 |
-| USER-04 | ユーザー・契約管理 | USER別 店舗上限設定 | CONNECTED | `org_store_policies`, `user_store_controls` | ADMIN/SUPERVISORのみ操作可 | P1-08拡張 |
-| USER-05 | ユーザー・契約管理 | CSV一括店舗作成ON/OFF | CONNECTED | `user_store_controls.allow_csv_store_bulk_create` | USER対象のみ | P1-08拡張 |
-| USER-06 | ユーザー・契約管理 | CSV一括店舗作成実行 | CONNECTED | RPC `bulk_create_stores_for_user` | 1件不正で全体失敗（0件作成） | P1-08拡張 |
-| USER-07 | ユーザー・契約管理 | モーダル表示（スモーク） | CONNECTED | `ModalPortal` | `fixed inset-0` でずれ対策済み | P1-08拡張 |
-| USER-08 | ユーザー・契約管理 | 店舗グループ一括設定（機能公開） | CONNECTED | `feature_flags`（`featureFlagsService.upsertForStoreGroup`） | 実行は内部（ADMIN/SUPERVISOR）のみ。顧客MANAGERは参照のみ | P1-09 |
+| SET-09 | 設定>システム管理 | サイドバーメニュー順序（D&D） | CONNECTED | `navigationOrderService`（localStorage） | ADMINのみ操作可。既定順は `ダッシュボード→新規投稿→投稿一覧→カレンダー→受信箱→アンケート→順位チェック→ユーザー管理→契約プラン` | UI改善 |
+| USER-01 | ユーザー管理 | ユーザー一覧/削除 | HYBRID | `memberships`, `profiles` | Supabase未設定時は `MOCK_USERS` | P1 |
+| USER-02 | ユーザー管理 | 新規ユーザー招待 | CONDITIONAL | Edge Function `admin-create-user` | Function配備＋`SUPABASE_SERVICE_ROLE_KEY`必須 | P1 |
+| USER-03 | ユーザー管理 | 店舗グループCRUD | CONNECTED | `store_groups`, `store_group_stores` | USERは編集不可 | P1-08 |
+| USER-04 | ユーザー管理 | USER別 店舗上限設定 | CONNECTED | `org_store_policies`, `user_store_controls` | ADMIN/SUPERVISORのみ操作可 | P1-08拡張 |
+| USER-05 | ユーザー管理 | CSV一括店舗作成ON/OFF | CONNECTED | `user_store_controls.allow_csv_store_bulk_create` | USER対象のみ | P1-08拡張 |
+| USER-06 | ユーザー管理 | CSV一括店舗作成実行 | CONNECTED | RPC `bulk_create_stores_for_user` | 1件不正で全体失敗（0件作成） | P1-08拡張 |
+| USER-07 | ユーザー管理 | モーダル表示（スモーク） | CONNECTED | `ModalPortal` | `fixed inset-0` でずれ対策済み | P1-08拡張 |
+| USER-08 | ユーザー管理 | 店舗グループ一括設定（機能公開） | CONNECTED | `feature_flags`（`featureFlagsService.upsertForStoreGroup`） | 実行は内部（ADMIN/SUPERVISOR）のみ。顧客MANAGERは参照のみ | P1-09 |
 | BILL-01 | 課金/請求 | 契約プラン作成/更新 + ORG割当（請求は外部運用） | CONDITIONAL | `billing_plans`, `org_subscriptions`, `audit_logs`, Edge Functions `admin-billing-plan-upsert`, `admin-org-subscription-set-plan` | 画面表示は全ロール可。編集は内部（ADMIN/SUPERVISOR）のみ。Stripe本番課金API連携・請求書は未実装（外部運用） | Phase4 |
 | PWA-01 | アプリ化 | PWAインストール/オフライン対応 | CONDITIONAL | `pwa_installations` | `manifest`/`service worker`/インストール導線は実装済み。PWA利用ログ保存（`pwa_installations`）は未接続 | Phase4 |
 
@@ -98,7 +100,7 @@
 | `supabase/migrations/202602060010_p2_oauth_common_foundation.sql` | P2-01 OAuth共通基盤 | 実装済み。未適用環境ではOAuth導線が動作しない |
 | `supabase/migrations/202602060011_p2_instagram_publish.sql` | P2-02 Instagram投稿履歴 | 実装済み。未適用環境では投稿成否履歴が記録されない |
 | `supabase/migrations/202602060012_p2_facebook_publish_reply.sql` | P2-03 Facebook返信履歴 | 実装済み。未適用環境では返信履歴が記録されない |
-| `supabase/migrations/202602060013_p2_inbox_advanced_workflow.sql` | P2-04 受信箱タグ/担当/SLA | 実装済み。未適用環境ではワークフロー保存が実行できない |
+| `supabase/migrations/202602060013_p2_inbox_advanced_workflow.sql` | P2-04 受信箱タグ/担当/対応期限 | 実装済み。未適用環境ではワークフロー保存が実行できない |
 | `supabase/migrations/202602060014_p2_template_brand_kit.sql` | P2-05 テンプレ/ブランドキット | 実装済み。未適用環境ではテンプレ/ブランド設定を保存できない |
 | `supabase/migrations/202602060015_p3_rank_keyword_management.sql` | P3-01 順位キーワード管理 | 実装済み。未適用環境ではキーワードCRUDが実行できない |
 | `supabase/migrations/202602060016_p3_rank_daily_collection.sql` | P3-02 日次順位収集ジョブ | 実装済み。未適用環境では収集実行/履歴参照が実行できない |
@@ -108,6 +110,7 @@
 | `supabase/migrations/202602060020_p4_billing_pwa_foundation.sql` | P4 課金/PWA DB基盤 | 実装済み。未適用環境ではPhase4 DB監査が `PGRST205` で失敗する |
 | `supabase/migrations/202602090001_p4_roles_supervisor_and_plan_admin_gui.sql` | P4 ロール再編（SUPERVISOR）+ 契約プランGUI | 実装済み（要適用）。未適用環境ではロール再編/プラン管理GUIが正しく動作しない |
 | `supabase/migrations/202602090002_p4_real_oauth_callback_and_credentials_encryption.sql` | P4 実OAuthコールバック運用補助index | 2026-02-10 CLI適用済み（本番）。`oauth_sessions` / `integration_credentials` の参照最適化 |
+| `supabase/migrations/202602100001_p1_survey_customization_and_header_media.sql` | P1-10 アンケート文言カスタム + ヘッダー画像 | 実装済み（要適用）。未適用環境ではSURVEY-05を保存できない |
 
 ## 5. 現時点のモック/未接続残件（優先順）
 1. ダッシュボードKPIが固定値（実データ未接続）

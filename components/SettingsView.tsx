@@ -36,6 +36,7 @@ import { brandKitService } from '../services/brandKitService';
 import { billingService } from '../services/billingService';
 import { getErrorMessage } from '../services/errorMessage';
 import { ModalPortal } from './ModalPortal';
+import { NAV_LABELS } from './ui/copy';
 import {
   PAGE_CONTAINER_CLASS,
   PAGE_HEADER_DESCRIPTION_CLASS,
@@ -43,6 +44,12 @@ import {
   PAGE_SECTION_DESCRIPTION_CLASS,
   PAGE_SECTION_TITLE_CLASS,
 } from './ui/pageLayout';
+import {
+  SidebarNavView,
+  getSidebarNavOrder,
+  resetSidebarNavOrder,
+  setSidebarNavOrder,
+} from '../services/navigationOrderService';
 
 interface SettingsViewProps {
   currentUser: User;
@@ -60,13 +67,13 @@ type SettingsTab = 'PROFILE' | 'STORE' | 'INTEGRATIONS' | 'SYSTEM';
 
 const FEATURE_FLAG_OPTIONS: { key: string; label: string; description: string }[] = [
   { key: 'dashboard', label: 'ダッシュボード', description: 'メニュー: ダッシュボード' },
-  { key: 'calendar', label: 'カレンダー', description: 'メニュー: カレンダー' },
-  { key: 'survey', label: 'アンケート', description: 'メニュー: アンケート' },
   { key: 'create_post', label: '新規投稿', description: 'メニュー: 新規投稿' },
   { key: 'post_list', label: '投稿一覧', description: 'メニュー: 投稿一覧' },
+  { key: 'calendar', label: 'カレンダー', description: 'メニュー: カレンダー' },
   { key: 'inbox', label: '受信箱', description: 'メニュー: 受信箱' },
+  { key: 'survey', label: 'アンケート', description: 'メニュー: アンケート' },
   { key: 'rank_tracker', label: '順位チェック', description: 'メニュー: 順位チェック' },
-  { key: 'user_management', label: 'ユーザー管理', description: 'メニュー: ユーザー・契約管理' },
+  { key: 'user_management', label: 'ユーザー管理', description: 'メニュー: ユーザー管理' },
   { key: 'settings_system', label: 'システム管理', description: '設定タブ: システム管理' },
   { key: 'provider_management', label: '連携先管理', description: 'SNS連携設定タブの管理機能' },
 ];
@@ -119,12 +126,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   const { addNotification } = useNotification();
   const { activeStoreId, reloadStores, stores } = useStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>('PROFILE');
+  const isAdmin = currentUser.role === Role.ADMIN;
   const lastProfileLoadErrorRef = useRef<string | null>(null);
   const lastStoreLoadErrorRef = useRef<string | null>(null);
   const [orgPlanCode, setOrgPlanCode] = useState<string>('');
   const [orgPlanNextRenewal, setOrgPlanNextRenewal] = useState<string>('-');
   const [isOrgPlanMissing, setIsOrgPlanMissing] = useState(false);
   const isInternal = currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR;
+  const [sidebarMenuOrder, setSidebarMenuOrderState] = useState<SidebarNavView[]>(() => getSidebarNavOrder());
+  const [draggingMenuId, setDraggingMenuId] = useState<SidebarNavView | null>(null);
 
   const getProfileSaveErrorMessage = (error: unknown) => {
     const rawMessage = typeof error === 'string'
@@ -189,6 +199,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     const store = stores.find((item) => item.id === activeStoreId);
     return store?.orgId || null;
   }, [activeStoreId, stores]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    setSidebarMenuOrderState(getSidebarNavOrder());
+  }, [isAdmin]);
 
   useEffect(() => {
     const loadOrgPlan = async () => {
@@ -976,6 +991,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     }
   };
 
+  const moveSidebarMenuItem = (sourceId: SidebarNavView, targetId: SidebarNavView) => {
+    setSidebarMenuOrderState((prev) => {
+      const next = [...prev];
+      const sourceIndex = next.indexOf(sourceId);
+      const targetIndex = next.indexOf(targetId);
+      if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return prev;
+      next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, sourceId);
+      return next;
+    });
+  };
+
+  const handleSaveSidebarMenuOrder = () => {
+    const saved = setSidebarNavOrder(sidebarMenuOrder);
+    setSidebarMenuOrderState(saved);
+    addNotification('保存完了', 'サイドバーの表示順を保存しました。', 'SUCCESS');
+  };
+
+  const handleResetSidebarMenuOrder = () => {
+    const resetOrder = resetSidebarNavOrder();
+    setSidebarMenuOrderState(resetOrder);
+    addNotification('初期化完了', 'サイドバーの表示順を初期状態に戻しました。', 'INFO');
+  };
+
   const toggleTemplatePlatform = (platform: SocialPlatform) => {
     setTemplatePlatforms((prev) => (
       prev.includes(platform)
@@ -1207,7 +1246,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                <div className="bg-gradient-to-r from-primary-600 to-primary-500 rounded-2xl p-6 text-white shadow-lg">
                    <div className="flex justify-between items-start">
                        <div>
-                           <p className="text-primary-100 text-sm font-medium mb-1">現在のプラン</p>
+                           <p className="text-primary-100 text-sm font-medium mb-1">現在の契約プラン</p>
                            <h3 className="text-2xl font-bold">
                              {(isOrgPlanMissing ? '未設定' : (orgPlanCode || currentUser.plan || 'FREE'))} プラン
                            </h3>
@@ -1215,7 +1254,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                            {isOrgPlanMissing && isInternal && (
                              <div className="mt-4 rounded-xl bg-white/10 border border-white/20 p-3">
                                <p className="text-xs text-primary-50">
-                                 この組織は契約プランが未設定です。内部ユーザーが最初の顧客ユーザーを作成する前に、「課金・請求」画面でプランを割り当ててください。
+                                 この組織は契約プランが未設定です。内部ユーザーが最初の顧客ユーザーを作成する前に、「契約プラン」画面でプランを割り当ててください。
                                </p>
                              </div>
                            )}
@@ -1917,6 +1956,57 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                    </div>
                  </div>
                </div>
+
+               {isAdmin && (
+                 <div className="p-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl space-y-4">
+                   <div>
+                     <h2 className={PAGE_SECTION_TITLE_CLASS}>サイドバーメニュー順序</h2>
+                     <p className={PAGE_SECTION_DESCRIPTION_CLASS}>ドラッグ＆ドロップで順序を変更し、保存で反映します。</p>
+                   </div>
+                   <div className="space-y-2">
+                     {sidebarMenuOrder.map((viewId) => (
+                       <div
+                         key={viewId}
+                         draggable
+                         onDragStart={() => setDraggingMenuId(viewId)}
+                         onDragEnd={() => setDraggingMenuId(null)}
+                         onDragOver={(event) => event.preventDefault()}
+                         onDrop={(event) => {
+                           event.preventDefault();
+                           if (!draggingMenuId) return;
+                           moveSidebarMenuItem(draggingMenuId, viewId);
+                         }}
+                         className={`flex items-center justify-between gap-3 p-3 rounded-xl border cursor-move ${
+                           draggingMenuId === viewId
+                             ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20'
+                             : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/60'
+                         }`}
+                       >
+                         <div className="flex items-center gap-3">
+                           <span className="text-gray-400 text-sm">⋮⋮</span>
+                           <span className="text-sm font-medium text-gray-800 dark:text-white">{NAV_LABELS[viewId]}</span>
+                         </div>
+                       </div>
+                     ))}
+                   </div>
+                   <div className="flex flex-wrap gap-2">
+                     <button
+                       type="button"
+                       onClick={handleSaveSidebarMenuOrder}
+                       className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg"
+                     >
+                       並び順を保存
+                     </button>
+                     <button
+                       type="button"
+                       onClick={handleResetSidebarMenuOrder}
+                       className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                     >
+                       初期順に戻す
+                     </button>
+                   </div>
+                 </div>
+               )}
 
                <div>
                   <h2 className={`${PAGE_SECTION_TITLE_CLASS} mb-4`}>システムメンテナンス</h2>

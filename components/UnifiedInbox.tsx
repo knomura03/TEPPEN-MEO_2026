@@ -553,13 +553,13 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
                 <div>
                   <h3 className="text-lg font-bold text-gray-900 dark:text-white">{selectedMessage.senderName}</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    via {platformLabel[selectedMessage.platform]} • {formatDetailDate(selectedMessage.receivedAt)}
+                    {platformLabel[selectedMessage.platform]} 受信 • {formatDetailDate(selectedMessage.receivedAt)}
                   </p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 justify-end">
                 <span className={`px-3 py-1 rounded-full text-xs font-bold ${slaBadgeClass[selectedMessage.slaStatus || 'ON_TRACK']}`}>
-                  SLA: {slaLabel[selectedMessage.slaStatus || 'ON_TRACK']}
+                  対応期限: {slaLabel[selectedMessage.slaStatus || 'ON_TRACK']}
                 </span>
                 {selectedMessage.isReplied && (
                   <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-3 py-1 rounded-full text-xs font-bold">
@@ -635,7 +635,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
                 </div>
                 <div className="mt-3 flex justify-between items-center">
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {isAssignableLoading ? '担当者候補を読み込み中...' : '保存すると一覧とSLA表示に反映されます。'}
+                    {isAssignableLoading ? '担当者候補を読み込み中...' : '保存すると一覧と期限表示に反映されます。'}
                   </p>
                   <button
                     data-testid="inbox-workflow-save"

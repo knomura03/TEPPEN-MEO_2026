@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { MOCK_POSTS, HOLIDAYS, MOCK_ACCOUNTS } from '../constants';
 import { Post, PostStatus, Role, SocialPlatform, User } from '../types';
-import { ChevronLeft, ChevronRight, Clock, CheckCircle, AlertCircle, Calendar as CalendarIcon, Filter, Plus, X, Image as ImageIcon, Sparkles, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, CheckCircle, AlertCircle, Filter, Plus, X, Image as ImageIcon, Sparkles, Loader2 } from 'lucide-react';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { postsService } from '../services/postsService';
 import { useNotification } from '../contexts/NotificationContext';
@@ -354,10 +354,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
     <div className={`${PAGE_CONTAINER_CLASS} h-full flex flex-col`}>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-             <h1 className={`${PAGE_HEADER_TITLE_CLASS} flex items-center gap-2`}>
-              <CalendarIcon className="text-primary-500" />
-              カレンダー
-            </h1>
+            <h1 className={PAGE_HEADER_TITLE_CLASS}>カレンダー</h1>
             <p className={PAGE_HEADER_DESCRIPTION_CLASS}>投稿予定と配信計画を管理します。</p>
           </div>
           

@@ -362,6 +362,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
              <div className="relative">
                 <Filter size={16} className="absolute left-3 top-2.5 text-gray-400" />
                 <select 
+                  id="calendar-platform-filter"
                   value={filterPlatform}
                   onChange={(e) => setFilterPlatform(e.target.value as any)}
                   className="pl-9 pr-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -394,7 +395,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
           </div>
 
           {/* Calendar Grid */}
-          <div className="flex-1 grid grid-cols-7 auto-rows-fr">
+          <div id="calendar-grid" className="flex-1 grid grid-cols-7 auto-rows-fr">
             {days.map((day, dayIdx) => {
               const dayPosts = getPostsForDay(day);
               const isCurrentMonth = isSameMonth(day, monthStart);

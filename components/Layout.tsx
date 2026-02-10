@@ -3,6 +3,8 @@ import { User, Role, ViewState, FeatureFlag, VisibilityState } from '../types';
 import { 
   LayoutDashboard, 
   PenSquare, 
+  FileText,
+  BookOpenText,
   List, 
   Users, 
   LogOut, 
@@ -157,6 +159,8 @@ export const Layout: React.FC<LayoutProps> = ({
     () => [
       { id: 'DASHBOARD', label: NAV_LABELS.DASHBOARD, icon: LayoutDashboard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'dashboard' },
       { id: 'CREATE_POST', label: NAV_LABELS.CREATE_POST, icon: PenSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'create_post' },
+      { id: 'POST_TEMPLATES', label: NAV_LABELS.POST_TEMPLATES, icon: FileText, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'post_templates' },
+      { id: 'BRAND_KIT', label: NAV_LABELS.BRAND_KIT, icon: BookOpenText, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'brand_kit' },
       { id: 'POST_LIST', label: NAV_LABELS.POST_LIST, icon: List, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'post_list' },
       { id: 'CALENDAR', label: NAV_LABELS.CALENDAR, icon: Calendar, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'calendar' },
       { id: 'INBOX', label: NAV_LABELS.INBOX, icon: MessageSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'inbox' },

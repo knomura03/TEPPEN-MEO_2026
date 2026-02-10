@@ -6,9 +6,11 @@ export const NAV_LABELS: Record<ViewState, string> = {
   CALENDAR: 'カレンダー',
   SURVEY: 'アンケート',
   CREATE_POST: '新規投稿',
+  POST_TEMPLATES: '投稿テンプレート',
+  BRAND_KIT: 'ブランドキット',
   POST_LIST: '投稿一覧',
   INBOX: '受信箱',
-  RANK_TRACKER: '順位チェック',
+  RANK_TRACKER: '検索順位チェック',
   USER_MANAGEMENT: 'ユーザー管理',
   SETTINGS: '設定',
 };

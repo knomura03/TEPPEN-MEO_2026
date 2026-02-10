@@ -34,6 +34,8 @@ const VIEW_STATES: ViewState[] = [
   'CALENDAR',
   'SURVEY',
   'CREATE_POST',
+  'POST_TEMPLATES',
+  'BRAND_KIT',
   'POST_LIST',
   'INBOX',
   'RANK_TRACKER',

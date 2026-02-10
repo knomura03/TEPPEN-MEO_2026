@@ -5,6 +5,8 @@
     "CALENDAR": "投稿予定を日付で確認できます。予約投稿の抜け漏れ確認に使います。",
     "SURVEY": "アンケートの作成・公開・結果確認を行います。回答状況を見ながら内容を改善できます。",
     "CREATE_POST": "SNS投稿を作成して下書き保存・予約ができます。",
+    "POST_TEMPLATES": "投稿テンプレートの作成・更新・削除を行います。よく使う文面を共通化できます。",
+    "BRAND_KIT": "投稿ルール（口調・禁止語・推奨ハッシュタグ・署名）を管理します。",
     "POST_LIST": "投稿の状態確認や承認、編集、公開操作をまとめて行えます。",
     "INBOX": "SNSのコメントやメッセージをまとめて確認し、返信できます。",
     "RANK_TRACKER": "検索順位と店舗情報の状態を確認できます。",
@@ -123,6 +125,34 @@
       {
         "title": "配信対象の切り替え",
         "content": "選択中の店舗に投稿するか、店舗グループへまとめて投稿するかを選べます。"
+      }
+    ],
+    "POST_TEMPLATES": [
+      {
+        "title": "テンプレート作成",
+        "content": "テンプレート名・本文・投稿先を入力して登録できます。",
+        "targetId": "post-templates-main",
+        "position": "center"
+      },
+      {
+        "title": "登録済みテンプレート",
+        "content": "作成済みテンプレートを一覧で確認し、不要なものは削除できます。",
+        "targetId": "post-templates-main",
+        "position": "center"
+      }
+    ],
+    "BRAND_KIT": [
+      {
+        "title": "投稿ルール設定",
+        "content": "口調ルール・禁止語・推奨ハッシュタグ・署名を設定します。",
+        "targetId": "brand-kit-main",
+        "position": "center"
+      },
+      {
+        "title": "保存タイミング",
+        "content": "編集後は右下の保存ボタンを押して反映します。",
+        "targetId": "brand-kit-main",
+        "position": "center"
       }
     ],
     "POST_LIST": [

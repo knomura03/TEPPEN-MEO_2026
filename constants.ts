@@ -233,6 +233,8 @@ export const DEFAULT_FEATURE_VISIBILITY: Record<string, VisibilityState> = {
   calendar: 'ENABLED',
   survey: 'ENABLED',
   create_post: 'ENABLED',
+  post_templates: 'ENABLED',
+  brand_kit: 'ENABLED',
   post_list: 'ENABLED',
   inbox: 'ENABLED',
   rank_tracker: 'ADMIN_ONLY',

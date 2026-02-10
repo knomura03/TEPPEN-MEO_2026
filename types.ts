@@ -599,6 +599,8 @@ export type ViewState =
   | 'DASHBOARD'
   | 'BILLING'
   | 'CREATE_POST'
+  | 'POST_TEMPLATES'
+  | 'BRAND_KIT'
   | 'POST_LIST'
   | 'USER_MANAGEMENT'
   | 'CALENDAR'

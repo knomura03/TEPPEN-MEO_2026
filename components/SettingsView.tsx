@@ -12,6 +12,7 @@ import {
   ProviderReadiness,
   ProviderAuthKind,
   ProviderKind,
+  ViewState,
   VisibilityState,
 } from '../types';
 import {
@@ -1015,6 +1016,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     addNotification('初期化完了', 'サイドバーの表示順を初期状態に戻しました。', 'INFO');
   };
 
+  const openView = (view: ViewState) => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    params.set('view', view);
+    const nextPath = `${window.location.pathname}?${params.toString()}${window.location.hash || ''}`;
+    window.history.pushState({}, '', nextPath);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
+
   const toggleTemplatePlatform = (platform: SocialPlatform) => {
     setTemplatePlatforms((prev) => (
       prev.includes(platform)
@@ -1798,162 +1808,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
 
                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                  <div className="p-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl space-y-4">
-                   <div className="flex items-center justify-between gap-3">
-                     <h2 className={PAGE_SECTION_TITLE_CLASS}>ブランドキット</h2>
-                     {isLoadingBrandAssets && <span className="text-xs text-gray-500 dark:text-gray-400">読み込み中...</span>}
-                   </div>
-                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                     投稿作成で参照するトーン/NGワード/推奨ハッシュタグ/署名を組織単位で管理します。
+                   <h2 className={PAGE_SECTION_TITLE_CLASS}>ブランドキット</h2>
+                   <p className="text-sm text-gray-600 dark:text-gray-300">
+                     投稿ルールの設定は専用ページへ移動しました。
                    </p>
-                   <div className="space-y-3">
-                     <div>
-                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">トーンガイド</label>
-                       <textarea
-                         data-testid="brandkit-tone-guide"
-                         value={toneGuideInput}
-                         onChange={(e) => setToneGuideInput(e.target.value)}
-                         rows={3}
-                         placeholder="例: 誠実・端的・過度な煽り禁止"
-                         className="w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
-                       />
-                     </div>
-                     <div>
-                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">NGワード（カンマ/改行区切り）</label>
-                       <textarea
-                         data-testid="brandkit-banned-words"
-                         value={bannedWordsInput}
-                         onChange={(e) => setBannedWordsInput(e.target.value)}
-                         rows={3}
-                         placeholder="例: 絶対, 100%保証"
-                         className="w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
-                       />
-                     </div>
-                     <div>
-                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">推奨ハッシュタグ（カンマ/改行区切り）</label>
-                       <textarea
-                         data-testid="brandkit-recommended-hashtags"
-                         value={recommendedHashtagsInput}
-                         onChange={(e) => setRecommendedHashtagsInput(e.target.value)}
-                         rows={3}
-                         placeholder="例: #TEPPENMEO, #地域名グルメ"
-                         className="w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
-                       />
-                     </div>
-                     <div>
-                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">デフォルト署名</label>
-                       <textarea
-                         data-testid="brandkit-signature"
-                         value={signatureInput}
-                         onChange={(e) => setSignatureInput(e.target.value)}
-                         rows={2}
-                         placeholder="例: ご来店を心よりお待ちしております。"
-                         className="w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
-                       />
-                     </div>
-                   </div>
                    <button
-                     data-testid="brandkit-save"
                      type="button"
-                     onClick={() => void handleSaveBrandKit()}
-                     disabled={isSavingBrandKit || Boolean(brandAssetDisabledReason)}
-                     title={brandAssetDisabledReason || undefined}
-                     className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                     onClick={() => openView('BRAND_KIT')}
+                     className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg"
                    >
-                     <Save size={16} />
-                     {isSavingBrandKit ? '保存中...' : 'ブランドキットを保存'}
+                     ブランドキットを開く
                    </button>
-                   {brandKit && (
-                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                       最終更新: {brandKit.updatedAt ? brandKit.updatedAt.toLocaleString('ja-JP') : '-'}
-                     </p>
-                   )}
                  </div>
 
                  <div className="p-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl space-y-4">
                    <h2 className={PAGE_SECTION_TITLE_CLASS}>投稿テンプレート</h2>
-                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                     新規投稿画面のテンプレート候補として表示されます。削除は論理削除です。
+                   <p className="text-sm text-gray-600 dark:text-gray-300">
+                     テンプレート管理は専用ページへ移動しました。
                    </p>
-                   <div className="space-y-3">
-                     <input
-                       data-testid="template-title"
-                       type="text"
-                       value={templateTitleInput}
-                       onChange={(e) => setTemplateTitleInput(e.target.value)}
-                       placeholder="テンプレート名（例: 新商品告知）"
-                       className="w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
-                     />
-                     <textarea
-                       data-testid="template-body"
-                       value={templateBodyInput}
-                       onChange={(e) => setTemplateBodyInput(e.target.value)}
-                       rows={4}
-                       placeholder="テンプレート本文"
-                       className="w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
-                     />
-                     <div className="flex flex-wrap gap-2">
-                       {TEMPLATE_PLATFORM_OPTIONS.map((platform) => (
-                         <label key={platform} className="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg">
-                           <input
-                             type="checkbox"
-                            checked={templatePlatforms.includes(platform)}
-                            onChange={() => toggleTemplatePlatform(platform)}
-                            data-testid={`template-platform-${platform}`}
-                          />
-                           {TEMPLATE_PLATFORM_LABELS[platform]}
-                         </label>
-                       ))}
-                     </div>
-                     <button
-                       data-testid="template-create"
-                       type="button"
-                       onClick={() => void handleCreateTemplate()}
-                       disabled={isCreatingTemplate || Boolean(brandAssetDisabledReason)}
-                       title={brandAssetDisabledReason || undefined}
-                       className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
-                     >
-                       <Plus size={16} />
-                       {isCreatingTemplate ? '作成中...' : 'テンプレートを作成'}
-                     </button>
-                   </div>
-
-                   <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-gray-600">
-                     {templates.length === 0 && (
-                       <p className="text-xs text-gray-500 dark:text-gray-400">テンプレートはまだありません。</p>
-                     )}
-                     {templates.map((template) => (
-                       <div key={template.id} className="p-3 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/60">
-                         <div className="flex items-start justify-between gap-3">
-                           <div className="min-w-0">
-                             <p className="text-sm font-semibold text-gray-800 dark:text-white">{template.title}</p>
-                             <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-words mt-1">{template.body}</p>
-                             <div className="flex flex-wrap gap-1 mt-2">
-                               {template.defaultPlatforms.length > 0 ? template.defaultPlatforms.map((platform) => (
-                                 <span
-                                   key={`${template.id}-${platform}`}
-                                   className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700"
-                                 >
-                                   {TEMPLATE_PLATFORM_LABELS[platform]}
-                                 </span>
-                               )) : (
-                                 <span className="text-[10px] text-gray-500 dark:text-gray-400">投稿先指定なし</span>
-                               )}
-                             </div>
-                           </div>
-                           <button
-                             data-testid={`template-remove-${template.id}`}
-                             type="button"
-                             onClick={() => void handleRemoveTemplate(template.id)}
-                             disabled={removingTemplateId === template.id}
-                             className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-60"
-                           >
-                             <Trash2 size={12} />
-                             {removingTemplateId === template.id ? '削除中' : '削除'}
-                           </button>
-                         </div>
-                       </div>
-                     ))}
-                   </div>
+                   <button
+                     type="button"
+                     onClick={() => openView('POST_TEMPLATES')}
+                     className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg"
+                   >
+                     投稿テンプレートを開く
+                   </button>
                  </div>
                </div>
 

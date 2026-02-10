@@ -5,6 +5,8 @@ import { Login } from './components/Login';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { PostCreator } from './components/PostCreator';
+import { PostTemplatesView } from './components/PostTemplatesView';
+import { BrandKitView } from './components/BrandKitView';
 import { PostList } from './components/PostList';
 import { UserManagement } from './components/UserManagement';
 import { CalendarView } from './components/CalendarView';
@@ -36,6 +38,8 @@ const AVAILABLE_VIEWS: ViewState[] = [
   'DASHBOARD',
   'BILLING',
   'CREATE_POST',
+  'POST_TEMPLATES',
+  'BRAND_KIT',
   'POST_LIST',
   'USER_MANAGEMENT',
   'CALENDAR',
@@ -181,6 +185,10 @@ const App: React.FC = () => {
         return <CalendarView currentUser={currentUser} />;
       case 'CREATE_POST':
         return <PostCreator currentUser={currentUser} />;
+      case 'POST_TEMPLATES':
+        return <PostTemplatesView currentUser={currentUser} />;
+      case 'BRAND_KIT':
+        return <BrandKitView currentUser={currentUser} />;
       case 'POST_LIST':
         return <PostList currentUser={currentUser} />;
       case 'INBOX':

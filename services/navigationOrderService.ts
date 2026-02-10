@@ -6,6 +6,8 @@ const SIDEBAR_NAV_STORAGE_KEY = 'teppen.sidebar.nav.order.v1';
 export type SidebarNavView =
   | 'DASHBOARD'
   | 'CREATE_POST'
+  | 'POST_TEMPLATES'
+  | 'BRAND_KIT'
   | 'POST_LIST'
   | 'CALENDAR'
   | 'INBOX'
@@ -17,6 +19,8 @@ export type SidebarNavView =
 export const SIDEBAR_NAV_DEFAULT_ORDER: SidebarNavView[] = [
   'DASHBOARD',
   'CREATE_POST',
+  'POST_TEMPLATES',
+  'BRAND_KIT',
   'POST_LIST',
   'CALENDAR',
   'INBOX',

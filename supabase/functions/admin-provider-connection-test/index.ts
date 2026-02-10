@@ -221,7 +221,7 @@ Deno.serve(async (req) => {
   if (!hasConfig || !hasSecret) {
     connectionStatus = 'ERROR';
     lastError = 'GUI設定またはシークレットが不足しています。';
-  } else if (!integration?.id || integration.status !== 'CONNECTED') {
+  } else if (!integration?.id) {
     connectionStatus = 'ERROR';
     lastError = 'integration が未接続です。まず「連携する」を実行してください。';
   } else if (!hasCredential) {

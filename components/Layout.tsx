@@ -169,7 +169,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden transition-colors duration-200`}>
-      <OnboardingTour isOpen={showTour} onComplete={handleTourComplete} />
+      <OnboardingTour isOpen={showTour} onComplete={handleTourComplete} currentView={currentView} />
 
       {/* Sidebar for Desktop */}
       <aside className="hidden md:flex flex-col w-72 bg-white dark:bg-gray-800 border-r border-gray-100 dark:border-gray-700 shadow-sm z-10">
@@ -200,6 +200,7 @@ export const Layout: React.FC<LayoutProps> = ({
               {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
             <button
+              id="open-guide-button"
               onClick={startTour}
               className="flex-1 flex items-center justify-center p-2 rounded-xl bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors border border-gray-100 dark:border-gray-600"
               title="ガイドを表示"
@@ -210,6 +211,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
           {canOpenSettings && (
             <button
+              id="open-settings-button"
               data-testid="open-settings"
               onClick={() => onNavigate('SETTINGS')}
               className="w-full flex items-center space-x-3 px-4 py-3 bg-white dark:bg-gray-700/50 rounded-xl border border-gray-100 dark:border-gray-600 hover:border-primary-300 hover:shadow-sm transition-all group text-left"
@@ -234,6 +236,7 @@ export const Layout: React.FC<LayoutProps> = ({
           )}
           
           <button
+            id="sidebar-logout-button"
             onClick={handleLogoutClick}
             className="w-full flex items-center justify-center space-x-2 px-4 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
           >
@@ -330,7 +333,7 @@ export const Layout: React.FC<LayoutProps> = ({
         )}
 
         <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
-          <div className="max-w-7xl mx-auto h-full pb-20 md:pb-0">
+          <div id="page-main-content" className="max-w-7xl mx-auto h-full pb-20 md:pb-0">
             {hasStoresError && (
               <div className="mb-6 p-4 md:p-5 rounded-2xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 text-red-900 dark:text-red-100">
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">

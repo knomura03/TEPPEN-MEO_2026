@@ -1,113 +1,132 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X, ChevronRight, ChevronLeft } from 'lucide-react';
-
-interface Step {
-  targetId?: string; // CSS IDセレクタ (未指定の場合は画面中央)
-  title: string;
-  content: string;
-  position?: 'top' | 'bottom' | 'left' | 'right' | 'center';
-}
-
-const TOUR_STEPS: Step[] = [
-  {
-    title: "SocialSync Proへようこそ！",
-    content: "このアプリでは、複数のSNSアカウントを一元管理し、効率的なマーケティングを行うことができます。主要な機能をご案内します。",
-    position: 'center'
-  },
-  {
-    targetId: 'nav-DASHBOARD',
-    title: "ダッシュボード",
-    content: "全体のフォロワー数やエンゲージメント状況を一目で確認できます。AIによる分析レポートもここから。",
-    position: 'right'
-  },
-  {
-    targetId: 'nav-CALENDAR',
-    title: "カレンダー",
-    content: "投稿スケジュールを月表示で管理。キャンペーンの計画にお使いください。",
-    position: 'right'
-  },
-  {
-    targetId: 'nav-CREATE_POST',
-    title: "新規投稿 & AI作成",
-    content: "ここから投稿を作成します。AIアシスタントを使えば、魅力的なキャプションを自動生成できます。",
-    position: 'right'
-  },
-  {
-    targetId: 'nav-INBOX',
-    title: "統合受信箱",
-    content: "InstagramやFacebookのコメント・DMをここでまとめて返信できます。",
-    position: 'right'
-  },
-  {
-    targetId: 'theme-toggle',
-    title: "ダークモード",
-    content: "夜間の作業にはダークモードがおすすめです。ここからいつでも切り替えられます。",
-    position: 'bottom'
-  }
-];
+import { ViewState } from '../types';
+import { getTourStepsForView, TourStep } from './guides/tourSteps';
+import { TOUR_COPY } from './ui/copy';
 
 interface OnboardingTourProps {
   onComplete: () => void;
   isOpen: boolean;
+  currentView: ViewState;
 }
 
-export const OnboardingTour: React.FC<OnboardingTourProps> = ({ onComplete, isOpen }) => {
+const POPUP_WIDTH = 360;
+const POPUP_HEIGHT = 260;
+const VIEWPORT_PADDING = 16;
+const TARGET_GAP = 12;
+
+const clamp = (value: number, min: number, max: number): number => {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+};
+
+const getCenterStyle = () => {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  return {
+    left: clamp((viewportWidth - POPUP_WIDTH) / 2, VIEWPORT_PADDING, viewportWidth - POPUP_WIDTH - VIEWPORT_PADDING),
+    top: clamp((viewportHeight - POPUP_HEIGHT) / 2, VIEWPORT_PADDING, viewportHeight - POPUP_HEIGHT - VIEWPORT_PADDING),
+  };
+};
+
+const computePopoverStyle = (targetRect: DOMRect | null, step: TourStep) => {
+  if (!targetRect || step.position === 'center') return getCenterStyle();
+
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  let left = targetRect.left;
+  let top = targetRect.top;
+
+  if (step.position === 'right') {
+    left = targetRect.right + TARGET_GAP;
+    top = targetRect.top;
+    if (left + POPUP_WIDTH > viewportWidth - VIEWPORT_PADDING) {
+      left = targetRect.left - POPUP_WIDTH - TARGET_GAP;
+    }
+  } else if (step.position === 'left') {
+    left = targetRect.left - POPUP_WIDTH - TARGET_GAP;
+    top = targetRect.top;
+    if (left < VIEWPORT_PADDING) {
+      left = targetRect.right + TARGET_GAP;
+    }
+  } else if (step.position === 'bottom') {
+    top = targetRect.bottom + TARGET_GAP;
+    left = targetRect.left;
+    if (top + POPUP_HEIGHT > viewportHeight - VIEWPORT_PADDING) {
+      top = targetRect.top - POPUP_HEIGHT - TARGET_GAP;
+    }
+  } else if (step.position === 'top') {
+    top = targetRect.top - POPUP_HEIGHT - TARGET_GAP;
+    left = targetRect.left;
+    if (top < VIEWPORT_PADDING) {
+      top = targetRect.bottom + TARGET_GAP;
+    }
+  }
+
+  return {
+    left: clamp(left, VIEWPORT_PADDING, viewportWidth - POPUP_WIDTH - VIEWPORT_PADDING),
+    top: clamp(top, VIEWPORT_PADDING, viewportHeight - POPUP_HEIGHT - VIEWPORT_PADDING),
+  };
+};
+
+const elementExists = (targetId?: string) => {
+  if (!targetId) return true;
+  return Boolean(document.getElementById(targetId));
+};
+
+export const OnboardingTour: React.FC<OnboardingTourProps> = ({ onComplete, isOpen, currentView }) => {
   const [currentStep, setCurrentStep] = useState(0);
+
+  const steps = useMemo(() => {
+    const generated = getTourStepsForView(currentView).filter((step) => elementExists(step.targetId));
+    if (generated.length > 0) return generated;
+    return [
+      {
+        id: 'tour-fallback',
+        title: 'ガイド',
+        content: 'この画面の主な使い方を確認できます。',
+        position: 'center',
+      } satisfies TourStep,
+    ];
+  }, [currentView, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setCurrentStep(0);
+  }, [isOpen, currentView]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (currentStep >= steps.length) {
+      setCurrentStep(0);
+      return;
+    }
+
+    const targetId = steps[currentStep]?.targetId;
+    if (!targetId) return;
+
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+  }, [currentStep, steps, isOpen]);
 
   if (!isOpen) return null;
 
-  const step = TOUR_STEPS[currentStep];
-  const isLastStep = currentStep === TOUR_STEPS.length - 1;
+  const step = steps[currentStep];
+  const isLastStep = currentStep === steps.length - 1;
 
-  const handleNext = () => {
-    if (isLastStep) {
-      onComplete();
-    } else {
-      setCurrentStep(prev => prev + 1);
-    }
-  };
-
-  const handlePrev = () => {
-    setCurrentStep(prev => Math.max(0, prev - 1));
-  };
-
-  // ターゲット要素の位置を取得
-  const getTargetPosition = () => {
-    if (!step.targetId || step.position === 'center') return null;
-    const element = document.getElementById(step.targetId);
-    if (!element) return null;
-    return element.getBoundingClientRect();
-  };
-
-  const targetRect = getTargetPosition();
-
-  // ポップオーバーの位置計算
-  const getPopoverStyle = () => {
-    if (!targetRect) {
-      return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
-    }
-
-    const gap = 12;
-    // 簡易的な位置計算
-    if (step.position === 'right') {
-      return { top: targetRect.top, left: targetRect.right + gap };
-    }
-    if (step.position === 'bottom') {
-      return { top: targetRect.bottom + gap, left: targetRect.left };
-    }
-    // デフォルト
-    return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
-  };
+  const targetRect = step.targetId ? document.getElementById(step.targetId)?.getBoundingClientRect() || null : null;
+  const popoverStyle = computePopoverStyle(targetRect, step);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-start pointer-events-none">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50 pointer-events-auto" />
 
-      {/* Target Highlight (Optional: can use clip-path on backdrop instead) */}
       {targetRect && (
-        <div 
-          className="absolute border-2 border-indigo-400 rounded-lg bg-white/10 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] pointer-events-none transition-all duration-300 ease-in-out"
+        <div
+          className="absolute border-2 border-primary-400 rounded-lg bg-white/10 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] pointer-events-none transition-all duration-300 ease-in-out"
           style={{
             top: targetRect.top - 4,
             left: targetRect.left - 4,
@@ -117,43 +136,49 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({ onComplete, isOp
         />
       )}
 
-      {/* Popover */}
-      <div 
-        className="absolute bg-white dark:bg-gray-800 p-6 rounded-xl shadow-2xl w-80 pointer-events-auto transition-all duration-300 border border-gray-100 dark:border-gray-700"
-        style={getPopoverStyle()}
+      <div
+        className="absolute bg-white dark:bg-gray-800 p-6 rounded-xl shadow-2xl w-[360px] max-w-[calc(100vw-32px)] pointer-events-auto transition-all duration-300 border border-gray-100 dark:border-gray-700"
+        style={popoverStyle}
       >
-        <button 
-          onClick={onComplete} 
+        <button
+          onClick={onComplete}
           className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
         >
           <X size={20} />
         </button>
 
         <div className="mb-4">
-          <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-            Step {currentStep + 1} of {TOUR_STEPS.length}
+          <span className="text-xs font-bold text-primary-600 dark:text-primary-400 uppercase tracking-wider">
+            {TOUR_COPY.stepLabel} {currentStep + 1} / {steps.length}
           </span>
           <h3 className="text-lg font-bold text-gray-900 dark:text-white mt-1">{step.title}</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 leading-relaxed">
-            {step.content}
-          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 leading-relaxed">{step.content}</p>
         </div>
 
         <div className="flex justify-between items-center mt-6">
-          <button 
-            onClick={handlePrev}
+          <button
+            onClick={() => setCurrentStep((prev) => Math.max(0, prev - 1))}
             disabled={currentStep === 0}
             className={`flex items-center text-sm font-medium ${
-              currentStep === 0 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+              currentStep === 0
+                ? 'text-gray-300 cursor-not-allowed'
+                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
             }`}
           >
-            <ChevronLeft size={16} /> 前へ
+            <ChevronLeft size={16} /> {TOUR_COPY.previousLabel}
           </button>
-          <button 
-            onClick={handleNext}
-            className="flex items-center gap-1 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 shadow-sm"
+          <button
+            onClick={() => {
+              if (isLastStep) {
+                onComplete();
+                return;
+              }
+              setCurrentStep((prev) => prev + 1);
+            }}
+            className="flex items-center gap-1 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 shadow-sm"
           >
-            {isLastStep ? '完了' : '次へ'} {!isLastStep && <ChevronRight size={16} />}
+            {isLastStep ? TOUR_COPY.finishLabel : TOUR_COPY.nextLabel}
+            {!isLastStep && <ChevronRight size={16} />}
           </button>
         </div>
       </div>

@@ -313,6 +313,7 @@ test('Phase1: Survey create/publish/respond/assets', async ({ page, browser }, t
   const publicUrlLocator = page.getByTestId('survey-public-url');
   const publishErrorHeading = page.getByRole('heading', { name: '公開エラー' }).first();
   let usedSurveyTitle = auditSurveyTitle;
+  let usedSurveyId: string | null = null;
   let usedExistingPublishedSurvey = false;
   const publishOutcome = await Promise.race([
     publicUrlLocator.waitFor({ state: 'visible', timeout: 20_000 }).then(() => 'published' as const),
@@ -331,12 +332,18 @@ test('Phase1: Survey create/publish/respond/assets', async ({ page, browser }, t
         .first();
       await expect(existingPublished).toBeVisible({ timeout: 20_000 });
       await existingPublished.click();
+      usedSurveyId = await existingPublished.getAttribute('data-survey-id');
       usedSurveyTitle = (await existingPublished.getAttribute('data-survey-title')) || usedSurveyTitle;
       usedExistingPublishedSurvey = true;
       await expect(publicUrlLocator).toBeVisible({ timeout: 20_000 });
     } else {
       throw new Error(`Survey publish failed: ${toastMessage || '公開に失敗しました。'}`);
     }
+  } else {
+    const createdSurvey = page
+      .locator('[data-testid="survey-list-item"]', { hasText: auditSurveyTitle })
+      .first();
+    usedSurveyId = await createdSurvey.getAttribute('data-survey-id');
   }
 
   const resolvePublicUrlFromCurrentSurvey = async () => {
@@ -396,7 +403,9 @@ test('Phase1: Survey create/publish/respond/assets', async ({ page, browser }, t
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await navigateToView(page, 'SURVEY', page.getByTestId('survey-title'));
 
-  const targetSurveyItem = page.locator('[data-testid="survey-list-item"]', { hasText: usedSurveyTitle }).first();
+  const targetSurveyItem = usedSurveyId
+    ? page.locator(`[data-testid="survey-list-item"][data-survey-id="${usedSurveyId}"]`).first()
+    : page.locator('[data-testid="survey-list-item"]', { hasText: usedSurveyTitle }).first();
   await expect(targetSurveyItem).toBeVisible({ timeout: 20_000 });
   await targetSurveyItem.click();
 

@@ -3,6 +3,7 @@ import { ViewState } from '../../types';
 export const NAV_LABELS: Record<ViewState, string> = {
   DASHBOARD: 'ダッシュボード',
   BILLING: '契約プラン',
+  ADVICE: '集客アドバイス',
   CALENDAR: 'カレンダー',
   SURVEY: 'アンケート',
   CREATE_POST: '新規投稿',

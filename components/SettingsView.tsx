@@ -70,12 +70,16 @@ type SettingsTab = 'PROFILE' | 'STORE' | 'INTEGRATIONS' | 'SYSTEM';
 const FEATURE_FLAG_OPTIONS: { key: string; label: string; description: string }[] = [
   { key: 'dashboard', label: 'ダッシュボード', description: 'メニュー: ダッシュボード' },
   { key: 'create_post', label: '新規投稿', description: 'メニュー: 新規投稿' },
+  { key: 'post_templates', label: '投稿テンプレート', description: 'メニュー: 投稿テンプレート' },
+  { key: 'brand_kit', label: 'ブランドキット', description: 'メニュー: ブランドキット' },
   { key: 'post_list', label: '投稿一覧', description: 'メニュー: 投稿一覧' },
   { key: 'calendar', label: 'カレンダー', description: 'メニュー: カレンダー' },
   { key: 'inbox', label: '受信箱', description: 'メニュー: 受信箱' },
   { key: 'survey', label: 'アンケート', description: 'メニュー: アンケート' },
-  { key: 'rank_tracker', label: '順位チェック', description: 'メニュー: 順位チェック' },
+  { key: 'rank_tracker', label: '検索順位チェック', description: 'メニュー: 検索順位チェック' },
+  { key: 'advice', label: '集客アドバイス', description: 'メニュー: 集客アドバイス' },
   { key: 'user_management', label: 'ユーザー管理', description: 'メニュー: ユーザー管理' },
+  { key: 'billing', label: '契約プラン', description: 'メニュー: 契約プラン' },
   { key: 'settings_system', label: 'システム管理', description: '設定タブ: システム管理' },
   { key: 'provider_management', label: '連携先管理', description: 'SNS連携設定タブの管理機能' },
 ];

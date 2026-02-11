@@ -16,6 +16,7 @@ import { SurveyManagerView } from './components/SurveyManagerView';
 import { PublicSurveyPage } from './components/PublicSurveyPage';
 import { RankTrackerView } from './components/RankTrackerView';
 import { BillingView } from './components/BillingView';
+import { AdviceView } from './components/AdviceView';
 import { LandingPage } from './components/LandingPage';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ToastContainer } from './components/Toast';
@@ -37,6 +38,7 @@ const resolvePublicSurveyToken = (): string | null => {
 const AVAILABLE_VIEWS: ViewState[] = [
   'DASHBOARD',
   'BILLING',
+  'ADVICE',
   'CREATE_POST',
   'POST_TEMPLATES',
   'BRAND_KIT',
@@ -181,6 +183,8 @@ const App: React.FC = () => {
         return <Dashboard isDarkMode={isDarkMode} />;
       case 'BILLING':
         return <BillingView currentUser={currentUser} />;
+      case 'ADVICE':
+        return <AdviceView currentUser={currentUser} />;
       case 'CALENDAR':
         return <CalendarView currentUser={currentUser} />;
       case 'CREATE_POST':

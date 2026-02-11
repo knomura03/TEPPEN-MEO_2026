@@ -18,7 +18,8 @@ import {
   Settings,
   Search,
   TrendingUp,
-  CreditCard
+  CreditCard,
+  Lightbulb
 } from 'lucide-react';
 import { OnboardingTour } from './OnboardingTour';
 import { NotificationCenter } from './NotificationCenter';
@@ -166,6 +167,7 @@ export const Layout: React.FC<LayoutProps> = ({
       { id: 'INBOX', label: NAV_LABELS.INBOX, icon: MessageSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'inbox' },
       { id: 'SURVEY', label: NAV_LABELS.SURVEY, icon: ClipboardList, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'survey' },
       { id: 'RANK_TRACKER', label: NAV_LABELS.RANK_TRACKER, icon: TrendingUp, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'rank_tracker' },
+      { id: 'ADVICE', label: NAV_LABELS.ADVICE, icon: Lightbulb, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'advice' },
       { id: 'USER_MANAGEMENT', label: NAV_LABELS.USER_MANAGEMENT, icon: Users, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER], featureKey: 'user_management' },
       { id: 'BILLING', label: NAV_LABELS.BILLING, icon: CreditCard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'billing' },
     ],

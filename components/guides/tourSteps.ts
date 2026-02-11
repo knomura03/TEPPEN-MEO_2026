@@ -39,6 +39,7 @@ const VIEW_STATES: ViewState[] = [
   'POST_LIST',
   'INBOX',
   'RANK_TRACKER',
+  'ADVICE',
   'USER_MANAGEMENT',
   'SETTINGS',
 ];

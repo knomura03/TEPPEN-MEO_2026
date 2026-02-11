@@ -12,6 +12,7 @@ type DbInboxMessageRow = {
   received_at: string;
   is_replied: boolean;
   reply_content: string | null;
+  reply_sent_at: string | null;
   reply_draft_content: string | null;
   reply_draft_status: ReplyDraftStatus | null;
   reply_draft_generated_at: string | null;
@@ -124,6 +125,7 @@ const mapDbMessage = (row: DbInboxMessageRow, assigneeMap: Map<string, string>):
     receivedAt: row.received_at ? new Date(row.received_at) : new Date(),
     isReplied: row.is_replied,
     replyContent: row.reply_content || undefined,
+    replySentAt: row.reply_sent_at ? new Date(row.reply_sent_at) : undefined,
     replyDraftContent: row.reply_draft_content || undefined,
     replyDraftStatus: row.reply_draft_status || undefined,
     replyDraftGeneratedAt: row.reply_draft_generated_at ? new Date(row.reply_draft_generated_at) : undefined,
@@ -145,11 +147,11 @@ export const inboxService = {
     const client = requireSupabase();
 
     const fullSelect =
-      'id, store_id, provider, sender_name, sender_avatar_url, content, received_at, is_replied, reply_content, reply_draft_content, reply_draft_status, reply_draft_generated_at, reply_draft_approved_at, tags, assigned_user_id, due_at, sla_status';
+      'id, store_id, provider, sender_name, sender_avatar_url, content, received_at, is_replied, reply_content, reply_sent_at, reply_draft_content, reply_draft_status, reply_draft_generated_at, reply_draft_approved_at, tags, assigned_user_id, due_at, sla_status';
     const draftSelect =
-      'id, store_id, provider, sender_name, sender_avatar_url, content, received_at, is_replied, reply_content, reply_draft_content, reply_draft_status, reply_draft_generated_at, reply_draft_approved_at';
+      'id, store_id, provider, sender_name, sender_avatar_url, content, received_at, is_replied, reply_content, reply_sent_at, reply_draft_content, reply_draft_status, reply_draft_generated_at, reply_draft_approved_at';
     const legacySelect =
-      'id, store_id, provider, sender_name, sender_avatar_url, content, received_at, is_replied, reply_content';
+      'id, store_id, provider, sender_name, sender_avatar_url, content, received_at, is_replied, reply_content, reply_sent_at';
 
     let rows: DbInboxMessageRow[] = [];
 
@@ -175,6 +177,7 @@ export const inboxService = {
         if (legacyError) throw legacyError;
         rows = (legacyData || []).map((row) => ({
           ...(row as LegacyDbInboxMessageRow),
+          reply_sent_at: null,
           reply_draft_content: null,
           reply_draft_status: null,
           reply_draft_generated_at: null,

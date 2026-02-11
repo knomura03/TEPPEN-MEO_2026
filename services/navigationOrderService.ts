@@ -13,6 +13,7 @@ export type SidebarNavView =
   | 'INBOX'
   | 'SURVEY'
   | 'RANK_TRACKER'
+  | 'ADVICE'
   | 'USER_MANAGEMENT'
   | 'BILLING';
 
@@ -26,6 +27,7 @@ export const SIDEBAR_NAV_DEFAULT_ORDER: SidebarNavView[] = [
   'INBOX',
   'SURVEY',
   'RANK_TRACKER',
+  'ADVICE',
   'USER_MANAGEMENT',
   'BILLING',
 ];

@@ -10,6 +10,7 @@
     "POST_LIST": "投稿の状態確認や承認、編集、公開操作をまとめて行えます。",
     "INBOX": "SNSのコメントやメッセージをまとめて確認し、返信できます。",
     "RANK_TRACKER": "検索順位と店舗情報の状態を確認できます。",
+    "ADVICE": "この店舗の投稿・返信・アンケート・検索順位データをもとに、次に打つ施策を提案します。",
     "USER_MANAGEMENT": "ユーザー追加、権限管理、契約関連の確認を行えます。",
     "SETTINGS": "プロフィール・店舗・SNS連携の設定をまとめて管理します。"
   },
@@ -248,6 +249,26 @@
         "title": "一致状況の確認",
         "content": "店舗情報の一致/不一致を確認し、必要に応じて店舗情報の修正タスクを切り出します。",
         "targetId": "rank-nap-check-section",
+        "position": "top"
+      }
+    ],
+    "ADVICE": [
+      {
+        "title": "分析の実行方法",
+        "content": "「分析を実行」を押した時だけAI分析が走ります。自動実行ではないため、必要なタイミングで実行してください。",
+        "targetId": "advice-run-button",
+        "position": "bottom"
+      },
+      {
+        "title": "分析に使うデータ",
+        "content": "選択中の店舗情報と、投稿・受信箱・アンケート・検索順位の実績だけを使って提案を作成します。",
+        "targetId": "advice-store-summary",
+        "position": "bottom"
+      },
+      {
+        "title": "提案の見方",
+        "content": "提案は「現状」「優先アクション」「今週の実行項目」に分けて表示します。上から順に実行すると迷いにくくなります。",
+        "targetId": "advice-report-section",
         "position": "top"
       }
     ],

@@ -584,6 +584,7 @@ export interface InboxMessage {
   receivedAt: Date;
   isReplied: boolean;
   replyContent?: string;
+  replySentAt?: Date;
   replyDraftContent?: string;
   replyDraftStatus?: ReplyDraftStatus;
   replyDraftGeneratedAt?: Date;
@@ -598,6 +599,7 @@ export interface InboxMessage {
 export type ViewState =
   | 'DASHBOARD'
   | 'BILLING'
+  | 'ADVICE'
   | 'CREATE_POST'
   | 'POST_TEMPLATES'
   | 'BRAND_KIT'

@@ -1,6 +1,6 @@
 # TEPPEN MEO：画面/ボタン/機能/DB接続 状態台帳（正本）
 
-最終更新: 2026-02-10（UI文言/ガイド要素フォーカス/プロフィール画像変更反映）
+最終更新: 2026-02-11（集客アドバイス画面/機能公開設定反映）
 
 ## 0. 運用ルール（必須）
 - この台帳は、実装・修正・設定変更のたびに**同一作業内で更新**する。
@@ -24,6 +24,7 @@
 | STORE-01 | 共通 | 右上店舗セレクタ | HYBRID | `stores`（`storesService.listAccessible`） | Supabase未設定時は「Supabase未設定」バッジ表示 | P1-08拡張 |
 | STORE-02 | 共通 | 店舗0件警告表示 | CONNECTED | `stores` | SQL前提でなくGUI復旧前提に変更済み | P1-08拡張 |
 | DASH-01 | ダッシュボード | KPIカード/グラフ | MOCK_ONLY | なし（固定データ） | 実データ未接続 | 未着手（将来P3系） |
+| ADVICE-01 | 集客アドバイス | 手動実行の提案レポート生成 | HYBRID | `strategyAdviceService` + `postsService` + `inboxService` + `surveyService` + `rankCollectionService` + `geminiService` | Gemini API未設定時は標準ロジックで提案生成（手動実行のみ） | UI改善 |
 | POST-01 | 新規投稿 | 投稿保存（単一店舗） | HYBRID | `posts` | Supabase未設定時は疑似成功通知 | P1-06対応済み |
 | POST-02 | 新規投稿 | 画像アップロード | CONNECTED | Supabase Storage `post-media`, `post_media` | バケット/ポリシー未設定だと失敗 | P1 |
 | POST-03 | 新規投稿 | 投稿先選択 | MOCK_ONLY | なし | `MOCK_ACCOUNTS` 固定 | P2で実接続予定 |
@@ -61,7 +62,7 @@
 | SET-07 | 設定>SNS連携 | OAuth連携（開始/コールバック完了/解除） | CONDITIONAL | Edge Functions `oauth-start`, `oauth-callback` + RPC `oauth_disconnect_session` + `oauth_sessions` | `202602060010` 適用後に有効。認可コード貼り付けは廃止し、コールバックで自動完了 | P2-01 |
 | SET-06 | 設定>システム管理 | APIキー表示UI | UI_ONLY | なし | ダミー表示（`****************************`） | 未着手 |
 | SET-08 | 設定>システム管理 | ブランド/テンプレ管理ページへの導線 | CONNECTED | 画面遷移（`BRAND_KIT`, `POST_TEMPLATES`） | 直接編集は専用ページに集約 | UI改善 |
-| SET-09 | 設定>システム管理 | サイドバーメニュー順序（D&D） | CONNECTED | `navigationOrderService`（localStorage） | ADMINのみ操作可。既定順は `ダッシュボード→新規投稿→投稿テンプレート→ブランドキット→投稿一覧→カレンダー→受信箱→アンケート→検索順位チェック→ユーザー管理→契約プラン` | UI改善 |
+| SET-09 | 設定>システム管理 | サイドバーメニュー順序（D&D） | CONNECTED | `navigationOrderService`（localStorage） | ADMINのみ操作可。既定順は `ダッシュボード→新規投稿→投稿テンプレート→ブランドキット→投稿一覧→カレンダー→受信箱→アンケート→検索順位チェック→集客アドバイス→ユーザー管理→契約プラン` | UI改善 |
 | SET-10 | 設定>プロフィール | プロフィール画像変更 | CONNECTED | Supabase Storage `avatars`, `profiles.avatar_url`, `avatarService` | `202602100004` 適用後に有効。本人のみ更新可 | UI改善 |
 | USER-01 | ユーザー管理 | ユーザー一覧/削除 | HYBRID | `memberships`, `profiles` | Supabase未設定時は `MOCK_USERS` | P1 |
 | USER-02 | ユーザー管理 | 新規ユーザー招待 | CONDITIONAL | Edge Function `admin-create-user` | Function配備＋`SUPABASE_SERVICE_ROLE_KEY`必須 | P1 |

@@ -1,4 +1,4 @@
-import { ProviderConfiguration, ProviderConnectionStatus } from '../types';
+import { ProviderConfiguration, ProviderConnectionStatus, ProviderTargetDiscoveryResult } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
 
 type DbProviderConfigurationRow = {
@@ -233,5 +233,58 @@ export const providerConfigurationService = {
         ? ((result.body as Record<string, unknown>).connectionStatus as ProviderConnectionStatus)
         : undefined;
     return status || 'ERROR';
+  },
+
+  async discoverTargets(params: { providerConfigurationId: string }): Promise<ProviderTargetDiscoveryResult> {
+    const client = requireSupabase();
+    const result = await invokeFunctionByHttp(client, 'admin-provider-discover-targets', params);
+    if (!result.ok) {
+      const bodyError =
+        result.body && typeof result.body === 'object'
+          ? String((result.body as Record<string, unknown>).error || (result.body as Record<string, unknown>).message || '')
+          : '';
+      throw new Error(
+        `ID自動取得に失敗しました。${
+          bodyError ? `（${bodyError} / status=${result.status}）` : `（status=${result.status}）`
+        }`
+      );
+    }
+    if (!result.body || typeof result.body !== 'object') {
+      throw new Error('ID自動取得のレスポンス形式が不正です。');
+    }
+    const body = result.body as Record<string, unknown>;
+    const providerKey = String(body.providerKey || '').trim().toUpperCase();
+    const facebookPagesRaw = Array.isArray(body.facebookPages) ? body.facebookPages : [];
+    const instagramAccountsRaw = Array.isArray(body.instagramAccounts) ? body.instagramAccounts : [];
+    const facebookPages = facebookPagesRaw
+      .map((item) => (item && typeof item === 'object' ? (item as Record<string, unknown>) : null))
+      .filter((item): item is Record<string, unknown> => Boolean(item))
+      .map((item) => ({
+        id: String(item.id || '').trim(),
+        name: String(item.name || '').trim(),
+      }))
+      .filter((item) => item.id.length > 0);
+    const instagramAccounts = instagramAccountsRaw
+      .map((item) => (item && typeof item === 'object' ? (item as Record<string, unknown>) : null))
+      .filter((item): item is Record<string, unknown> => Boolean(item))
+      .map((item) => ({
+        instagramUserId: String(item.instagramUserId || item.instagram_user_id || '').trim(),
+        username: String(item.username || '').trim() || undefined,
+        facebookPageId: String(item.facebookPageId || item.facebook_page_id || '').trim() || undefined,
+        facebookPageName: String(item.facebookPageName || item.facebook_page_name || '').trim() || undefined,
+      }))
+      .filter((item) => item.instagramUserId.length > 0);
+
+    return {
+      providerKey,
+      facebookPages,
+      instagramAccounts,
+      autoApplied: Boolean(body.autoApplied),
+      appliedConfig:
+        body.appliedConfig && typeof body.appliedConfig === 'object'
+          ? (body.appliedConfig as Record<string, unknown>)
+          : {},
+      message: typeof body.message === 'string' ? body.message : undefined,
+    };
   },
 };

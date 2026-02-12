@@ -17,6 +17,26 @@ const extractErrorMessage = (input: unknown): string => {
   return '';
 };
 
+const extractMetaErrorMessage = (input: Record<string, unknown>): string => {
+  const errorObj = input.error && typeof input.error === 'object' ? (input.error as Record<string, unknown>) : null;
+  const message = extractErrorMessage(errorObj || input);
+  const code =
+    errorObj && typeof errorObj.code === 'number'
+      ? String(errorObj.code)
+      : errorObj && typeof errorObj.code === 'string'
+        ? errorObj.code.trim()
+        : '';
+  const subcode =
+    errorObj && typeof errorObj.error_subcode === 'number'
+      ? String(errorObj.error_subcode)
+      : errorObj && typeof errorObj.error_subcode === 'string'
+        ? errorObj.error_subcode.trim()
+        : '';
+  const details = [code ? `code=${code}` : '', subcode ? `subcode=${subcode}` : ''].filter(Boolean).join(', ');
+  if (!message) return '';
+  return details ? `${message} (${details})` : message;
+};
+
 const readString = (source: Record<string, unknown>, keys: string[]): string => {
   for (const key of keys) {
     const value = source[key];
@@ -134,16 +154,13 @@ const exchangeMetaToken = async (params: {
 }): Promise<TokenExchangeResult> => {
   const baseUrl = `https://graph.facebook.com/${params.graphApiVersion}`;
 
-  const shortLivedResponse = await fetch(`${baseUrl}/oauth/access_token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: toFormBody({
-      client_id: params.clientId,
-      client_secret: params.clientSecret,
-      redirect_uri: params.redirectUri,
-      code: params.code,
-    }),
-  });
+  const shortLivedUrl = `${baseUrl}/oauth/access_token?${toFormBody({
+    client_id: params.clientId,
+    client_secret: params.clientSecret,
+    redirect_uri: params.redirectUri,
+    code: params.code,
+  })}`;
+  const shortLivedResponse = await fetch(shortLivedUrl, { method: 'GET' });
   const shortText = await shortLivedResponse.text();
   let shortBody: Record<string, unknown> = {};
   try {
@@ -153,7 +170,10 @@ const exchangeMetaToken = async (params: {
   }
 
   if (!shortLivedResponse.ok) {
-    return { ok: false, error: extractErrorMessage(shortBody.error) || extractErrorMessage(shortBody) || 'Meta token交換に失敗しました。' };
+    return {
+      ok: false,
+      error: extractMetaErrorMessage(shortBody) || `Meta token交換に失敗しました。（status=${shortLivedResponse.status}）`,
+    };
   }
 
   const shortToken = typeof shortBody.access_token === 'string' ? shortBody.access_token.trim() : '';
@@ -161,16 +181,13 @@ const exchangeMetaToken = async (params: {
     return { ok: false, error: 'Meta access_token が取得できませんでした。' };
   }
 
-  const longLivedResponse = await fetch(`${baseUrl}/oauth/access_token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: toFormBody({
-      grant_type: 'fb_exchange_token',
-      client_id: params.clientId,
-      client_secret: params.clientSecret,
-      fb_exchange_token: shortToken,
-    }),
-  });
+  const longLivedUrl = `${baseUrl}/oauth/access_token?${toFormBody({
+    grant_type: 'fb_exchange_token',
+    client_id: params.clientId,
+    client_secret: params.clientSecret,
+    fb_exchange_token: shortToken,
+  })}`;
+  const longLivedResponse = await fetch(longLivedUrl, { method: 'GET' });
   const longText = await longLivedResponse.text();
   let longBody: Record<string, unknown> = {};
   try {
@@ -279,25 +296,58 @@ Deno.serve(async (req) => {
   const providerKey = (sessionRow.provider || '').toUpperCase();
   const nowIso = new Date().toISOString();
   const shouldRedirect = Boolean(safeReturnTo);
+  let providerConfigurationId =
+    typeof sessionRow.metadata?.provider_configuration_id === 'string'
+      ? String(sessionRow.metadata.provider_configuration_id).trim()
+      : '';
 
   const failAndRedirect = async (errorCode: string, message: string): Promise<Response> => {
+    const safeMessage = (message || 'OAuth連携に失敗しました。').trim();
+    const errorSummary = `${errorCode}: ${safeMessage}`.slice(0, 500);
+
     await supabaseAdmin
       .from('oauth_sessions')
       .update({
         status: 'FAILED',
         completed_at: nowIso,
-        last_error: `${errorCode}: ${message}`.slice(0, 500),
+        last_error: errorSummary,
       })
       .eq('id', sessionRow.id);
+
+    if (providerConfigurationId) {
+      await supabaseAdmin
+        .from('provider_configurations')
+        .update({
+          connection_status: 'ERROR',
+          last_error: errorSummary,
+          last_tested_at: nowIso,
+          updated_by: sessionRow.actor_user_id,
+        })
+        .eq('id', providerConfigurationId);
+    }
+
+    if (providerKey) {
+      await supabaseAdmin.from('integrations').upsert(
+        {
+          store_id: sessionRow.store_id,
+          provider: providerKey,
+          status: 'ERROR',
+          last_error: errorSummary,
+          last_sync_at: null,
+        },
+        { onConflict: 'store_id,provider' }
+      );
+    }
 
     if (safeReturnTo && shouldRedirect) {
       return redirectTo(safeReturnTo, {
         oauthStatus: 'error',
         oauthProvider: providerKey,
         oauthError: errorCode,
+        oauthErrorMessage: safeMessage.slice(0, 180),
       });
     }
-    return new Response(message, { status: 400, headers: corsHeaders });
+    return new Response(safeMessage, { status: 400, headers: corsHeaders });
   };
 
   if (providerError) {
@@ -349,16 +399,13 @@ Deno.serve(async (req) => {
     return failAndRedirect('OAUTH_PROVIDER_NOT_CONFIGURED', 'OAuth provider が設定されていません。');
   }
 
-  const providerConfigurationId =
-    typeof sessionRow.metadata?.provider_configuration_id === 'string'
-      ? String(sessionRow.metadata.provider_configuration_id).trim()
-      : '';
-
-  const { data: configuration, error: configurationError } = await supabaseAdmin
+  const { data: configuredById, error: configurationError } = await supabaseAdmin
     .from('provider_configurations')
     .select('id, config, has_gui_config')
     .eq('id', providerConfigurationId)
     .maybeSingle();
+  let configuration = configuredById;
+
   if (configurationError || !configuration) {
     const { data: fallbackConfiguration, error: fallbackConfigurationError } = await supabaseAdmin
       .from('provider_configurations')
@@ -369,8 +416,13 @@ Deno.serve(async (req) => {
     if (fallbackConfigurationError || !fallbackConfiguration) {
       return failAndRedirect('PROVIDER_CONFIGURATION_NOT_FOUND', 'provider configuration が見つかりません。');
     }
-    (configuration as unknown) = fallbackConfiguration;
+    configuration = fallbackConfiguration;
   }
+
+  if (!configuration) {
+    return failAndRedirect('PROVIDER_CONFIGURATION_NOT_FOUND', 'provider configuration が見つかりません。');
+  }
+  providerConfigurationId = configuration.id;
 
   const config = configuration.config && typeof configuration.config === 'object' ? configuration.config : {};
   const configObject = config as Record<string, unknown>;
@@ -529,4 +581,3 @@ Deno.serve(async (req) => {
 
   return new Response('OAuth completed', { status: 200, headers: corsHeaders });
 });
-

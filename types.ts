@@ -340,6 +340,27 @@ export interface ProviderConfiguration {
   secretUpdatedAt?: Date;
 }
 
+export interface ProviderDiscoveredFacebookPage {
+  id: string;
+  name: string;
+}
+
+export interface ProviderDiscoveredInstagramAccount {
+  instagramUserId: string;
+  username?: string;
+  facebookPageId?: string;
+  facebookPageName?: string;
+}
+
+export interface ProviderTargetDiscoveryResult {
+  providerKey: string;
+  facebookPages: ProviderDiscoveredFacebookPage[];
+  instagramAccounts: ProviderDiscoveredInstagramAccount[];
+  autoApplied: boolean;
+  appliedConfig: Record<string, unknown>;
+  message?: string;
+}
+
 export interface ProviderReadiness {
   providerKey: string;
   hasGuiConfig: boolean;

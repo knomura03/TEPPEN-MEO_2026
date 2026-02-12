@@ -12,6 +12,7 @@ import {
   ProviderReadiness,
   ProviderAuthKind,
   ProviderKind,
+  ProviderTargetDiscoveryResult,
   ViewState,
   VisibilityState,
 } from '../types';
@@ -267,6 +268,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   const [providerSecretInput, setProviderSecretInput] = useState('');
   const [isSavingProviderConfig, setIsSavingProviderConfig] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [isDiscoveringTargets, setIsDiscoveringTargets] = useState(false);
   const [oauthAuthorizationUrl, setOauthAuthorizationUrl] = useState('');
   const [oauthProviderLabel, setOauthProviderLabel] = useState('');
   const [isOAuthModalOpen, setIsOAuthModalOpen] = useState(false);
@@ -837,6 +839,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     const oauthStatus = params.get('oauthStatus');
     const oauthProvider = params.get('oauthProvider');
     const oauthError = params.get('oauthError');
+    const oauthErrorMessage = params.get('oauthErrorMessage');
 
     const decodeOAuthError = (value: string): string => {
       try {
@@ -855,15 +858,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       void loadProviderCards();
     } else if (oauthStatus === 'error') {
       const errorText = oauthError ? `（${decodeOAuthError(oauthError)}）` : '';
-      addNotification('OAuth連携エラー', `OAuth連携に失敗しました。${errorText}`, 'ERROR');
+      const detailText = oauthErrorMessage ? `\n詳細: ${decodeOAuthError(oauthErrorMessage)}` : '';
+      addNotification('OAuth連携エラー', `OAuth連携に失敗しました。${errorText}${detailText}`, 'ERROR');
       void loadProviderCards();
     }
 
-    if (!oauthStatus && !oauthError) return;
+    if (!oauthStatus && !oauthError && !oauthErrorMessage) return;
 
     params.delete('oauthStatus');
     params.delete('oauthProvider');
     params.delete('oauthError');
+    params.delete('oauthErrorMessage');
     const nextQuery = params.toString();
     const nextPath = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
     window.history.replaceState({}, '', nextPath);
@@ -1034,6 +1039,58 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       addNotification('接続テストエラー', `接続テストに失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`, 'ERROR');
     } finally {
       setIsTestingConnection(false);
+    }
+  };
+
+  const buildDiscoverySummary = (result: ProviderTargetDiscoveryResult): string => {
+    const facebookCount = result.facebookPages.length;
+    const instagramCount = result.instagramAccounts.length;
+    if (result.providerKey === 'FACEBOOK') {
+      return `Facebookページ候補 ${facebookCount}件`;
+    }
+    return `Instagram候補 ${instagramCount}件（Facebookページ候補 ${facebookCount}件）`;
+  };
+
+  const handleDiscoverProviderTargets = async () => {
+    if (!isSupabaseConfigured) {
+      addNotification('未設定', 'Supabase未設定のため、ID自動取得を実行できません。', 'WARNING');
+      return;
+    }
+    if (!selectedProviderCard) {
+      addNotification('選択エラー', '連携先を選択してください。', 'WARNING');
+      return;
+    }
+    if (!selectedProviderCard.configuration?.id) {
+      addNotification('未設定', '先に「設定を保存」を実行してください。', 'WARNING');
+      return;
+    }
+
+    setIsDiscoveringTargets(true);
+    try {
+      const result = await providerConfigurationService.discoverTargets({
+        providerConfigurationId: selectedProviderCard.configuration.id,
+      });
+      await loadProviderCards();
+
+      const summary = buildDiscoverySummary(result);
+      if (result.autoApplied) {
+        addNotification(
+          'ID自動取得',
+          `${selectedProviderCard.catalog.displayName} のIDを自動設定しました。${summary}`,
+          'SUCCESS'
+        );
+      } else {
+        addNotification(
+          'ID自動取得',
+          `${selectedProviderCard.catalog.displayName} の候補を取得しましたが、設定に反映できませんでした。${summary}`,
+          'WARNING'
+        );
+      }
+    } catch (error) {
+      console.error('[SettingsView] Failed to discover provider targets:', error);
+      addNotification('ID自動取得エラー', `ID自動取得に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`, 'ERROR');
+    } finally {
+      setIsDiscoveringTargets(false);
     }
   };
 
@@ -1226,6 +1283,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       : !selectedProviderCard.configuration?.id
         ? '先に「設定を保存」を実行してください。'
         : null;
+  const discoverProviderDisabledReason = !isSupabaseConfigured
+    ? 'Supabase未設定のためID自動取得できません。'
+    : !selectedProviderCard
+      ? '連携先を選択してください。'
+      : selectedProviderCard.catalog.authKind !== 'OAUTH2'
+        ? 'ログイン連携（OAuth）の連携先のみ対応しています。'
+        : !['FACEBOOK', 'INSTAGRAM'].includes(selectedProviderCard.catalog.providerKey)
+          ? 'Facebook / Instagram のみ対応しています。'
+          : !selectedProviderCard.configuration?.id
+            ? '先に「設定を保存」を実行してください。'
+            : null;
   const brandAssetDisabledReason = !isSupabaseConfigured
     ? 'Supabase未設定のため保存できません。'
     : !activeOrgId
@@ -1807,8 +1875,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       >
                         {isTestingConnection ? 'テスト中...' : '接続テスト'}
                       </button>
+                      <button
+                        data-testid="provider-config-discover-ids"
+                        onClick={() => void handleDiscoverProviderTargets()}
+                        disabled={isDiscoveringTargets || Boolean(discoverProviderDisabledReason)}
+                        title={discoverProviderDisabledReason || undefined}
+                        className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {isDiscoveringTargets ? '取得中...' : 'IDを自動取得'}
+                      </button>
                     </div>
-                    {(saveProviderDisabledReason || testProviderDisabledReason) && (
+                    {(saveProviderDisabledReason || testProviderDisabledReason || discoverProviderDisabledReason) && (
                       <div className="space-y-1">
                         {saveProviderDisabledReason && (
                           <p className="text-xs text-amber-700 dark:text-amber-300">設定保存不可: {saveProviderDisabledReason}</p>
@@ -1816,10 +1893,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                         {testProviderDisabledReason && (
                           <p className="text-xs text-amber-700 dark:text-amber-300">接続テスト不可: {testProviderDisabledReason}</p>
                         )}
+                        {discoverProviderDisabledReason && (
+                          <p className="text-xs text-amber-700 dark:text-amber-300">ID自動取得不可: {discoverProviderDisabledReason}</p>
+                        )}
                       </div>
                     )}
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       実データで接続確認できるのは、設定済みの連携先のみです。未設定の連携先はテスト表示になり、Supabase未接続時はすべてテスト表示になります。
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      「IDを自動取得」は Facebook で `facebook_page_id`、Instagram で `instagram_user_id` / `ig_user_id` を自動入力します。
                     </p>
                   </div>
                 </div>

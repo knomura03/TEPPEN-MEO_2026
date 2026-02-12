@@ -46,10 +46,8 @@
 ### 3-1. Provider設定保存
 1. `設定 > SNS連携設定` を開く
 2. 右下 `Provider設定（Admin）` で対象providerを選ぶ
-3. 設定JSON（またはフォーム）に必要IDを入力
-   - Facebook: `facebook_page_id`
-   - Instagram: `instagram_user_id`
-   - GBP: 必要に応じて `gbp_account_id` / `gbp_location_id`
+3. 設定JSON（またはフォーム）に `app_id / client_id / graph_api_version` など必須項目を入力
+   - `facebook_page_id` / `instagram_user_id` は未入力でも進めてよい（後で自動取得）
 4. シークレット欄に `client_secret`（Metaは`app_secret`）を入力
 5. `設定を保存` を押す
 
@@ -59,7 +57,15 @@
 3. Google/Metaの認可画面で許可
 4. 自動でTEPPENへ戻る（`Settings > SNS連携設定`）
 
-### 3-3. 接続テスト
+### 3-3. ID自動取得（Facebook/Instagram）
+1. 右下 `Provider設定（Admin）` で Facebook または Instagram を選択
+2. `IDを自動取得` を押す
+3. 成功トースト後、設定JSONに以下が反映されることを確認
+   - Facebook: `facebook_page_id`
+   - Instagram: `instagram_user_id`
+   - Instagramは互換のため `ig_user_id` も同値で反映
+
+### 3-4. 接続テスト
 1. 対象providerを選択
 2. `接続テスト` を押す
 3. `CONNECTED` になることを確認
@@ -85,7 +91,7 @@
 2. `OAUTH_RETURNTO_ALLOWLIST` に `http://localhost:3000`（ローカル）または本番URLが含まれるか確認
 
 ### 5-3. Instagramだけ失敗
-1. `instagram_user_id` が保存されているか確認
+1. `IDを自動取得` を押して `instagram_user_id` が保存されるか確認
 2. Meta側で Page と IGビジネスアカウントが紐付いているか確認
 
 ### 5-4. GBPだけ失敗

@@ -48,15 +48,32 @@ const requireFunctionRequestContext = async (client: ReturnType<typeof requireSu
   }
 
   const { data, error } = await client.auth.getSession();
-  if (error) {
-    throw new Error(`ログインセッションの取得に失敗しました。（${error.message}）`);
-  }
-  const accessToken = data.session?.access_token;
+  let accessToken = data.session?.access_token?.trim() || '';
+
   if (!accessToken) {
-    throw new Error('ログインセッションが無効です。いったんログアウトして再ログインしてください。');
+    const { data: refreshedData, error: refreshError } = await client.auth.refreshSession();
+    accessToken = refreshedData.session?.access_token?.trim() || '';
+    if (!accessToken) {
+      const reason = refreshError?.message || error?.message || 'Auth session missing';
+      throw new Error(`ログインセッションが無効です。いったんログアウトして再ログインしてください。（${reason}）`);
+    }
   }
 
   return { supabaseUrl, anonKey, accessToken };
+};
+
+const isSessionAuthError = (status: number, body: unknown, text: string): boolean => {
+  if (status !== 401) return false;
+  const message =
+    body && typeof body === 'object'
+      ? String((body as Record<string, unknown>).error || (body as Record<string, unknown>).message || '')
+      : text || '';
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('auth session missing') ||
+    normalized.includes('missing authorization') ||
+    normalized.includes('invalid jwt')
+  );
 };
 
 const invokeFunctionByHttp = async (
@@ -66,24 +83,36 @@ const invokeFunctionByHttp = async (
 ): Promise<FunctionInvokeResult> => {
   const { supabaseUrl, anonKey, accessToken } = await requireFunctionRequestContext(client);
   const requestUrl = `${supabaseUrl}/functions/v1/${functionName}?client=direct-http-v3`;
-  const response = await fetch(requestUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: anonKey,
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  const execute = async (token: string): Promise<FunctionInvokeResult> => {
+    const response = await fetch(requestUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: anonKey,
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
 
-  const text = await response.text();
-  let body: unknown = null;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = null;
+    const text = await response.text();
+    let body: unknown = null;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      body = null;
+    }
+    return { ok: response.ok, status: response.status, body, text };
+  };
+
+  const initialResult = await execute(accessToken);
+  if (isSessionAuthError(initialResult.status, initialResult.body, initialResult.text)) {
+    const { data: refreshedData } = await client.auth.refreshSession();
+    const refreshedToken = refreshedData.session?.access_token?.trim() || '';
+    if (refreshedToken && refreshedToken !== accessToken) {
+      return execute(refreshedToken);
+    }
   }
-  return { ok: response.ok, status: response.status, body, text };
+  return initialResult;
 };
 
 const mapConfiguration = (row: DbProviderConfigurationRow): ProviderConfiguration => ({

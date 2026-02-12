@@ -1073,16 +1073,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       await loadProviderCards();
 
       const summary = buildDiscoverySummary(result);
+      const hasCandidates =
+        result.providerKey === 'FACEBOOK'
+          ? result.facebookPages.length > 0
+          : result.instagramAccounts.length > 0;
       if (result.autoApplied) {
         addNotification(
           'ID自動取得',
-          `${selectedProviderCard.catalog.displayName} のIDを自動設定しました。${summary}`,
+          `${selectedProviderCard.catalog.displayName} のIDを自動設定しました。${summary}${result.message ? ` / ${result.message}` : ''}`,
+          'SUCCESS'
+        );
+      } else if (hasCandidates) {
+        addNotification(
+          'ID自動取得',
+          `${selectedProviderCard.catalog.displayName} の候補は取得済みです。既存の設定値をそのまま利用します。${summary}${result.message ? ` / ${result.message}` : ''}`,
           'SUCCESS'
         );
       } else {
         addNotification(
           'ID自動取得',
-          `${selectedProviderCard.catalog.displayName} の候補を取得しましたが、設定に反映できませんでした。${summary}`,
+          `${selectedProviderCard.catalog.displayName} の候補が取得できませんでした。${summary}${result.message ? ` / ${result.message}` : ''}`,
           'WARNING'
         );
       }

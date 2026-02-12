@@ -149,12 +149,14 @@ const appendInstagramCandidates = (
 
 const discoverMetaTargets = async (
   accessToken: string,
-  graphApiVersion: string
+  graphApiVersion: string,
+  configuredFacebookPageId: string
 ): Promise<{
   ok: boolean;
   error?: string;
   facebookPages: DiscoveredFacebookPage[];
   instagramAccounts: DiscoveredInstagramAccount[];
+  diagnostics?: string[];
 }> => {
   const fields = 'id,name,access_token,instagram_business_account{id,username},connected_instagram_account{id,username}';
   const url = `https://graph.facebook.com/${graphApiVersion}/me/accounts?fields=${encodeURIComponent(fields)}`;
@@ -178,6 +180,7 @@ const discoverMetaTargets = async (
   const pages: DiscoveredFacebookPage[] = [];
   const instagramMap = new Map<string, DiscoveredInstagramAccount>();
   const pageAccessTokens: { pageId: string; pageName: string; accessToken: string }[] = [];
+  const diagnostics: string[] = [];
 
   for (const row of dataRows) {
     const typed = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
@@ -215,10 +218,44 @@ const discoverMetaTargets = async (
     }
   }
 
+  const shouldTryConfiguredPage =
+    configuredFacebookPageId.length > 0 && !pages.some((page) => page.id === configuredFacebookPageId);
+  if (instagramMap.size === 0 && shouldTryConfiguredPage) {
+    const configuredPageUrl = `https://graph.facebook.com/${graphApiVersion}/${encodeURIComponent(configuredFacebookPageId)}?fields=${encodeURIComponent('id,name,instagram_business_account{id,username},connected_instagram_account{id,username}')}`;
+    const configuredResult = await fetchJson(configuredPageUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!configuredResult.ok) {
+      const providerError = extractProviderErrorMessage(configuredResult.body);
+      diagnostics.push(
+        providerError
+          ? `指定Facebookページ(${configuredFacebookPageId})参照エラー: ${providerError}`
+          : `指定Facebookページ(${configuredFacebookPageId})参照エラー: status=${configuredResult.status}`
+      );
+    } else {
+      const configuredBody =
+        configuredResult.body && typeof configuredResult.body === 'object'
+          ? (configuredResult.body as Record<string, unknown>)
+          : {};
+      const pageId = readString(configuredBody, ['id']) || configuredFacebookPageId;
+      const pageName = readString(configuredBody, ['name']) || configuredFacebookPageId;
+      if (!pages.some((page) => page.id === pageId)) {
+        pages.push({ id: pageId, name: pageName });
+      }
+      appendInstagramCandidates(instagramMap, configuredBody, pageId, pageName);
+      if (instagramMap.size === 0) {
+        diagnostics.push(`指定Facebookページ(${configuredFacebookPageId})にInstagramビジネスアカウントが紐付いていません。`);
+      }
+    }
+  }
+
   return {
     ok: true,
     facebookPages: pages,
     instagramAccounts: Array.from(instagramMap.values()),
+    diagnostics,
   };
 };
 
@@ -340,8 +377,9 @@ Deno.serve(async (req) => {
       : {};
   const currentConfig = { ...rawConfig };
   const graphApiVersion = readString(currentConfig, ['graph_api_version']) || 'v20.0';
+  const configuredFacebookPageId = readString(currentConfig, ['facebook_page_id']);
 
-  const discovery = await discoverMetaTargets(accessToken, graphApiVersion);
+  const discovery = await discoverMetaTargets(accessToken, graphApiVersion, configuredFacebookPageId);
   if (!discovery.ok) {
     return jsonResponse(400, { error: discovery.error || 'Meta APIから候補取得に失敗しました。' });
   }
@@ -381,10 +419,12 @@ Deno.serve(async (req) => {
     return jsonResponse(400, { error: 'Facebookページ候補が取得できませんでした。Metaの権限設定を確認してください。' });
   }
   if (providerKey === 'INSTAGRAM' && !preferredInstagramId) {
+    const diagnosticsMessage = discovery.diagnostics?.length ? ` / ${discovery.diagnostics.join(' / ')}` : '';
     return jsonResponse(400, {
       error:
-        'Instagramビジネスアカウント候補が取得できませんでした。Facebookページとの紐づけを確認してください。',
+        `Instagramビジネスアカウント候補が取得できませんでした。Facebookページとの紐づけを確認してください。${diagnosticsMessage}`,
       facebookPages: discovery.facebookPages,
+      diagnostics: discovery.diagnostics || [],
     });
   }
 

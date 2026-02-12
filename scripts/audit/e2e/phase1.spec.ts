@@ -233,7 +233,15 @@ const selectStoreByIdIfAvailable = async (page: Page, storeId: string | null) =>
 
 const waitForPostSaved = async (page: Page) => {
   await expect(page.getByTestId('post-submit')).not.toContainText('保存中');
-  await expect(page.getByTestId('post-content')).toHaveValue('');
+  await expect(page.getByTestId('post-content')).toHaveValue('', { timeout: 30_000 });
+};
+
+const submitPost = async (page: Page) => {
+  page.once('dialog', (dialog) => {
+    void dialog.accept();
+  });
+  await page.getByTestId('post-submit').click();
+  await waitForPostSaved(page);
 };
 
 const navigateToView = async (
@@ -466,13 +474,11 @@ test('Phase1: Approval workflow (USER -> MANAGER approve/reject)', async ({ page
   await navigateToView(page, 'CREATE_POST', page.getByTestId('post-content'));
   await page.getByRole('button', { name: 'FACEBOOK' }).click();
   await page.getByTestId('post-content').fill(approveContent);
-  await page.getByTestId('post-submit').click();
-  await waitForPostSaved(page);
+  await submitPost(page);
 
   await page.getByRole('button', { name: 'FACEBOOK' }).click();
   await page.getByTestId('post-content').fill(rejectContent);
-  await page.getByTestId('post-submit').click();
-  await waitForPostSaved(page);
+  await submitPost(page);
 
   await logout(page);
 

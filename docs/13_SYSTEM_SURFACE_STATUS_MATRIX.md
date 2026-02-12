@@ -1,6 +1,6 @@
 # TEPPEN MEO：画面/ボタン/機能/DB接続 状態台帳（正本）
 
-最終更新: 2026-02-11（集客アドバイス画面/機能公開設定反映）
+最終更新: 2026-02-12（実データ化: 投稿一覧統合/受信箱同期/ダッシュボード指標）
 
 ## 0. 運用ルール（必須）
 - この台帳は、実装・修正・設定変更のたびに**同一作業内で更新**する。
@@ -23,7 +23,7 @@
 | LAYOUT-01 | 共通レイアウト | 左メニュー表示制御 | CONNECTED | `feature_flags` | Supabase未設定時はデフォルト表示 | Phase0 |
 | STORE-01 | 共通 | 右上店舗セレクタ | HYBRID | `stores`（`storesService.listAccessible`） | Supabase未設定時は「Supabase未設定」バッジ表示 | P1-08拡張 |
 | STORE-02 | 共通 | 店舗0件警告表示 | CONNECTED | `stores` | SQL前提でなくGUI復旧前提に変更済み | P1-08拡張 |
-| DASH-01 | ダッシュボード | KPIカード/グラフ | MOCK_ONLY | なし（固定データ） | 実データ未接続 | 未着手（将来P3系） |
+| DASH-01 | ダッシュボード | KPIカード/グラフ | HYBRID | Edge Function `dashboard-metrics`, GBP Performance API, `posts`, `inbox_messages` | GBP未接続・権限不足時はFALLBACKで継続表示 | P5 |
 | ADVICE-01 | 集客アドバイス | 手動実行の提案レポート生成 | HYBRID | `strategyAdviceService` + `postsService` + `inboxService` + `surveyService` + `rankCollectionService` + `geminiService` | Gemini API未設定時は標準ロジックで提案生成（手動実行のみ） | UI改善 |
 | POST-01 | 新規投稿 | 投稿保存（単一店舗） | HYBRID | `posts` | Supabase未設定時は疑似成功通知 | P1-06対応済み |
 | POST-02 | 新規投稿 | 画像アップロード | CONNECTED | Supabase Storage `post-media`, `post_media` | バケット/ポリシー未設定だと失敗 | P1 |
@@ -32,8 +32,9 @@
 | POST-07 | 新規投稿 | テンプレート適用/ブランド警告 | HYBRID | `brandKitService`, `brand_kits`, `post_templates` | migration `202602060014` 未適用環境は専用エラー。Supabase未設定時はテンプレ未登録表示 | P2-05 |
 | TEMPLATE-01 | 投稿テンプレート | テンプレート作成/更新/削除 | CONNECTED | `post_templates`, `brandKitService` | `202602060014` 未適用環境は専用エラー | UI改善 |
 | BRAND-01 | ブランドキット | 口調/禁止語/推奨ハッシュタグ/署名管理 | CONNECTED | `brand_kits`, `brandKitService` | `202602060014` 未適用環境は専用エラー | UI改善 |
-| POST-05 | 投稿一覧 | Instagram投稿実行（手動） | CONDITIONAL | `postPublishService`, Edge Function `instagram-publish-post`, `post_publish_logs` | `202602060011` + Function配備後に有効。条件未達時はMOCK記録で実行 | P2-02 |
-| POST-06 | 投稿一覧 | Facebook投稿実行（手動） | CONDITIONAL | `postPublishService`, Edge Function `facebook-publish-post`, `post_publish_logs` | Function配備後に有効。条件未達時はMOCK記録で実行 | P2-03 |
+| POST-05 | 投稿一覧 | Instagram投稿実行（手動） | CONDITIONAL | `postPublishService`, Edge Function `post-publish-run`, `post_publish_logs` | `202602120001` + Function配備後に有効。条件未達時はFAILEDログで可視化 | P5 |
+| POST-06 | 投稿一覧 | Facebook投稿実行（手動） | CONDITIONAL | `postPublishService`, Edge Function `post-publish-run`, `post_publish_logs` | `202602120001` + Function配備後に有効。条件未達時はFAILEDログで可視化 | P5 |
+| POST-08 | 投稿一覧 | 外部投稿の統合表示（DB+外部API） | CONDITIONAL | Edge Function `provider-posts-fetch`, `feature_flags.remote_posts_autofetch`, localStorageキャッシュ（5分） | 外部投稿はDB保存しない。`post_publish_logs.external_post_id` と重複排除 | P5 |
 | POSTLIST-01 | 投稿一覧 | 一覧表示/編集/削除 | HYBRID | `posts`, `post_media` | Supabase未設定時は `MOCK_POSTS` | P1 |
 | POSTLIST-02 | 投稿一覧 | 承認申請/承認/差し戻し | HYBRID | `posts`（承認列）, `post_approval_comments` | migration未適用時は専用エラー表示 | P1-06/07 |
 | CAL-01 | カレンダー | 日付セル投稿表示 | HYBRID | `posts` | Supabase未設定時は `MOCK_POSTS` | P1 |
@@ -42,6 +43,7 @@
 | INBOX-02 | 受信箱 | AI返信案作成/承認送信 | HYBRID | Gemini API, `inbox_messages.reply_draft_*` | Geminiキー未設定時は生成不可 | P1-05 |
 | INBOX-03 | 受信箱 | Facebook返信実行（手動） | CONDITIONAL | `messageReplyService`, Edge Function `facebook-reply-message`, `inbox_reply_logs` | `202602060012` + Function配備後に有効。条件未達時はMOCK返信で記録 | P2-03 |
 | INBOX-04 | 受信箱 | タグ/担当/対応期限管理 | CONNECTED | `inbox_messages.tags`, `assigned_user_id`, `due_at`, `sla_status`, `inboxService.updateWorkflow` | `202602060013` 未適用環境では保存不可（専用エラー） | P2-04 |
+| INBOX-05 | 受信箱 | 口コミ・コメント同期（FB/IG/GBP） | CONDITIONAL | Edge Function `inbox-sync`, `inbox_threads`, `inbox_messages`, `feature_flags.inbox_autosync` | 第1弾は「口コミ・コメント」のみ。DMは準備中タブ表示 | P5 |
 | RANK-01 | 順位計測 | キーワードCRUD | CONDITIONAL | `rankKeywordService`, `rank_keywords` | `202602060015` 未適用環境では保存不可（専用エラー）。`rank_tracker` が `HIDDEN/ADMIN_ONLY` の場合は非表示 | P3-01 |
 | RANK-02 | 順位計測 | 日次順位収集（手動実行/履歴/結果） | CONDITIONAL | `rankCollectionService`, Edge Function `rank-collect`, `rank_collection_runs`, `rank_collection_results` | `202602060016` 未適用環境では実行不可。現時点はMOCK収集のみ、REAL指定は明示FAILED | P3-02 |
 | RANK-03 | 順位計測 | 競合ターゲット管理/競合比較収集 | CONDITIONAL | `competitorService`, `competitor_targets`, `competitor_metric_snapshots`, Edge Function `rank-collect` | `202602060017` 未適用環境では実行不可。現時点はMOCK収集のみ、REAL指定は明示FAILED | P3-03 |
@@ -89,6 +91,11 @@
 | `facebook-publish-post` | `supabase/functions/facebook-publish-post/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |
 | `facebook-reply-message` | `supabase/functions/facebook-reply-message/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-08 ユーザー確認）/ `Verify JWT=OFF` |
 | `rank-collect` | `supabase/functions/rank-collect/index.ts` | `SUPABASE_SERVICE_ROLE_KEY` | 配備済み（2026-02-09 CLI実行確認）/ `Verify JWT=OFF`。P3-02/P3-03の収集処理を担当 |
+| `post-publish-run` | `supabase/functions/post-publish-run/index.ts` | `SUPABASE_SERVICE_ROLE_KEY`, `PROVIDER_CONFIG_ENCRYPTION_KEY` | 配備済み（2026-02-12 CLI配備）/ `Verify JWT=OFF` |
+| `scheduled-post-publisher` | `supabase/functions/scheduled-post-publisher/index.ts` | `SUPABASE_SERVICE_ROLE_KEY`, `PROVIDER_CONFIG_ENCRYPTION_KEY`（任意: `SCHEDULED_POST_PUBLISHER_SECRET`） | 配備済み（2026-02-12 CLI配備）/ Supabase Scheduled Function（毎分）設定が必要 |
+| `provider-posts-fetch` | `supabase/functions/provider-posts-fetch/index.ts` | `SUPABASE_SERVICE_ROLE_KEY`, `PROVIDER_CONFIG_ENCRYPTION_KEY` | 配備済み（2026-02-12 CLI配備）/ 投稿一覧の外部取得で利用 |
+| `inbox-sync` | `supabase/functions/inbox-sync/index.ts` | `SUPABASE_SERVICE_ROLE_KEY`, `PROVIDER_CONFIG_ENCRYPTION_KEY` | 配備済み（2026-02-12 CLI配備）/ 受信箱同期で利用 |
+| `dashboard-metrics` | `supabase/functions/dashboard-metrics/index.ts` | `SUPABASE_SERVICE_ROLE_KEY`, `PROVIDER_CONFIG_ENCRYPTION_KEY` | 配備済み（2026-02-12 CLI配備）/ ダッシュボード指標で利用 |
 
 ## 4. DB migration適用台帳（P1/P2/P3/P4）
 | migrationファイル | 目的 | 状態 |
@@ -116,12 +123,12 @@
 | `supabase/migrations/202602090002_p4_real_oauth_callback_and_credentials_encryption.sql` | P4 実OAuthコールバック運用補助index | 2026-02-10 CLI適用済み（本番）。`oauth_sessions` / `integration_credentials` の参照最適化 |
 | `supabase/migrations/202602100001_p1_survey_customization_and_header_media.sql` | P1-10 アンケート文言カスタム + ヘッダー画像 | 2026-02-10 本番適用済み（CLI確認） |
 | `supabase/migrations/202602100004_profile_avatar_storage.sql` | UI改善 プロフィール画像Storage/RLS | 2026-02-10 本番適用済み（CLI実行） |
+| `supabase/migrations/202602120001_p5_real_data_publish_inbox_dashboard.sql` | P5 実データ運用（投稿実行排他/受信箱同期制約/feature_flags初期値） | 2026-02-12 本番適用済み（CLI確認） |
 
 ## 5. 現時点のモック/未接続残件（優先順）
-1. ダッシュボードKPIが固定値（実データ未接続）
+1. `scheduled-post-publisher` のSupabase cron（毎分）が未設定（設定手順: `docs/20_SCHEDULED_POST_PUBLISHER_RUNBOOK.md`）
 2. 投稿先アカウント選択が `MOCK_ACCOUNTS` 固定
 3. 設定 > システム管理タブのAPIキー欄はUIのみ
-4. 画面内の検索入力（ヘッダー検索など）はUIのみで未接続
 
 ## 6. 更新手順（実装アクションとセット）
 1. 実装/修正に着手する前に、対象行の「現在値」を確認する

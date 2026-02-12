@@ -9,6 +9,8 @@ import { geminiService } from '../services/geminiService';
 import { useStore } from '../contexts/StoreContext';
 import { messageReplyService } from '../services/messageReplyService';
 import { getErrorMessage } from '../services/errorMessage';
+import { featureFlagsService, resolveFeatureState } from '../services/featureFlagsService';
+import { inboxSyncService } from '../services/inboxSyncService';
 import { PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
 
 const platformLabel: Record<SocialPlatform, string> = {
@@ -33,6 +35,7 @@ const slaBadgeClass: Record<InboxSlaStatus, string> = {
 };
 
 type InboxStatusFilter = 'ALL' | 'UNREPLIED' | 'REPLIED' | 'ASSIGNED' | 'AT_RISK' | 'OVERDUE';
+type InboxPrimaryTab = 'REVIEWS' | 'DM';
 
 const statusFilterItems: { key: InboxStatusFilter; label: string }[] = [
   { key: 'ALL', label: 'すべて' },
@@ -109,7 +112,11 @@ interface UnifiedInboxProps {
 
 export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
-  const { activeStoreId } = useStore();
+  const { activeStoreId, stores } = useStore();
+  const activeOrgId = useMemo(() => {
+    if (!activeStoreId) return null;
+    return stores.find((store) => store.id === activeStoreId)?.orgId || null;
+  }, [activeStoreId, stores]);
 
   const [messages, setMessages] = useState<InboxMessage[]>(MOCK_MESSAGES);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
@@ -117,6 +124,10 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<InboxStatusFilter>('ALL');
   const [platformFilter, setPlatformFilter] = useState<'ALL' | SocialPlatform>('ALL');
+  const [primaryTab, setPrimaryTab] = useState<InboxPrimaryTab>('REVIEWS');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const [inboxAutoSyncEnabled, setInboxAutoSyncEnabled] = useState(false);
   const [assignableUsers, setAssignableUsers] = useState<InboxAssignableUser[]>([]);
   const [workflowTagsInput, setWorkflowTagsInput] = useState('');
   const [workflowAssignedUserId, setWorkflowAssignedUserId] = useState('');
@@ -134,6 +145,66 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
 
   const patchMessage = (messageId: string, patch: Partial<InboxMessage>) => {
     setMessages((prev) => prev.map((message) => (message.id === messageId ? { ...message, ...patch } : message)));
+  };
+
+  const loadInboxAutoSyncFlag = async () => {
+    if (!isSupabaseConfigured || !activeOrgId) {
+      setInboxAutoSyncEnabled(false);
+      return;
+    }
+    try {
+      const rows = await featureFlagsService.listByOrg(activeOrgId, activeStoreId || undefined);
+      const state = resolveFeatureState(rows, 'inbox_autosync', activeStoreId || undefined);
+      setInboxAutoSyncEnabled(state === 'ENABLED');
+    } catch {
+      setInboxAutoSyncEnabled(false);
+    }
+  };
+
+  const handleSyncInbox = async (options?: { silent?: boolean }) => {
+    if (!activeStoreId) {
+      if (!options?.silent) {
+        addNotification('同期エラー', '先に店舗を選択してください。', 'ERROR');
+      }
+      return;
+    }
+
+    if (!isSupabaseConfigured) {
+      if (!options?.silent) {
+        addNotification('モック', 'Supabase未設定のため同期を実行できません。', 'INFO');
+      }
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const result = await inboxSyncService.sync({
+        storeId: activeStoreId,
+        providers: ['FACEBOOK', 'INSTAGRAM', 'GBP'],
+        mode: 'LATEST_ONLY',
+      });
+      setLastSyncAt(result.lastSyncAt);
+      await reloadMessages();
+
+      if (!options?.silent) {
+        const totalSynced = Object.values(result.syncedCountByProvider || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+        const errorEntries = Object.entries(result.errors || {});
+        const detail = Object.entries(result.syncedCountByProvider || {})
+          .map(([provider, count]) => `${provider}:${count}件`)
+          .join(' / ');
+        addNotification(
+          '受信箱を同期しました',
+          `${totalSynced}件を更新しました。${detail ? `（${detail}）` : ''}${errorEntries.length > 0 ? ` 一部エラー: ${errorEntries.map(([provider, message]) => `${provider}:${message}`).join(' / ')}` : ''}`,
+          errorEntries.length > 0 ? 'WARNING' : 'SUCCESS'
+        );
+      }
+    } catch (error) {
+      if (!options?.silent) {
+        addNotification('同期エラー', getErrorMessage(error) || '受信箱の同期に失敗しました。', 'ERROR');
+      }
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const reloadMessages = async () => {
@@ -184,8 +255,15 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
   useEffect(() => {
     void reloadMessages();
     void reloadAssignableUsers();
+    void loadInboxAutoSyncFlag();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStoreId]);
+  }, [activeStoreId, activeOrgId]);
+
+  useEffect(() => {
+    if (!activeStoreId || !inboxAutoSyncEnabled || primaryTab !== 'REVIEWS') return;
+    void handleSyncInbox({ silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStoreId, inboxAutoSyncEnabled, primaryTab]);
 
   useEffect(() => {
     if (!selectedMessageId) {
@@ -213,6 +291,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
   }, [selectedMessage]);
 
   const filteredMessages = useMemo(() => {
+    if (primaryTab === 'DM') return [];
     const query = searchText.trim().toLowerCase();
     return messages.filter((message) => {
       if (platformFilter !== 'ALL' && message.platform !== platformFilter) return false;
@@ -234,7 +313,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
         .toLowerCase();
       return searchTargets.includes(query);
     });
-  }, [messages, searchText, platformFilter, statusFilter]);
+  }, [messages, platformFilter, primaryTab, searchText, statusFilter]);
 
   useEffect(() => {
     if (filteredMessages.length === 0) {
@@ -415,7 +494,50 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
     <div className={PAGE_CONTAINER_CLASS}>
       <section>
         <h1 className={PAGE_HEADER_TITLE_CLASS}>受信箱</h1>
-        <p className={PAGE_HEADER_DESCRIPTION_CLASS}>コメントやメッセージを確認し、担当・期限・返信を管理できます。</p>
+        <p className={PAGE_HEADER_DESCRIPTION_CLASS}>口コミ・コメントの確認、担当設定、返信対応を管理できます。</p>
+      </section>
+
+      <section className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-1">
+          <button
+            type="button"
+            onClick={() => setPrimaryTab('REVIEWS')}
+            className={`px-3 py-1.5 text-sm rounded-lg ${
+              primaryTab === 'REVIEWS'
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                : 'text-gray-600 dark:text-gray-300'
+            }`}
+          >
+            口コミ・コメント
+          </button>
+          <button
+            type="button"
+            onClick={() => setPrimaryTab('DM')}
+            className={`px-3 py-1.5 text-sm rounded-lg ${
+              primaryTab === 'DM'
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                : 'text-gray-600 dark:text-gray-300'
+            }`}
+          >
+            DM（準備中）
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            同期モード: {inboxAutoSyncEnabled ? '自動同期' : '手動同期のみ'}
+            {lastSyncAt ? ` / 最終同期: ${formatDetailDate(lastSyncAt)}` : ''}
+          </span>
+          <button
+            type="button"
+            onClick={() => void handleSyncInbox()}
+            disabled={!activeStoreId || primaryTab === 'DM' || isSyncing}
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <CalendarClock size={14} />}
+            受信内容を同期
+          </button>
+        </div>
       </section>
 
       <div className="h-[calc(100vh-220px)] flex flex-col md:flex-row bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -472,7 +594,11 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
           {isLoading && <div className="p-4 text-sm text-gray-500 dark:text-gray-400">読み込み中...</div>}
           {!isLoading && filteredMessages.length === 0 && (
             <div className="p-4 text-sm text-gray-500 dark:text-gray-400">
-              {activeStoreId ? '条件に一致するメッセージがありません。' : '右上の店舗セレクタで店舗を選択してください。'}
+              {primaryTab === 'DM'
+                ? 'DM機能は準備中です。先に「口コミ・コメント」タブをご利用ください。'
+                : activeStoreId
+                  ? '条件に一致するメッセージがありません。'
+                  : '右上の店舗セレクタで店舗を選択してください。'}
             </div>
           )}
           {filteredMessages.map((message) => (
@@ -541,7 +667,12 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({ currentUser }) => {
       </div>
 
       <div className="flex-1 flex flex-col bg-white dark:bg-gray-800">
-        {selectedMessage ? (
+        {primaryTab === 'DM' ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 px-6">
+            <MessageCircle size={48} className="mb-4 opacity-20" />
+            <p className="text-sm text-center">DM連携は次段で対応します。現在は口コミ・コメントの運用に対応しています。</p>
+          </div>
+        ) : selectedMessage ? (
           <>
             <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">

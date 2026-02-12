@@ -550,6 +550,17 @@ export interface PublishExecutionResult {
   message?: string;
 }
 
+export type RemoteProviderKey = 'FACEBOOK' | 'INSTAGRAM' | 'GBP';
+
+export interface ExternalProviderPost {
+  provider: RemoteProviderKey;
+  externalPostId: string;
+  content: string;
+  createdAt: Date;
+  permalink?: string;
+  raw?: Record<string, unknown>;
+}
+
 export interface ReplyExecutionResult {
   ok: boolean;
   provider: string;

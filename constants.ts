@@ -245,4 +245,6 @@ export const DEFAULT_FEATURE_VISIBILITY: Record<string, VisibilityState> = {
   settings_integrations: 'ENABLED',
   settings_system: 'ADMIN_ONLY',
   provider_management: 'ADMIN_ONLY',
+  remote_posts_autofetch: 'HIDDEN',
+  inbox_autosync: 'HIDDEN',
 };

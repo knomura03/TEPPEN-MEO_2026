@@ -1,14 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { MOCK_POSTS } from '../constants';
-import { Post, PostApprovalActionType, PostApprovalComment, PostStatus, Role, User } from '../types';
-import { Clock, CheckCircle, AlertCircle, Calendar, X, Image as ImageIcon, Loader2, MessageSquare } from 'lucide-react';
-import { isSupabaseConfigured } from '../services/supabaseClient';
+import { ExternalProviderPost, Post, PostApprovalActionType, PostApprovalComment, PostStatus, Role, User } from '../types';
+import { Clock, CheckCircle, AlertCircle, Calendar, X, Image as ImageIcon, Loader2, MessageSquare, RefreshCw, Link2 } from 'lucide-react';
+import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
 import { postsService } from '../services/postsService';
 import { postPublishService } from '../services/postPublishService';
 import { getErrorMessage } from '../services/errorMessage';
 import { useNotification } from '../contexts/NotificationContext';
 import { useStore } from '../contexts/StoreContext';
 import { postMediaService } from '../services/postMediaService';
+import { providerPostsService } from '../services/providerPostsService';
+import { featureFlagsService, resolveFeatureState } from '../services/featureFlagsService';
 import { ModalPortal } from './ModalPortal';
 import { PAGE_CARD_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
 
@@ -43,12 +45,86 @@ interface PostListProps {
   currentUser: User;
 }
 
+type SourceFilter = 'ALL' | 'TEPPEN' | 'EXTERNAL';
+type PlatformFilter = 'ALL' | 'INSTAGRAM' | 'FACEBOOK' | 'GBP';
+
+type LocalRow = {
+  source: 'TEPPEN';
+  key: string;
+  post: Post;
+  createdAt: Date;
+  text: string;
+  platforms: PlatformFilter[];
+};
+
+type ExternalRow = {
+  source: 'EXTERNAL';
+  key: string;
+  externalPost: ExternalProviderPost;
+  createdAt: Date;
+  text: string;
+  platforms: PlatformFilter[];
+};
+
+type UnifiedRow = LocalRow | ExternalRow;
+
+const PLATFORM_FILTER_LABELS: Record<PlatformFilter, string> = {
+  ALL: 'すべて',
+  INSTAGRAM: 'Instagram',
+  FACEBOOK: 'Facebook',
+  GBP: 'Googleビジネスプロフィール',
+};
+
+const LOCAL_PLATFORM_SHORT_LABEL: Record<string, string> = {
+  INSTAGRAM: 'IG',
+  FACEBOOK: 'FB',
+  GOOGLE_BUSINESS: 'GBP',
+};
+
+const EXTERNAL_PROVIDER_TO_PLATFORM: Record<string, PlatformFilter> = {
+  INSTAGRAM: 'INSTAGRAM',
+  FACEBOOK: 'FACEBOOK',
+  GBP: 'GBP',
+};
+
+const toPlatformFilterFromProvider = (provider: string): PlatformFilter => {
+  const normalized = String(provider || '').toUpperCase();
+  return EXTERNAL_PROVIDER_TO_PLATFORM[normalized] || 'FACEBOOK';
+};
+
+const toExternalPostKey = (provider: string, externalPostId: string): string => {
+  return `${toPlatformFilterFromProvider(provider)}:${externalPostId}`;
+};
+
+const toPlatformFilterValues = (post: Post): PlatformFilter[] => {
+  const values: PlatformFilter[] = [];
+  for (const platform of post.platforms) {
+    if (platform === 'INSTAGRAM' || platform === 'FACEBOOK') {
+      values.push(platform);
+    } else if (platform === 'GOOGLE_BUSINESS') {
+      values.push('GBP');
+    }
+  }
+  return Array.from(new Set(values));
+};
+
 export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
-  const { activeStoreId } = useStore();
-  const canApprove = currentUser.role === Role.ADMIN || currentUser.role === Role.MANAGER;
+  const { activeStoreId, stores } = useStore();
+  const activeOrgId = useMemo(() => {
+    if (!activeStoreId) return null;
+    return stores.find((store) => store.id === activeStoreId)?.orgId || null;
+  }, [activeStoreId, stores]);
+  const canApprove =
+    currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR || currentUser.role === Role.MANAGER;
   const isRequester = currentUser.role === Role.USER;
   const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
+  const [externalPosts, setExternalPosts] = useState<ExternalProviderPost[]>([]);
+  const [isFetchingExternalPosts, setIsFetchingExternalPosts] = useState(false);
+  const [lastExternalFetchedAt, setLastExternalFetchedAt] = useState<Date | null>(null);
+  const [remoteAutoFetchEnabled, setRemoteAutoFetchEnabled] = useState(false);
+  const [externalFetchErrors, setExternalFetchErrors] = useState<Record<string, string>>({});
+  const [knownExternalPostKeys, setKnownExternalPostKeys] = useState<string[]>([]);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [editContent, setEditContent] = useState('');
   const [editScheduledDate, setEditScheduledDate] = useState('');
@@ -56,6 +132,7 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
   const [approvalProcessingPostId, setApprovalProcessingPostId] = useState<string | null>(null);
   const [publishingInstagramPostId, setPublishingInstagramPostId] = useState<string | null>(null);
   const [publishingFacebookPostId, setPublishingFacebookPostId] = useState<string | null>(null);
+  const [publishingGoogleBusinessPostId, setPublishingGoogleBusinessPostId] = useState<string | null>(null);
   const [historyPost, setHistoryPost] = useState<Post | null>(null);
   const [approvalComments, setApprovalComments] = useState<PostApprovalComment[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -67,7 +144,97 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
   const [newImagePreviews, setNewImagePreviews] = useState<string[]>([]);
   const [postSearchTerm, setPostSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'PENDING' | 'REJECTED' | 'FAILED'>('ALL');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('ALL');
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('ALL');
   const maxFileSizeBytes = 10 * 1024 * 1024;
+
+  const reloadPublishedExternalPostKeys = async () => {
+    if (!isSupabaseConfigured || !supabase || !activeStoreId) {
+      setKnownExternalPostKeys([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('post_publish_logs')
+      .select('provider, external_post_id')
+      .eq('store_id', activeStoreId)
+      .not('external_post_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1000);
+
+    if (error) {
+      setKnownExternalPostKeys([]);
+      return;
+    }
+
+    const keys = Array.from(
+      new Set(
+        (data || [])
+          .map((row) => {
+            const provider = String((row as { provider?: string }).provider || '').toUpperCase();
+            const externalPostId = String((row as { external_post_id?: string }).external_post_id || '').trim();
+            if (!externalPostId) return '';
+            const normalizedProvider = provider === 'GOOGLE_BUSINESS' ? 'GBP' : provider;
+            return toExternalPostKey(normalizedProvider, externalPostId);
+          })
+          .filter((value) => Boolean(value))
+      )
+    );
+    setKnownExternalPostKeys(keys);
+  };
+
+  const loadRemoteAutoFetchFlag = async () => {
+    if (!isSupabaseConfigured || !activeOrgId) {
+      setRemoteAutoFetchEnabled(false);
+      return;
+    }
+    try {
+      const rows = await featureFlagsService.listByOrg(activeOrgId, activeStoreId || undefined);
+      const state = resolveFeatureState(rows, 'remote_posts_autofetch', activeStoreId || undefined);
+      setRemoteAutoFetchEnabled(state === 'ENABLED');
+    } catch {
+      setRemoteAutoFetchEnabled(false);
+    }
+  };
+
+  const fetchExternalPosts = async (params?: { force?: boolean; silent?: boolean }) => {
+    if (!isSupabaseConfigured || !activeStoreId) {
+      setExternalPosts([]);
+      setExternalFetchErrors({});
+      setLastExternalFetchedAt(null);
+      return;
+    }
+
+    setIsFetchingExternalPosts(true);
+    try {
+      const result = await providerPostsService.fetch({
+        storeId: activeStoreId,
+        limit: 50,
+        force: params?.force ?? false,
+      });
+      setExternalPosts(result.merged);
+      setExternalFetchErrors(result.errors || {});
+      setLastExternalFetchedAt(result.fetchedAt);
+
+      if (!params?.silent) {
+        const errorCount = Object.keys(result.errors || {}).length;
+        const messageParts = [`外部投稿 ${result.merged.length}件を取得しました。`];
+        if (result.cacheHit) {
+          messageParts.push('5分以内のキャッシュを表示しています。');
+        }
+        if (errorCount > 0) {
+          messageParts.push(`${errorCount}件の連携先で取得エラーがあります。`);
+        }
+        addNotification('外部投稿を更新', messageParts.join(' '), errorCount > 0 ? 'WARNING' : 'SUCCESS');
+      }
+    } catch (error) {
+      if (!params?.silent) {
+        addNotification('外部投稿の取得エラー', getErrorMessage(error) || '外部投稿の取得に失敗しました。', 'ERROR');
+      }
+    } finally {
+      setIsFetchingExternalPosts(false);
+    }
+  };
 
   const reload = async () => {
     if (!isSupabaseConfigured) {
@@ -87,9 +254,23 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
   };
 
   useEffect(() => {
+    if (!activeStoreId) {
+      setExternalPosts([]);
+      setExternalFetchErrors({});
+      setLastExternalFetchedAt(null);
+      setKnownExternalPostKeys([]);
+    }
     void reload();
+    void reloadPublishedExternalPostKeys();
+    void loadRemoteAutoFetchFlag();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStoreId]);
+  }, [activeStoreId, activeOrgId]);
+
+  useEffect(() => {
+    if (!activeStoreId || !remoteAutoFetchEnabled) return;
+    void fetchExternalPosts({ force: false, silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStoreId, remoteAutoFetchEnabled]);
 
   const handleDelete = async (postId: string) => {
     if (!window.confirm('この投稿を削除しますか？')) return;
@@ -182,14 +363,14 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
           : 'MOCK投稿として完了しました（GUI設定未完了のため）。',
         'SUCCESS'
       );
-      await reload();
+      await Promise.all([reload(), reloadPublishedExternalPostKeys()]);
     } catch (error) {
       addNotification(
         'Instagram投稿エラー',
         getErrorMessage(error) || 'Instagram投稿の実行に失敗しました。',
         'ERROR'
       );
-      await reload();
+      await Promise.all([reload(), reloadPublishedExternalPostKeys()]);
     } finally {
       setPublishingInstagramPostId(null);
     }
@@ -213,16 +394,47 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
           : 'MOCK投稿として完了しました（GUI設定未完了のため）。',
         'SUCCESS'
       );
-      await reload();
+      await Promise.all([reload(), reloadPublishedExternalPostKeys()]);
     } catch (error) {
       addNotification(
         'Facebook投稿エラー',
         getErrorMessage(error) || 'Facebook投稿の実行に失敗しました。',
         'ERROR'
       );
-      await reload();
+      await Promise.all([reload(), reloadPublishedExternalPostKeys()]);
     } finally {
       setPublishingFacebookPostId(null);
+    }
+  };
+
+  const handlePublishGoogleBusiness = async (postId: string) => {
+    if (!isSupabaseConfigured) {
+      addNotification('モック', 'デモではGoogleビジネスプロフィール投稿を実行できません。', 'INFO');
+      return;
+    }
+    setPublishingGoogleBusinessPostId(postId);
+    try {
+      const result = await postPublishService.publishGoogleBusinessPost({
+        postId,
+        actorUserId: currentUser.id,
+      });
+      addNotification(
+        'Googleビジネスプロフィール投稿完了',
+        result.mode === 'REAL'
+          ? 'Googleビジネスプロフィールへの投稿が完了しました。'
+          : 'MOCK投稿として完了しました（GUI設定未完了のため）。',
+        'SUCCESS'
+      );
+      await Promise.all([reload(), reloadPublishedExternalPostKeys()]);
+    } catch (error) {
+      addNotification(
+        'Googleビジネスプロフィール投稿エラー',
+        getErrorMessage(error) || 'Googleビジネスプロフィール投稿の実行に失敗しました。',
+        'ERROR'
+      );
+      await Promise.all([reload(), reloadPublishedExternalPostKeys()]);
+    } finally {
+      setPublishingGoogleBusinessPostId(null);
     }
   };
 
@@ -428,6 +640,7 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
       approvalProcessingPostId === postId ||
       publishingInstagramPostId === postId ||
       publishingFacebookPostId === postId ||
+      publishingGoogleBusinessPostId === postId ||
       isSaving
     );
   };
@@ -485,6 +698,15 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
     return true;
   };
 
+  const getCanPublishGoogleBusiness = (post: Post) => {
+    if (!canApprove) return false;
+    if (!post.platforms.includes('GOOGLE_BUSINESS')) return false;
+    if (post.approvalStatus !== 'APPROVED') return false;
+    if (post.status === PostStatus.PUBLISHED) return false;
+    if (post.scheduledDate && post.scheduledDate.getTime() > Date.now()) return false;
+    return true;
+  };
+
   const getStatusLabel = (post: Post) => {
     if (post.approvalStatus === 'PENDING') return '承認待ち';
     if (post.approvalStatus === 'REJECTED') return '差し戻し';
@@ -526,27 +748,77 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
     return true;
   };
 
-  const filteredPosts = useMemo(() => {
+  const externalPostKeySet = useMemo(() => new Set(knownExternalPostKeys), [knownExternalPostKeys]);
+
+  const unifiedRows = useMemo(() => {
     const normalizedSearch = postSearchTerm.trim().toLowerCase();
-    return posts.filter((post) => {
-      if (!matchesStatusFilter(post)) {
-        return false;
-      }
-      if (!normalizedSearch) {
-        return true;
-      }
-      return post.content.toLowerCase().includes(normalizedSearch);
+
+    const localRows: LocalRow[] = posts.map((post) => {
+      const createdAt =
+        post.publishedDate ||
+        post.scheduledDate ||
+        post.approvedAt ||
+        post.submittedForApprovalAt ||
+        post.rejectedAt ||
+        new Date(0);
+      return {
+        source: 'TEPPEN',
+        key: `local:${post.id}`,
+        post,
+        createdAt,
+        text: post.content,
+        platforms: toPlatformFilterValues(post),
+      };
     });
-  }, [postSearchTerm, posts, statusFilter]);
+
+    const externalRows: ExternalRow[] = externalPosts
+      .filter((externalPost) => !externalPostKeySet.has(toExternalPostKey(externalPost.provider, externalPost.externalPostId)))
+      .map((externalPost) => ({
+        source: 'EXTERNAL',
+        key: `external:${toExternalPostKey(externalPost.provider, externalPost.externalPostId)}`,
+        externalPost,
+        createdAt: externalPost.createdAt,
+        text: externalPost.content,
+        platforms: [toPlatformFilterFromProvider(externalPost.provider)],
+      }));
+
+    return [...localRows, ...externalRows]
+      .filter((row) => {
+        if (sourceFilter !== 'ALL' && row.source !== sourceFilter) return false;
+
+        if (platformFilter !== 'ALL' && !row.platforms.includes(platformFilter)) return false;
+
+        if (row.source === 'TEPPEN') {
+          if (!matchesStatusFilter(row.post)) return false;
+        } else if (statusFilter !== 'ALL' && statusFilter !== 'PUBLISHED') {
+          return false;
+        }
+
+        if (!normalizedSearch) return true;
+        return row.text.toLowerCase().includes(normalizedSearch);
+      })
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }, [externalPostKeySet, externalPosts, platformFilter, postSearchTerm, posts, sourceFilter, statusFilter]);
 
   return (
     <div className={PAGE_CONTAINER_CLASS}>
       <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
         <div>
           <h1 className={PAGE_HEADER_TITLE_CLASS}>投稿一覧</h1>
-          <p className={PAGE_HEADER_DESCRIPTION_CLASS}>投稿の確認、承認、編集、公開操作を行えます。</p>
+          <p className={PAGE_HEADER_DESCRIPTION_CLASS}>TEPPEN投稿と外部投稿をまとめて確認できます。</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <button
+            id="post-list-fetch-external"
+            data-testid="post-list-fetch-external"
+            type="button"
+            onClick={() => void fetchExternalPosts({ force: true })}
+            disabled={!activeStoreId || isFetchingExternalPosts}
+            className="inline-flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isFetchingExternalPosts ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            外部投稿を更新
+          </button>
           <input
             id="post-list-filter-search"
             data-testid="post-filter-search"
@@ -571,7 +843,43 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
             <option value="REJECTED">差し戻し</option>
             <option value="FAILED">エラー</option>
           </select>
+          <select
+            id="post-list-filter-source"
+            data-testid="post-filter-source"
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value as SourceFilter)}
+            className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white"
+          >
+            <option value="ALL">作成元: すべて</option>
+            <option value="TEPPEN">作成元: TEPPEN</option>
+            <option value="EXTERNAL">作成元: 外部</option>
+          </select>
+          <select
+            id="post-list-filter-platform"
+            data-testid="post-filter-platform"
+            value={platformFilter}
+            onChange={(e) => setPlatformFilter(e.target.value as PlatformFilter)}
+            className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white"
+          >
+            {Object.entries(PLATFORM_FILTER_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label === 'すべて' ? '投稿先: すべて' : `投稿先: ${label}`}
+              </option>
+            ))}
+          </select>
         </div>
+      </div>
+      <div className="flex flex-col gap-1 text-xs text-gray-500 dark:text-gray-400">
+        <p>
+          外部投稿の取得モード:
+          {remoteAutoFetchEnabled ? ' 自動取得（5分キャッシュ）' : ' 手動更新のみ'}
+          {lastExternalFetchedAt ? ` / 最終取得: ${formatDate(lastExternalFetchedAt)}` : ''}
+        </p>
+        {Object.keys(externalFetchErrors).length > 0 && (
+          <p className="text-amber-700 dark:text-amber-300">
+            一部取得エラー: {Object.entries(externalFetchErrors).map(([provider, message]) => `${provider}: ${message}`).join(' / ')}
+          </p>
+        )}
       </div>
 
       <div id="post-list-table" className={`${PAGE_CARD_CLASS} overflow-hidden`}>
@@ -587,33 +895,34 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {filteredPosts.length === 0 && (
+              {unifiedRows.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-6 py-8 text-sm text-gray-500 dark:text-gray-400">
                     条件に一致する投稿がありません。
                   </td>
                 </tr>
               )}
-              {filteredPosts.map((post) => (
+              {unifiedRows.map((row) =>
+                row.source === 'TEPPEN' ? (
                 <tr
-                  key={post.id}
+                  key={row.post.id}
                   data-testid="post-row"
-                  data-post-id={post.id}
+                  data-post-id={row.post.id}
                   className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusWithApproval(post)}
+                    {getStatusWithApproval(row.post)}
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-sm text-gray-900 dark:text-white line-clamp-2">{post.content}</p>
-                    {post.rejectionReason && (
+                    <p className="text-sm text-gray-900 dark:text-white line-clamp-2">{row.post.content}</p>
+                    {row.post.rejectionReason && (
                       <p className="mt-1 text-xs text-rose-600 dark:text-rose-300">
-                        差し戻し理由: {post.rejectionReason}
+                        差し戻し理由: {row.post.rejectionReason}
                       </p>
                     )}
-                    {(post.imageUrls || []).length > 0 && (
+                    {(row.post.imageUrls || []).length > 0 && (
                         <div className="mt-2 flex gap-1">
-                            {(post.imageUrls || []).map((url, i) => (
+                            {(row.post.imageUrls || []).map((url, i) => (
                                 <img key={i} src={url} alt="Post media" className="w-8 h-8 rounded object-cover border border-gray-200 dark:border-gray-600" />
                             ))}
                         </div>
@@ -621,9 +930,9 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex gap-1">
-                      {post.platforms.map((p) => (
+                      {row.post.platforms.map((p) => (
                         <span key={p} className="inline-block px-2 py-0.5 text-[10px] font-bold rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
-                          {p.slice(0, 1)}
+                          {LOCAL_PLATFORM_SHORT_LABEL[p] || p.slice(0, 1)}
                         </span>
                       ))}
                     </div>
@@ -631,84 +940,94 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                     <div className="flex items-center gap-2">
                         <Calendar size={14} />
-                        {getPostDateText(post)}
+                        {getPostDateText(row.post)}
                     </div>
-                    <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{getStatusLabel(post)}</div>
+                    <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{getStatusLabel(row.post)}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex flex-wrap gap-3 items-center">
-                      {getCanEdit(post) && (
+                      {getCanEdit(row.post) && (
                         <button
-                          onClick={() => openEdit(post)}
+                          onClick={() => openEdit(row.post)}
                           className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 disabled:opacity-60"
-                          disabled={getActionDisabled(post.id)}
+                          disabled={getActionDisabled(row.post.id)}
                         >
                           編集
                         </button>
                       )}
-                      {getCanDelete(post) && (
+                      {getCanDelete(row.post) && (
                         <button
-                          onClick={() => handleDelete(post.id)}
+                          onClick={() => handleDelete(row.post.id)}
                           className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300 disabled:opacity-60"
-                          disabled={getActionDisabled(post.id)}
+                          disabled={getActionDisabled(row.post.id)}
                         >
                           削除
                         </button>
                       )}
-                      {getCanShowSubmitApproval(post) && (
+                      {getCanShowSubmitApproval(row.post) && (
                         <button
-                          onClick={() => void handleSubmitForApproval(post.id)}
-                          data-testid={`post-submit-approval-${post.id}`}
+                          onClick={() => void handleSubmitForApproval(row.post.id)}
+                          data-testid={`post-submit-approval-${row.post.id}`}
                           className="text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-200 disabled:opacity-60"
-                          disabled={getActionDisabled(post.id)}
+                          disabled={getActionDisabled(row.post.id)}
                         >
                           承認申請
                         </button>
                       )}
-                      {getCanPublishInstagram(post) && (
+                      {getCanPublishInstagram(row.post) && (
                         <button
-                          onClick={() => void handlePublishInstagram(post.id)}
-                          data-testid={`post-publish-instagram-${post.id}`}
+                          onClick={() => void handlePublishInstagram(row.post.id)}
+                          data-testid={`post-publish-instagram-${row.post.id}`}
                           className="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-200 disabled:opacity-60"
-                          disabled={getActionDisabled(post.id)}
+                          disabled={getActionDisabled(row.post.id)}
                         >
-                          {publishingInstagramPostId === post.id ? '投稿中...' : 'Instagram投稿'}
+                          {publishingInstagramPostId === row.post.id ? '投稿中...' : 'Instagram投稿'}
                         </button>
                       )}
-                      {getCanPublishFacebook(post) && (
+                      {getCanPublishFacebook(row.post) && (
                         <button
-                          onClick={() => void handlePublishFacebook(post.id)}
-                          data-testid={`post-publish-facebook-${post.id}`}
+                          onClick={() => void handlePublishFacebook(row.post.id)}
+                          data-testid={`post-publish-facebook-${row.post.id}`}
                           className="text-cyan-700 dark:text-cyan-300 hover:text-cyan-900 dark:hover:text-cyan-200 disabled:opacity-60"
-                          disabled={getActionDisabled(post.id)}
+                          disabled={getActionDisabled(row.post.id)}
                         >
-                          {publishingFacebookPostId === post.id ? '投稿中...' : 'Facebook投稿'}
+                          {publishingFacebookPostId === row.post.id ? '投稿中...' : 'Facebook投稿'}
                         </button>
                       )}
-                      {getCanShowApproveReject(post) && (
+                      {getCanPublishGoogleBusiness(row.post) && (
+                        <button
+                          onClick={() => void handlePublishGoogleBusiness(row.post.id)}
+                          data-testid={`post-publish-gbp-${row.post.id}`}
+                          className="text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 dark:hover:text-emerald-200 disabled:opacity-60"
+                          disabled={getActionDisabled(row.post.id)}
+                        >
+                          {publishingGoogleBusinessPostId === row.post.id ? '投稿中...' : 'Google投稿'}
+                        </button>
+                      )}
+                      {getCanShowApproveReject(row.post) && (
                         <>
                           <button
-                            onClick={() => void handleApprove(post.id)}
-                            data-testid={`post-approve-${post.id}`}
+                            onClick={() => void handleApprove(row.post.id)}
+                            data-testid={`post-approve-${row.post.id}`}
                             className="text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 dark:hover:text-emerald-200 disabled:opacity-60"
-                            disabled={getActionDisabled(post.id)}
+                            disabled={getActionDisabled(row.post.id)}
                           >
                             承認
                           </button>
                           <button
-                            onClick={() => void handleReject(post.id)}
-                            data-testid={`post-reject-${post.id}`}
+                            onClick={() => void handleReject(row.post.id)}
+                            data-testid={`post-reject-${row.post.id}`}
                             className="text-rose-700 dark:text-rose-300 hover:text-rose-900 dark:hover:text-rose-200 disabled:opacity-60"
-                            disabled={getActionDisabled(post.id)}
+                            disabled={getActionDisabled(row.post.id)}
                           >
                             差し戻し
                           </button>
                         </>
                       )}
                       <button
-                        onClick={() => openHistory(post)}
+                        onClick={() => openHistory(row.post)}
                         className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white disabled:opacity-60 inline-flex items-center gap-1"
-                        disabled={getActionDisabled(post.id)}
+                        disabled={getActionDisabled(row.post.id)}
                       >
                         <MessageSquare size={14} />
                         履歴
@@ -716,7 +1035,54 @@ export const PostList: React.FC<PostListProps> = ({ currentUser }) => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                ) : (
+                  <tr
+                    key={row.key}
+                    data-testid="post-row-external"
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex flex-col gap-1">
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-200">
+                          <CheckCircle size={12} />
+                          外部投稿
+                        </span>
+                        <span className="text-[11px] text-gray-400 dark:text-gray-500">公開済み</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-sm text-gray-900 dark:text-white line-clamp-2">{row.externalPost.content || '(本文なし)'}</p>
+                      <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">外部ID: {row.externalPost.externalPostId}</p>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="inline-block px-2 py-0.5 text-[10px] font-bold rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
+                        {PLATFORM_FILTER_LABELS[toPlatformFilterFromProvider(row.externalPost.provider)]}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      <div className="flex items-center gap-2">
+                        <Calendar size={14} />
+                        {formatDate(row.externalPost.createdAt)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      {row.externalPost.permalink ? (
+                        <a
+                          href={row.externalPost.permalink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-100"
+                        >
+                          <Link2 size={14} />
+                          投稿を開く
+                        </a>
+                      ) : (
+                        <span className="text-gray-400 dark:text-gray-500">操作なし</span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              )}
             </tbody>
           </table>
         </div>

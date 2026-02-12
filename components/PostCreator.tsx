@@ -4,6 +4,7 @@ import { MOCK_ACCOUNTS } from '../constants';
 import { geminiService } from '../services/geminiService';
 import { postsService } from '../services/postsService';
 import { postMediaService } from '../services/postMediaService';
+import { postPublishService } from '../services/postPublishService';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { storeGroupsService } from '../services/storeGroupsService';
 import { brandKitService } from '../services/brandKitService';
@@ -20,7 +21,8 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
   const { activeStoreId, stores } = useStore();
   const isApprovalRequester = currentUser.role === Role.USER;
-  const canUseStoreGroupTarget = currentUser.role === Role.ADMIN || currentUser.role === Role.MANAGER;
+  const canUseStoreGroupTarget =
+    currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR || currentUser.role === Role.MANAGER;
   const [content, setContent] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>([]);
   const [scheduledDate, setScheduledDate] = useState('');
@@ -207,6 +209,32 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
         return;
       }
 
+      let scheduledAtForCreate: Date | null = null;
+      let immediatePublish = false;
+
+      if (isApprovalRequester) {
+        if (scheduledDate) {
+          const shouldScheduleRequest = window.confirm('この日時で承認申請を作成します。よろしいですか？');
+          if (!shouldScheduleRequest) return;
+          scheduledAtForCreate = new Date(scheduledDate);
+        } else {
+          const shouldSubmitNow = window.confirm(
+            '日時未指定のため、承認後にできるだけ早く公開する申請を作成します。よろしいですか？'
+          );
+          if (!shouldSubmitNow) return;
+          scheduledAtForCreate = new Date();
+        }
+      } else if (scheduledDate) {
+        const shouldSchedule = window.confirm('指定日時で予約投稿を作成します。よろしいですか？');
+        if (!shouldSchedule) return;
+        scheduledAtForCreate = new Date(scheduledDate);
+      } else {
+        const shouldPublishNow = window.confirm(
+          '日時が未指定です。このまま今すぐ投稿しますか？\n「キャンセル」を選ぶと下書き保存になります。'
+        );
+        immediatePublish = shouldPublishNow;
+      }
+
       setIsSubmitting(true);
       try {
         const { createdPosts, targetStoreCount } = await postsService.createBulk({
@@ -214,7 +242,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
           authorUserId: currentUser.id,
           content,
           platforms: selectedPlatforms,
-          scheduledAt: scheduledDate ? new Date(scheduledDate) : null,
+          scheduledAt: scheduledAtForCreate,
           approvalStatus: isApprovalRequester ? 'PENDING' : 'APPROVED',
         });
 
@@ -238,7 +266,48 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
           }
         }
 
-        if (isApprovalRequester) {
+        if (!isApprovalRequester && immediatePublish) {
+          let successCount = 0;
+          let failedCount = 0;
+          const failedDetails: string[] = [];
+
+          for (const post of createdPosts) {
+            try {
+              const results = await postPublishService.publishPost({ postId: post.id });
+              const allSuccess = results.every((row) => row.status === 'SUCCESS');
+              if (allSuccess) {
+                successCount += 1;
+              } else {
+                failedCount += 1;
+                const message = results
+                  .filter((row) => row.status === 'FAILED')
+                  .map((row) => `${row.provider}: ${row.message || '失敗'}`)
+                  .join(' / ');
+                failedDetails.push(message || `post=${post.id}`);
+              }
+            } catch (error) {
+              failedCount += 1;
+              failedDetails.push(error instanceof Error ? error.message : `post=${post.id}`);
+            }
+          }
+
+          if (successCount > 0) {
+            addNotification(
+              targetMode === 'STORE_GROUP' ? '一括即時投稿完了' : '即時投稿完了',
+              targetMode === 'STORE_GROUP'
+                ? `${selectedStoreGroup?.name || '店舗グループ'} の${successCount}店舗で投稿しました。`
+                : `${successCount}件の投稿を実行しました。`,
+              'SUCCESS'
+            );
+          }
+          if (failedCount > 0) {
+            addNotification(
+              '即時投稿で失敗あり',
+              failedDetails.slice(0, 2).join(' / ') || `${failedCount}件の投稿で失敗しました。`,
+              'WARNING'
+            );
+          }
+        } else if (isApprovalRequester) {
           addNotification(
             targetMode === 'STORE_GROUP' ? '一括承認申請を作成' : '承認申請を作成',
             targetMode === 'STORE_GROUP'
@@ -269,7 +338,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
         setImagePreviewUrls([]);
         setScheduledDate('');
         setSelectedPlatforms([]);
-      } catch (error) {
+      } catch {
         addNotification('保存エラー', '投稿の保存に失敗しました。', 'ERROR');
       } finally {
         setIsSubmitting(false);

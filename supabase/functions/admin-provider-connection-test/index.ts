@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 import { decodeMaybeEncryptedPayload } from '../_shared/crypto.ts';
+import { ensureGoogleAccessToken } from '../_shared/googleAuth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -182,7 +183,7 @@ Deno.serve(async (req) => {
 
   const { data: providerSecret, error: secretError } = await supabaseAdmin
     .from('provider_secrets')
-    .select('id')
+    .select('id, encrypted_secret')
     .eq('provider_configuration_id', providerConfigurationId)
     .maybeSingle();
   if (secretError) {
@@ -240,16 +241,45 @@ Deno.serve(async (req) => {
     } else {
       const providerKey = String(catalog.provider_key || '').toUpperCase();
       if (providerKey === 'GBP') {
-        const result = await fetchJson('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (result.ok) {
-          connectionStatus = 'CONNECTED';
-          lastError = null;
-        } else {
+        const clientId = readString(configObject, ['client_id', 'google_client_id']);
+        let clientSecret = '';
+        if (providerSecret?.encrypted_secret) {
+          try {
+            const decoded = await decodeMaybeEncryptedPayload(String(providerSecret.encrypted_secret), encryptionKey);
+            clientSecret = decoded;
+          } catch {
+            clientSecret = '';
+          }
+        }
+
+        if (!clientId || !clientSecret) {
           connectionStatus = 'ERROR';
-          lastError = extractProviderErrorMessage(result.body) || `GBP API エラー（status=${result.status}）`;
+          lastError = 'GBPの client_id / client_secret が不足しています。';
+        } else {
+          const tokenResult = await ensureGoogleAccessToken({
+            supabaseAdmin,
+            integrationId: integration.id,
+            encryptedPayload: String(credential?.encrypted_payload || ''),
+            encryptionKey,
+            clientId,
+            clientSecret,
+          });
+          if (!tokenResult.ok || !tokenResult.accessToken) {
+            connectionStatus = 'ERROR';
+            lastError = tokenResult.error || 'GBP access_token の取得に失敗しました。';
+          } else {
+            const result = await fetchJson('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', {
+              method: 'GET',
+              headers: { Authorization: `Bearer ${tokenResult.accessToken}` },
+            });
+            if (result.ok) {
+              connectionStatus = 'CONNECTED';
+              lastError = null;
+            } else {
+              connectionStatus = 'ERROR';
+              lastError = extractProviderErrorMessage(result.body) || `GBP API エラー（status=${result.status}）`;
+            }
+          }
         }
       } else if (providerKey === 'FACEBOOK') {
         const result = await fetchJson(`https://graph.facebook.com/${graphApiVersion}/me/accounts?fields=id,name`, {

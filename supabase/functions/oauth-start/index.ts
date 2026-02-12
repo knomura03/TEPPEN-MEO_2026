@@ -122,14 +122,22 @@ const resolveProviderSpec = (providerKey: string, config: Record<string, unknown
   if (normalized === 'FACEBOOK') {
     return {
       kind: 'META',
-      scopes: ['pages_show_list'],
+      scopes: ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'pages_manage_engagement'],
       version,
     };
   }
   if (normalized === 'INSTAGRAM') {
     return {
       kind: 'META',
-      scopes: ['instagram_basic', 'pages_show_list'],
+      scopes: [
+        'instagram_basic',
+        'instagram_content_publish',
+        'instagram_manage_comments',
+        'pages_show_list',
+        'pages_read_engagement',
+        'pages_manage_posts',
+        'pages_manage_engagement',
+      ],
       version,
     };
   }

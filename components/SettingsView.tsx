@@ -83,6 +83,8 @@ const FEATURE_FLAG_OPTIONS: { key: string; label: string; description: string }[
   { key: 'billing', label: '契約プラン', description: 'メニュー: 契約プラン' },
   { key: 'settings_system', label: 'システム管理', description: '設定タブ: システム管理' },
   { key: 'provider_management', label: '連携先管理', description: 'SNS連携設定タブの管理機能' },
+  { key: 'remote_posts_autofetch', label: '投稿一覧の外部投稿 自動取得', description: 'ONで投稿一覧を開いたときに外部投稿を自動取得（5分キャッシュ）' },
+  { key: 'inbox_autosync', label: '受信箱の自動同期', description: 'ONで受信箱を開いたときに口コミ・コメントを自動同期' },
 ];
 
 const TEMPLATE_PLATFORM_OPTIONS: SocialPlatform[] = ['INSTAGRAM', 'FACEBOOK', 'GOOGLE_BUSINESS', 'TIKTOK'];

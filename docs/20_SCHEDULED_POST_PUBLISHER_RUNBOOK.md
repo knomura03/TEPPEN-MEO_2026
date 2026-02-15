@@ -43,7 +43,7 @@
 1. TEPPENで「1〜2分後」の予約投稿を1件作成
 2. 2分待つ
 3. 投稿一覧で対象投稿の状態が `公開済み` または `失敗` に変わることを確認
-4. 必要なら Supabase SQL Editor で以下を実行し、実行ログを確認
+4. 必要なら Supabase Dashboard の「SQL（管理者用）」で以下を実行し、実行ログを確認
 
 ```sql
 select created_at, action, payload
@@ -62,7 +62,7 @@ limit 20;
    - `status = 'SCHEDULED'`
    - `approval_status = 'APPROVED'`
    - `scheduled_at <= now()`
-4. OAuth接続が有効か（設定 > SNS連携設定で接続テスト成功か）
+4. OAuth接続が有効か（`プラットフォーム管理` で接続テスト成功か）
 
 ---
 

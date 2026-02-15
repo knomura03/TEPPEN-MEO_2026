@@ -247,33 +247,18 @@ provider追加時に次のチェックリストを自動生成し、PRに添付�
 - UIは先頭20件を表示し、運用上は全件ログ保存を推奨
 
 ### 11.5 店舗0件からの復旧（SQL不要）
-- USERでログイン後、`設定 -> 店舗情報(MEO)` を開く
-- 「店舗を作成」フォームに入力し保存
-- 作成成功後、store selectorへ自動反映
-- 失敗時は上限超過/権限/入力不正を通知表示し、SQL Editor実行は不要
+- MANAGER以上でログイン後、`店舗管理` を開く
+- 「店舗を追加」フォームに入力して作成
+- 作成成功後、店舗セレクタへ反映される
+- 失敗時は上限超過/権限/入力不正を通知表示し、手動SQLは不要
 
 ## 12. P1-09 一括投稿 / 一括設定（実装確定）
 ### 12.1 一括投稿（店舗グループ単位）
-- 実装画面: `新規投稿`
-- 対象選択:
-  - `選択中の店舗`（従来）
-  - `店舗グループ`（ADMIN/MANAGERのみ）
-- 実装ルール:
-  - 1投稿フォームの内容を、グループ内全店舗へ同時作成
-  - USERは一括投稿を実行不可（単一店舗のみ）
-  - 一括作成中にエラーが出た場合、作成済み投稿をロールバック
-  - 画像は作成済み各投稿へ順次アップロード（失敗件数を通知）
+- 現行UIでは **非採用**（混乱防止のため、店舗グループ（`store_groups`）を使った一括投稿は表示しません）。
+- 将来必要になった場合にのみ、別仕様として再検討します。
 
 ### 12.2 一括設定（機能公開フラグ）
-- 実装画面: `ユーザー・契約管理 -> 店舗グループ管理`
-- 対象: 選択グループ内の全店舗
-- 設定項目:
-  - `dashboard / calendar / survey / create_post / post_list / inbox`
-  - 状態: `HIDDEN / ADMIN_ONLY / ENABLED`
-- 実装ルール:
-  - store単位 `feature_flags` へ一括upsert
-  - 実行権限はADMINのみ（MANAGERは参照のみ）
-  - 反映件数を通知し、対象0件時は実行拒否
+- 現行UIでは **非採用**（店舗グループ一括設定は表示しません）。
 
 ### 12.3 完了条件
 - グループ選択で一括投稿が作成される（投稿数 = 対象店舗数）
@@ -283,7 +268,7 @@ provider追加時に次のチェックリストを自動生成し、PRに添付�
 
 ## 13. P2-01 OAuth共通基盤（IG/FB/GBP）実装方針
 ### 13.1 目的
-- provider個別実装の前に、OAuth連携の開始/完了/解除を共通RPCで統一する
+- provider個別実装の前に、OAuth連携の開始/完了/解除を共通API（Edge Functions）で統一する
 - 連携状態の遷移を `DISCONNECTED -> CONNECTED -> DISCONNECTED` で再現可能にする
 - 接続状態と監査ログを同時に更新し、障害時の切り分けを容易にする
 
@@ -291,19 +276,17 @@ provider追加時に次のチェックリストを自動生成し、PRに添付�
 - 対象: `supabase/migrations/202602060010_p2_oauth_common_foundation.sql`
 - 追加:
   - `oauth_sessions`（state_token/期限/状態管理）
-  - RPC `oauth_start_session`
-  - RPC `oauth_complete_session`
-  - RPC `oauth_disconnect_session`
+- 互換のためRPC `oauth_*` は残す（ただしUIからは使用しない）
 - セキュリティ:
   - `oauth_sessions` はRLS deny-all（クライアント直接参照不可）
-  - RPCは `authenticated` のみ実行許可
-  - 実行時に `actor_can_manage_store_integration`（ADMIN/MANAGER）を必須化
+  - OAuth開始/完了は Edge Functions（`oauth-start` / `oauth-callback`）を利用
+  - 実行時に store権限チェック（`actor_can_manage_store_integration` 相当）を必須化
 
 ### 13.3 UI/Service変更
-- 対象画面: `設定 -> SNS連携設定`
+- 対象画面: `プラットフォーム管理`
 - `auth_kind = OAUTH2` の provider では「連携する」押下時に OAuth開始モーダルを表示
-- 認可URLを新規タブで開き、取得した認可コードで「接続を完了」
-- 連携解除は共通RPCを呼び、`integration_credentials` も同時に破棄
+- 認可URLを開き、許可後はコールバックで自動完了（認可コード貼り付け不要）
+- 連携解除は共通APIを呼び、`integration_credentials` も同時に破棄
 
 ### 13.4 実装ルール（固定）
 - OAuth対象providerは `provider_catalog.auth_kind = OAUTH2` かつ `is_active = true` の場合のみ許可
@@ -311,7 +294,7 @@ provider追加時に次のチェックリストを自動生成し、PRに添付�
 - 本フェーズは共通基盤のみ（外部OAuth実通信はP2-02/P2-03で実装）
 
 ### 13.5 完了条件（P2-01）
-- OAUTH2 providerで `連携する -> OAuth開始 -> 認可コード入力 -> 接続完了` が動作する
+- OAUTH2 providerで `連携する -> OAuth開始 -> 認可 -> コールバックで接続完了` が動作する
 - `連携解除` で `integrations.status = DISCONNECTED` へ戻る
 - `audit_logs` に `oauth_start/oauth_complete/oauth_disconnect` が残る
 - 状態台帳(`docs/13`)と手順書(`docs/05`,`docs/12`)が同時更新される

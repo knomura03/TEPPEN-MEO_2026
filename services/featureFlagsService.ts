@@ -1,5 +1,5 @@
 import { DEFAULT_FEATURE_VISIBILITY } from '../constants';
-import { FeatureFlag, StoreGroupFeatureFlagApplyResult, VisibilityState } from '../types';
+import { FeatureFlag, VisibilityState } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
 
 type DbFeatureFlagRow = {
@@ -132,37 +132,5 @@ export const featureFlagsService = {
 
     const { error: insertError } = await client.from('feature_flags').insert(payload);
     if (insertError) throw insertError;
-  },
-
-  async upsertForStoreGroup(params: {
-    orgId: string;
-    storeIds: string[];
-    featureKey: string;
-    state: VisibilityState;
-    note?: string;
-    updatedBy?: string;
-  }): Promise<StoreGroupFeatureFlagApplyResult> {
-    const uniqueStoreIds = Array.from(new Set((params.storeIds || []).filter((storeId) => Boolean(storeId))));
-    if (uniqueStoreIds.length === 0) {
-      throw new Error('一括設定の対象店舗がありません。');
-    }
-
-    const normalizedFeatureKey = params.featureKey.toLowerCase();
-    // Keep this deterministic with the same manual upsert logic as `upsert(storeId=...)`.
-    for (const storeId of uniqueStoreIds) {
-      await this.upsert({
-        orgId: params.orgId,
-        storeId,
-        featureKey: normalizedFeatureKey,
-        state: params.state,
-        note: params.note,
-        updatedBy: params.updatedBy,
-      });
-    }
-
-    return {
-      appliedStoreCount: uniqueStoreIds.length,
-      skippedStoreCount: Math.max((params.storeIds || []).length - uniqueStoreIds.length, 0),
-    };
   },
 };

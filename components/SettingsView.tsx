@@ -13,8 +13,8 @@ import {
   ProviderAuthKind,
   ProviderKind,
   ProviderTargetDiscoveryResult,
-  ViewState,
   VisibilityState,
+  ManagementUnit,
 } from '../types';
 import {
   DEFAULT_FEATURE_VISIBILITY,
@@ -38,6 +38,7 @@ import { brandKitService } from '../services/brandKitService';
 import { billingService } from '../services/billingService';
 import { getErrorMessage } from '../services/errorMessage';
 import { avatarService } from '../services/avatarService';
+import { managementUnitService } from '../services/managementUnitService';
 import { ModalPortal } from './ModalPortal';
 import { NAV_LABELS } from './ui/copy';
 import {
@@ -48,11 +49,18 @@ import {
   PAGE_SECTION_TITLE_CLASS,
 } from './ui/pageLayout';
 import {
+  SIDEBAR_NAV_DEFAULT_LABELS,
   SidebarNavView,
+  SidebarNavLabelMap,
+  getSidebarNavLabels,
   getSidebarNavOrder,
+  resetSidebarNavLabels,
   resetSidebarNavOrder,
+  setSidebarNavLabels,
   setSidebarNavOrder,
 } from '../services/navigationOrderService';
+import { SocialPlatformLogo } from './ui/SocialPlatformLogo';
+import { Avatar } from './ui/Avatar';
 
 interface SettingsViewProps {
   currentUser: User;
@@ -66,7 +74,8 @@ type ProviderCard = {
   readiness: ProviderReadiness;
   isConnected: boolean;
 };
-type SettingsTab = 'PROFILE' | 'STORE' | 'INTEGRATIONS' | 'SYSTEM';
+type SettingsTab = 'PROFILE' | 'SYSTEM' | 'STORE' | 'INTEGRATIONS';
+const SETTINGS_INITIAL_TAB_STORAGE_KEY = 'teppen_meo_settings_initial_tab';
 
 const FEATURE_FLAG_OPTIONS: { key: string; label: string; description: string }[] = [
   { key: 'dashboard', label: 'ダッシュボード', description: 'メニュー: ダッシュボード' },
@@ -80,9 +89,12 @@ const FEATURE_FLAG_OPTIONS: { key: string; label: string; description: string }[
   { key: 'rank_tracker', label: '検索順位チェック', description: 'メニュー: 検索順位チェック' },
   { key: 'advice', label: '集客アドバイス', description: 'メニュー: 集客アドバイス' },
   { key: 'user_management', label: 'ユーザー管理', description: 'メニュー: ユーザー管理' },
+  { key: 'store_management', label: '店舗管理', description: 'メニュー: 店舗管理' },
+  { key: 'group_management', label: 'グループ管理', description: 'メニュー: グループ管理' },
+  { key: 'management_unit_management', label: '管理ユニット管理', description: 'メニュー: 管理ユニット管理（ADMINのみ）' },
   { key: 'billing', label: '契約プラン', description: 'メニュー: 契約プラン' },
   { key: 'settings_system', label: 'システム管理', description: '設定タブ: システム管理' },
-  { key: 'provider_management', label: '連携先管理', description: 'SNS連携設定タブの管理機能' },
+  { key: 'provider_management', label: '連携先管理', description: 'プラットフォーム管理の管理者機能' },
   { key: 'remote_posts_autofetch', label: '投稿一覧の外部投稿 自動取得', description: 'ONで投稿一覧を開いたときに外部投稿を自動取得（5分キャッシュ）' },
   { key: 'inbox_autosync', label: '受信箱の自動同期', description: 'ONで受信箱を開いたときに口コミ・コメントを自動同期' },
 ];
@@ -131,20 +143,54 @@ const RUNTIME_MODE_LABELS = {
   BLOCKED: '停止',
 } as const;
 
+const PROVIDER_FORMAL_DISPLAY_NAMES: Record<string, string> = {
+  GBP: 'Google ビジネス プロフィール',
+  FACEBOOK: 'Facebook',
+  INSTAGRAM: 'Instagram',
+};
+
+const PROVIDER_DISPLAY_ORDER: Record<string, number> = {
+  GBP: 0,
+  FACEBOOK: 1,
+  INSTAGRAM: 2,
+};
+
+const getProviderDisplayName = (providerKey: string, fallback: string): string => {
+  const normalized = (providerKey || '').toUpperCase();
+  return PROVIDER_FORMAL_DISPLAY_NAMES[normalized] || fallback;
+};
+
+const hasBrandedPlatformLogo = (providerKey: string): boolean => {
+  const normalized = (providerKey || '').toUpperCase();
+  return normalized === 'GBP' || normalized === 'GOOGLE_BUSINESS' || normalized === 'FACEBOOK' || normalized === 'INSTAGRAM';
+};
+
 const SETTINGS_STANDARD_TAB_CLASS = 'w-full max-w-2xl mr-auto ml-0 space-y-8';
+
+const resolveInitialSettingsTab = (): SettingsTab => {
+  if (typeof window === 'undefined') return 'PROFILE';
+  const raw = localStorage.getItem(SETTINGS_INITIAL_TAB_STORAGE_KEY);
+  if (!raw) return 'PROFILE';
+  localStorage.removeItem(SETTINGS_INITIAL_TAB_STORAGE_KEY);
+  if (raw === 'PROFILE' || raw === 'SYSTEM') {
+    return raw;
+  }
+  return 'PROFILE';
+};
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfileUpdated }) => {
   const { addNotification } = useNotification();
   const { activeStoreId, reloadStores, stores } = useStore();
-  const [activeTab, setActiveTab] = useState<SettingsTab>('PROFILE');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => resolveInitialSettingsTab());
   const isAdmin = currentUser.role === Role.ADMIN;
   const lastProfileLoadErrorRef = useRef<string | null>(null);
   const lastStoreLoadErrorRef = useRef<string | null>(null);
-  const [orgPlanCode, setOrgPlanCode] = useState<string>('');
-  const [orgPlanNextRenewal, setOrgPlanNextRenewal] = useState<string>('-');
-  const [isOrgPlanMissing, setIsOrgPlanMissing] = useState(false);
+  const [storePlanCode, setStorePlanCode] = useState<string>('');
+  const [storePlanNextRenewal, setStorePlanNextRenewal] = useState<string>('-');
+  const [isStorePlanMissing, setIsStorePlanMissing] = useState(false);
   const isInternal = currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR;
   const [sidebarMenuOrder, setSidebarMenuOrderState] = useState<SidebarNavView[]>(() => getSidebarNavOrder());
+  const [sidebarMenuLabels, setSidebarMenuLabels] = useState<SidebarNavLabelMap>(() => getSidebarNavLabels());
   const [draggingMenuId, setDraggingMenuId] = useState<SidebarNavView | null>(null);
 
   const getProfileSaveErrorMessage = (error: unknown) => {
@@ -217,38 +263,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   useEffect(() => {
     if (!isAdmin) return;
     setSidebarMenuOrderState(getSidebarNavOrder());
+    setSidebarMenuLabels(getSidebarNavLabels());
   }, [isAdmin]);
 
   useEffect(() => {
-    const loadOrgPlan = async () => {
-      if (!isSupabaseConfigured || !activeOrgId) {
-        setOrgPlanCode(currentUser.plan || '');
-        setOrgPlanNextRenewal('-');
-        setIsOrgPlanMissing(false);
+    const loadStorePlan = async () => {
+      if (!isSupabaseConfigured || !activeStoreId) {
+        setStorePlanCode(currentUser.plan || '');
+        setStorePlanNextRenewal('-');
+        setIsStorePlanMissing(false);
         return;
       }
       try {
-        const subscription = await billingService.getOrgSubscription(activeOrgId);
+        const subscription = await billingService.getStoreSubscription(activeStoreId);
         const nextCode = subscription?.billingPlan?.code ? String(subscription.billingPlan.code) : '';
-        setOrgPlanCode(nextCode);
-        setIsOrgPlanMissing(!nextCode);
-        if (subscription?.currentPeriodEnd) {
-          const y = subscription.currentPeriodEnd.getFullYear();
-          const m = String(subscription.currentPeriodEnd.getMonth() + 1).padStart(2, '0');
-          const d = String(subscription.currentPeriodEnd.getDate()).padStart(2, '0');
-          setOrgPlanNextRenewal(`${y}-${m}-${d}`);
-        } else {
-          setOrgPlanNextRenewal('-');
-        }
+        setStorePlanCode(nextCode);
+        setIsStorePlanMissing(!nextCode);
+        setStorePlanNextRenewal('-');
       } catch (error) {
-        console.error('[SettingsView] Failed to load org plan:', error);
-        setOrgPlanCode('');
-        setOrgPlanNextRenewal('-');
-        setIsOrgPlanMissing(false);
+        console.error('[SettingsView] Failed to load store plan:', error);
+        setStorePlanCode('');
+        setStorePlanNextRenewal('-');
+        setIsStorePlanMissing(false);
       }
     };
-    void loadOrgPlan();
-  }, [activeOrgId, currentUser.plan]);
+    void loadStorePlan();
+  }, [activeStoreId, currentUser.plan]);
 
   // Integrations / Provider State
   const [providerCards, setProviderCards] = useState<ProviderCard[]>([]);
@@ -298,6 +338,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   const [templateTitleInput, setTemplateTitleInput] = useState('');
   const [templateBodyInput, setTemplateBodyInput] = useState('');
   const [templatePlatforms, setTemplatePlatforms] = useState<SocialPlatform[]>([]);
+  const [managementUnits, setManagementUnits] = useState<ManagementUnit[]>([]);
+  const [supervisorCandidates, setSupervisorCandidates] = useState<Array<{ userId: string; name: string; email: string }>>([]);
+  const [groupsWithUnits, setGroupsWithUnits] = useState<Array<{ id: string; name: string; managementUnitId?: string }>>([]);
+  const [isLoadingManagementUnits, setIsLoadingManagementUnits] = useState(false);
+  const [managementUnitNameInput, setManagementUnitNameInput] = useState('');
+  const [editingManagementUnitId, setEditingManagementUnitId] = useState('');
+  const [assignSupervisorUnitId, setAssignSupervisorUnitId] = useState('');
+  const [assignSupervisorUserId, setAssignSupervisorUserId] = useState('');
+  const [assignGroupOrgId, setAssignGroupOrgId] = useState('');
+  const [assignGroupUnitId, setAssignGroupUnitId] = useState('');
+  const [isSavingManagementUnit, setIsSavingManagementUnit] = useState(false);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -413,7 +464,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
           category: normalizeText(category) || undefined,
           businessHours: normalizeText(businessHours) || undefined,
           orgId: activeOrgId || undefined,
-          orgName: `${currentUser.name} の組織`,
+          orgName: `${currentUser.name} のグループ`,
         })
       : storesService.updateStore(activeStoreId, {
           name: storeName.trim(),
@@ -638,6 +689,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       const nextCards: ProviderCard[] = catalogRows.map((row) => {
         const configuration = configurationMap.get(row.catalog.id);
         const readiness = buildProviderReadiness(row.catalog, configuration);
+        const integrationConnected = integrationMap.get(row.catalog.providerKey) === true;
+        const configConnected = configuration?.connectionStatus === 'CONNECTED';
         return {
           catalog: row.catalog,
           capability: row.capability || {
@@ -651,12 +704,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
           },
           configuration,
           readiness,
-          isConnected: integrationMap.get(row.catalog.providerKey) ?? configuration?.connectionStatus === 'CONNECTED',
+          isConnected: integrationConnected || configConnected,
         };
       });
-      setProviderCards(nextCards);
-      if (!selectedProviderId && nextCards.length > 0) {
-        setSelectedProviderId(nextCards[0].catalog.id);
+      const sortedCards = [...nextCards].sort((left, right) => {
+        const leftKey = left.catalog.providerKey.toUpperCase();
+        const rightKey = right.catalog.providerKey.toUpperCase();
+        const leftOrder = PROVIDER_DISPLAY_ORDER[leftKey] ?? 999;
+        const rightOrder = PROVIDER_DISPLAY_ORDER[rightKey] ?? 999;
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        const leftLabel = getProviderDisplayName(left.catalog.providerKey, left.catalog.displayName);
+        const rightLabel = getProviderDisplayName(right.catalog.providerKey, right.catalog.displayName);
+        return leftLabel.localeCompare(rightLabel, 'ja');
+      });
+      setProviderCards(sortedCards);
+      if (!selectedProviderId && sortedCards.length > 0) {
+        setSelectedProviderId(sortedCards[0].catalog.id);
       }
     } catch (error) {
       console.error('[SettingsView] Failed to load provider cards:', error);
@@ -745,6 +808,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   const handleToggleConnection = (providerCatalogId: string) => {
     const target = providerCards.find((card) => card.catalog.id === providerCatalogId);
     if (!target) return;
+    const targetDisplayName = getProviderDisplayName(target.catalog.providerKey, target.catalog.displayName);
 
     if (!isSupabaseConfigured) {
       addNotification('未設定', 'Supabase未設定のため、連携状態を変更できません。', 'WARNING');
@@ -765,7 +829,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
             providerKey: target.catalog.providerKey,
           })
           .then(() => {
-            addNotification('OAuth連携解除', `${target.catalog.displayName} のOAuth連携を解除しました。`, 'INFO');
+            addNotification('OAuth連携解除', `${targetDisplayName} のOAuth連携を解除しました。`, 'INFO');
           })
           .catch((error) => {
             console.error('[SettingsView] Failed to disconnect OAuth provider:', error);
@@ -786,9 +850,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
         })
         .then((result) => {
           setOauthAuthorizationUrl(result.authorizationUrl);
-          setOauthProviderLabel(target.catalog.displayName);
+          setOauthProviderLabel(targetDisplayName);
           setIsOAuthModalOpen(true);
-          addNotification('OAuth開始', `${target.catalog.displayName} の認可セッションを開始しました。`, 'INFO');
+          addNotification('OAuth開始', `${targetDisplayName} の認可セッションを開始しました。`, 'INFO');
         })
         .catch((error) => {
           console.error('[SettingsView] Failed to start OAuth provider flow:', error);
@@ -806,7 +870,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       .then((updated) => {
         addNotification(
           updated.isConnected ? '連携完了' : '連携解除',
-          `${target.catalog.displayName}との連携を${updated.isConnected ? '開始' : '解除'}しました。`,
+          `${targetDisplayName}との連携を${updated.isConnected ? '開始' : '解除'}しました。`,
           updated.isConnected ? 'SUCCESS' : 'INFO'
         );
       })
@@ -833,10 +897,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     oauthQueryHandledRef.current = currentSearch;
 
     const params = new URLSearchParams(currentSearch);
-    const tab = params.get('tab');
-    if (tab === 'INTEGRATIONS') {
-      setActiveTab('INTEGRATIONS');
-    }
 
     const oauthStatus = params.get('oauthStatus');
     const oauthProvider = params.get('oauthProvider');
@@ -883,7 +943,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       return;
     }
     if (!activeOrgId) {
-      addNotification('組織未選択', '店舗を選択してから連携先を追加してください。', 'WARNING');
+      addNotification('グループ未選択', '店舗を選択してから連携先を追加してください。', 'WARNING');
       return;
     }
     if (!newProviderKey.trim() || !newProviderName.trim()) {
@@ -983,6 +1043,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       addNotification('選択エラー', '連携先を選択してください。', 'WARNING');
       return;
     }
+    const selectedDisplayName = getProviderDisplayName(
+      selectedProviderCard.catalog.providerKey,
+      selectedProviderCard.catalog.displayName
+    );
     let parsedConfig: Record<string, unknown> = {};
     try {
       parsedConfig = providerConfigJson.trim() ? (JSON.parse(providerConfigJson) as Record<string, unknown>) : {};
@@ -1005,7 +1069,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
           secret: providerSecretInput.trim(),
         });
       }
-      addNotification('設定更新', `${selectedProviderCard.catalog.displayName} の設定を保存しました。`, 'SUCCESS');
+      addNotification('設定更新', `${selectedDisplayName} の設定を保存しました。`, 'SUCCESS');
       await loadProviderCards();
     } catch (error) {
       console.error('[SettingsView] Failed to save provider configuration:', error);
@@ -1025,6 +1089,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       addNotification('選択エラー', '連携先を選択してください。', 'WARNING');
       return;
     }
+    const selectedDisplayName = getProviderDisplayName(
+      selectedProviderCard.catalog.providerKey,
+      selectedProviderCard.catalog.displayName
+    );
     if (!selectedProviderCard.configuration?.id) {
       addNotification('未設定', '先に設定を保存してください。', 'WARNING');
       return;
@@ -1034,7 +1102,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       const status = await providerConfigurationService.testConnection({
         providerConfigurationId: selectedProviderCard.configuration.id,
       });
-      addNotification('接続テスト', `${selectedProviderCard.catalog.displayName} の接続状態: ${status}`, status === 'CONNECTED' ? 'SUCCESS' : 'WARNING');
+      addNotification('接続テスト', `${selectedDisplayName} の接続状態: ${status}`, status === 'CONNECTED' ? 'SUCCESS' : 'WARNING');
       await loadProviderCards();
     } catch (error) {
       console.error('[SettingsView] Failed to test provider connection:', error);
@@ -1062,6 +1130,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       addNotification('選択エラー', '連携先を選択してください。', 'WARNING');
       return;
     }
+    const selectedDisplayName = getProviderDisplayName(
+      selectedProviderCard.catalog.providerKey,
+      selectedProviderCard.catalog.displayName
+    );
     if (!selectedProviderCard.configuration?.id) {
       addNotification('未設定', '先に「設定を保存」を実行してください。', 'WARNING');
       return;
@@ -1082,19 +1154,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       if (result.autoApplied) {
         addNotification(
           'ID自動取得',
-          `${selectedProviderCard.catalog.displayName} のIDを自動設定しました。${summary}${result.message ? ` / ${result.message}` : ''}`,
+          `${selectedDisplayName} のIDを自動設定しました。${summary}${result.message ? ` / ${result.message}` : ''}`,
           'SUCCESS'
         );
       } else if (hasCandidates) {
         addNotification(
           'ID自動取得',
-          `${selectedProviderCard.catalog.displayName} の候補は取得済みです。既存の設定値をそのまま利用します。${summary}${result.message ? ` / ${result.message}` : ''}`,
+          `${selectedDisplayName} の候補は取得済みです。既存の設定値をそのまま利用します。${summary}${result.message ? ` / ${result.message}` : ''}`,
           'SUCCESS'
         );
       } else {
         addNotification(
           'ID自動取得',
-          `${selectedProviderCard.catalog.displayName} の候補が取得できませんでした。${summary}${result.message ? ` / ${result.message}` : ''}`,
+          `${selectedDisplayName} の候補が取得できませんでした。${summary}${result.message ? ` / ${result.message}` : ''}`,
           'WARNING'
         );
       }
@@ -1108,7 +1180,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
 
   const handleUpdateFeatureFlag = async (featureKey: string, nextState: VisibilityState) => {
     if (!activeOrgId) {
-      addNotification('組織未選択', '店舗を選択してから更新してください。', 'WARNING');
+      addNotification('グループ未選択', '店舗を選択してから更新してください。', 'WARNING');
       return;
     }
     setUpdatingFeatureKey(featureKey);
@@ -1142,25 +1214,124 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     });
   };
 
+  const handleSidebarMenuLabelChange = (viewId: SidebarNavView, label: string) => {
+    setSidebarMenuLabels((prev) => ({
+      ...prev,
+      [viewId]: label,
+    }));
+  };
+
   const handleSaveSidebarMenuOrder = () => {
     const saved = setSidebarNavOrder(sidebarMenuOrder);
+    const savedLabels = setSidebarNavLabels(sidebarMenuLabels);
     setSidebarMenuOrderState(saved);
-    addNotification('保存完了', 'サイドバーの表示順を保存しました。', 'SUCCESS');
+    setSidebarMenuLabels(savedLabels);
+    addNotification('保存完了', 'サイドバーの表示順とメニュー名を保存しました。', 'SUCCESS');
   };
 
   const handleResetSidebarMenuOrder = () => {
     const resetOrder = resetSidebarNavOrder();
+    const resetLabels = resetSidebarNavLabels();
     setSidebarMenuOrderState(resetOrder);
-    addNotification('初期化完了', 'サイドバーの表示順を初期状態に戻しました。', 'INFO');
+    setSidebarMenuLabels(resetLabels);
+    addNotification('初期化完了', 'サイドバーの表示順とメニュー名を初期状態に戻しました。', 'INFO');
   };
 
-  const openView = (view: ViewState) => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    params.set('view', view);
-    const nextPath = `${window.location.pathname}?${params.toString()}${window.location.hash || ''}`;
-    window.history.pushState({}, '', nextPath);
-    window.dispatchEvent(new PopStateEvent('popstate'));
+  const loadManagementUnitData = async () => {
+    if (!isAdmin || !isSupabaseConfigured) {
+      setManagementUnits([]);
+      setSupervisorCandidates([]);
+      setGroupsWithUnits([]);
+      return;
+    }
+    setIsLoadingManagementUnits(true);
+    try {
+      const [units, supervisors, groups] = await Promise.all([
+        managementUnitService.listUnits(),
+        managementUnitService.listSupervisorCandidates(),
+        managementUnitService.listGroupsWithUnit(),
+      ]);
+      setManagementUnits(units);
+      setSupervisorCandidates(supervisors);
+      setGroupsWithUnits(groups);
+      if (units.length > 0) {
+        setAssignSupervisorUnitId((prev) => prev || units[0].id);
+        setAssignGroupUnitId((prev) => prev || units[0].id);
+      }
+      if (groups.length > 0) {
+        setAssignGroupOrgId((prev) => prev || groups[0].id);
+      }
+    } catch (error) {
+      addNotification('管理ユニット取得エラー', getErrorMessage(error) || '管理ユニットの取得に失敗しました。', 'ERROR');
+      setManagementUnits([]);
+      setSupervisorCandidates([]);
+      setGroupsWithUnits([]);
+    } finally {
+      setIsLoadingManagementUnits(false);
+    }
+  };
+
+  const handleSaveManagementUnit = async () => {
+    const name = managementUnitNameInput.trim();
+    if (!name) {
+      addNotification('入力エラー', '管理ユニット名を入力してください。', 'WARNING');
+      return;
+    }
+    setIsSavingManagementUnit(true);
+    try {
+      const saved = await managementUnitService.upsertUnit({
+        id: editingManagementUnitId || undefined,
+        name,
+      });
+      addNotification('保存完了', `管理ユニット「${saved.name}」を保存しました。`, 'SUCCESS');
+      setManagementUnitNameInput('');
+      setEditingManagementUnitId('');
+      await loadManagementUnitData();
+    } catch (error) {
+      addNotification('保存エラー', getErrorMessage(error) || '管理ユニットの保存に失敗しました。', 'ERROR');
+    } finally {
+      setIsSavingManagementUnit(false);
+    }
+  };
+
+  const handleAssignSupervisorToUnit = async () => {
+    if (!assignSupervisorUnitId || !assignSupervisorUserId) {
+      addNotification('入力エラー', '管理ユニットとSUPERVISORを選択してください。', 'WARNING');
+      return;
+    }
+    setIsSavingManagementUnit(true);
+    try {
+      await managementUnitService.assignSupervisor({
+        managementUnitId: assignSupervisorUnitId,
+        supervisorUserId: assignSupervisorUserId,
+      });
+      addNotification('割当完了', 'SUPERVISORの管理ユニットを更新しました。', 'SUCCESS');
+      await loadManagementUnitData();
+    } catch (error) {
+      addNotification('割当エラー', getErrorMessage(error) || 'SUPERVISORの割当に失敗しました。', 'ERROR');
+    } finally {
+      setIsSavingManagementUnit(false);
+    }
+  };
+
+  const handleAssignGroupToUnit = async () => {
+    if (!assignGroupOrgId || !assignGroupUnitId) {
+      addNotification('入力エラー', 'グループと管理ユニットを選択してください。', 'WARNING');
+      return;
+    }
+    setIsSavingManagementUnit(true);
+    try {
+      await managementUnitService.assignGroup({
+        orgId: assignGroupOrgId,
+        managementUnitId: assignGroupUnitId,
+      });
+      addNotification('割当完了', 'グループの管理ユニットを更新しました。', 'SUCCESS');
+      await loadManagementUnitData();
+    } catch (error) {
+      addNotification('割当エラー', getErrorMessage(error) || 'グループ割当に失敗しました。', 'ERROR');
+    } finally {
+      setIsSavingManagementUnit(false);
+    }
   };
 
   const toggleTemplatePlatform = (platform: SocialPlatform) => {
@@ -1177,7 +1348,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       return;
     }
     if (!activeOrgId) {
-      addNotification('組織未選択', '店舗を選択してから保存してください。', 'WARNING');
+      addNotification('グループ未選択', '店舗を選択してから保存してください。', 'WARNING');
       return;
     }
 
@@ -1208,7 +1379,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
       return;
     }
     if (!activeOrgId) {
-      addNotification('組織未選択', '店舗を選択してから作成してください。', 'WARNING');
+      addNotification('グループ未選択', '店舗を選択してから作成してください。', 'WARNING');
       return;
     }
     if (!templateTitleInput.trim() || !templateBodyInput.trim()) {
@@ -1267,14 +1438,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   };
 
   const canShowProfileTab = canAccessByFlag('settings_profile');
-  const canShowStoreTab = canAccessByFlag('settings_store');
-  const canShowIntegrationsTab = canAccessByFlag('settings_integrations');
   const canShowSystemTab = isInternal && canAccessByFlag('settings_system');
-  const canManageProviders = isInternal && canAccessByFlag('provider_management');
+  const canManageProviders = isAdmin && canAccessByFlag('provider_management');
   const integrationDisabledReason = !isSupabaseConfigured
     ? 'Supabase未設定のため操作できません。VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY を設定してください。'
     : !activeStoreId
-      ? '店舗未選択です。店舗情報(MEO)で店舗作成後に選択してください。'
+      ? '店舗未選択です。店舗管理またはグループ管理で店舗を用意した後に選択してください。'
       : null;
   const createProviderDisabledReason = !isSupabaseConfigured
     ? 'Supabase未設定のため追加できません。'
@@ -1314,11 +1483,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
   const visibleTabs = useMemo<SettingsTab[]>(() => {
     const tabs: SettingsTab[] = [];
     if (canShowProfileTab) tabs.push('PROFILE');
-    if (canShowStoreTab) tabs.push('STORE');
-    if (canShowIntegrationsTab) tabs.push('INTEGRATIONS');
     if (canShowSystemTab) tabs.push('SYSTEM');
     return tabs;
-  }, [canShowProfileTab, canShowStoreTab, canShowIntegrationsTab, canShowSystemTab]);
+  }, [canShowProfileTab, canShowSystemTab]);
 
   useEffect(() => {
     if (visibleTabs.length === 0) return;
@@ -1327,11 +1494,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
     }
   }, [activeTab, visibleTabs]);
 
+  useEffect(() => {
+    if (!isAdmin || activeTab !== 'SYSTEM') return;
+    void loadManagementUnitData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, activeTab]);
+
   return (
     <div className={PAGE_CONTAINER_CLASS}>
       <section>
         <h1 className={PAGE_HEADER_TITLE_CLASS}>設定</h1>
-        <p className={PAGE_HEADER_DESCRIPTION_CLASS}>プロフィール、店舗、SNS連携、システム設定を管理します。</p>
+        <p className={PAGE_HEADER_DESCRIPTION_CLASS}>プロフィールとシステム設定を管理します。</p>
       </section>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col md:flex-row min-h-[600px]">
@@ -1351,36 +1524,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
               >
                 <UserIcon size={18} />
                 <span>プロフィール・プラン</span>
-              </button>
-            )}
-            {canShowStoreTab && (
-              <button
-                id="settings-tab-store"
-                data-testid="settings-tab-store"
-                onClick={() => setActiveTab('STORE')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                  activeTab === 'STORE' 
-                    ? 'bg-white dark:bg-gray-800 text-primary-600 shadow-sm font-semibold' 
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-              >
-                <Store size={18} />
-                <span>店舗情報 (MEO)</span>
-              </button>
-            )}
-            {canShowIntegrationsTab && (
-              <button
-                id="settings-tab-integrations"
-                data-testid="settings-tab-integrations"
-                onClick={() => setActiveTab('INTEGRATIONS')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                  activeTab === 'INTEGRATIONS' 
-                    ? 'bg-white dark:bg-gray-800 text-primary-600 shadow-sm font-semibold' 
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-              >
-                <LinkIcon size={18} />
-                <span>SNS連携設定</span>
               </button>
             )}
             {canShowSystemTab && (
@@ -1411,13 +1554,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                        <div>
                            <p className="text-primary-100 text-sm font-medium mb-1">現在の契約プラン</p>
                            <h3 className="text-2xl font-bold">
-                             {(isOrgPlanMissing ? '未設定' : (orgPlanCode || currentUser.plan || 'FREE'))} プラン
+                             {(isStorePlanMissing ? '未設定' : (storePlanCode || currentUser.plan || 'FREE'))} プラン
                            </h3>
-                           <p className="text-sm text-primary-100 mt-2">次回更新日: {orgPlanNextRenewal}</p>
-                           {isOrgPlanMissing && isInternal && (
+                           <p className="text-sm text-primary-100 mt-2">次回更新日: {storePlanNextRenewal}</p>
+                           {isStorePlanMissing && isInternal && (
                              <div className="mt-4 rounded-xl bg-white/10 border border-white/20 p-3">
                                <p className="text-xs text-primary-50">
-                                 この組織は契約プランが未設定です。内部ユーザーが最初の顧客ユーザーを作成する前に、「契約プラン」画面でプランを割り当ててください。
+                                 この店舗の契約プランが未設定です。「契約プラン」画面でこの店舗にプランを割り当ててください。
                                </p>
                              </div>
                            )}
@@ -1433,10 +1576,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
 
               <form onSubmit={handleSaveProfile} className="space-y-6">
                 <div className="flex items-center gap-6">
-                  <img 
-                    src={avatarUrl || 'https://via.placeholder.com/80'} 
-                    alt="avatar"
-                    className="w-20 h-20 rounded-full object-cover border-4 border-gray-100 dark:border-gray-700 shadow-sm"
+                  <Avatar
+                    src={avatarUrl}
+                    alt={`${currentUser.name} のプロフィール画像`}
+                    sizeClassName="w-20 h-20"
+                    className="border-4 border-gray-100 dark:border-gray-700 shadow-sm"
+                    iconSize={30}
                   />
                   <input
                     ref={avatarInputRef}
@@ -1570,6 +1715,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">店舗名（名前）</label>
                         <input 
+                            data-testid="store-name-input"
                             type="text" 
                             value={storeName}
                             onChange={(e) => setStoreName(e.target.value)}
@@ -1583,6 +1729,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                         <div className="relative">
                             <MapPin className="absolute left-3 top-3 text-gray-400" size={18} />
                             <input 
+                                data-testid="store-address-input"
                                 type="text" 
                                 value={address}
                                 onChange={(e) => setAddress(e.target.value)}
@@ -1597,6 +1744,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">電話番号</label>
                             <input 
+                                data-testid="store-phone-input"
                                 type="text" 
                                 value={phone}
                                 onChange={(e) => setPhone(e.target.value)}
@@ -1608,6 +1756,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">カテゴリ</label>
                             <input 
+                                data-testid="store-category-input"
                                 type="text" 
                                 value={category}
                                 onChange={(e) => setCategory(e.target.value)}
@@ -1621,6 +1770,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">営業時間</label>
                         <textarea 
+                            data-testid="store-business-hours-input"
                             value={businessHours}
                             onChange={(e) => setBusinessHours(e.target.value)}
                             placeholder="月: 10:00-19:00&#10;火: 10:00-19:00..."
@@ -1631,6 +1781,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
 
                       <div className="flex justify-end pt-4">
                         <button
+                          data-testid="store-save-button"
                           type="submit"
                           disabled={isLoadingStore || isSavingStore}
                           className="flex items-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl shadow-lg shadow-primary-200 dark:shadow-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
@@ -1646,8 +1797,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
           {activeTab === 'INTEGRATIONS' && (
             <div className="max-w-5xl space-y-6">
               <div>
-                <h2 className={PAGE_SECTION_TITLE_CLASS}>SNS連携設定</h2>
+                <h2 className={PAGE_SECTION_TITLE_CLASS}>プラットフォーム連携（移行済み）</h2>
                 <p className={PAGE_SECTION_DESCRIPTION_CLASS}>店舗ごとの接続状態を管理します。接続確認で利用できるかを確認できます。</p>
+                {!canManageProviders && (
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    アカウントの連携/解除は可能です。連携先の追加や詳細設定はADMINのみ表示されます。
+                  </p>
+                )}
               </div>
               {!isSupabaseConfigured && (
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 text-sm rounded-xl p-4">
@@ -1680,7 +1836,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-gray-800 dark:text-white">{provider.catalog.displayName}</h3>
+                          {hasBrandedPlatformLogo(provider.catalog.providerKey) && (
+                            <SocialPlatformLogo platform={provider.catalog.providerKey} size={16} />
+                          )}
+                          <h3 className="font-bold text-gray-800 dark:text-white">
+                            {getProviderDisplayName(provider.catalog.providerKey, provider.catalog.displayName)}
+                          </h3>
                           {canManageProviders && (
                             <span className="text-xs px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
                               公開範囲: {PROVIDER_VISIBILITY_LABELS[provider.catalog.defaultVisibility]}
@@ -1688,7 +1849,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                           )}
                         </div>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          接続状態: {CONNECTION_STATUS_LABELS[provider.configuration?.connectionStatus || 'DISCONNECTED']}
+                          接続状態: {provider.isConnected ? CONNECTION_STATUS_LABELS.CONNECTED : CONNECTION_STATUS_LABELS[provider.configuration?.connectionStatus || 'DISCONNECTED']}
                         </p>
                         <details className="text-xs text-gray-500 dark:text-gray-400">
                           <summary className="cursor-pointer select-none">技術情報を表示（必要なときのみ）</summary>
@@ -1707,7 +1868,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                           data-testid={`provider-connection-status-${provider.catalog.providerKey}`}
                           className="sr-only"
                         >
-                          {provider.configuration?.connectionStatus || 'DISCONNECTED'}
+                          {provider.isConnected ? 'CONNECTED' : (provider.configuration?.connectionStatus || 'DISCONNECTED')}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -1838,7 +1999,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                     <h3 className="font-bold text-gray-800 dark:text-white">連携先設定（管理者）</h3>
                     {selectedProviderCard && (
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        編集中: {selectedProviderCard.catalog.displayName} ({selectedProviderCard.catalog.providerKey})
+                        編集中: {getProviderDisplayName(selectedProviderCard.catalog.providerKey, selectedProviderCard.catalog.displayName)} ({selectedProviderCard.catalog.providerKey})
                       </p>
                     )}
                     <select
@@ -1850,7 +2011,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                       <option value="">連携先を選択してください</option>
                       {providerCards.map((card) => (
                         <option key={card.catalog.id} value={card.catalog.id}>
-                          {card.catalog.displayName} ({card.catalog.providerKey})
+                          {getProviderDisplayName(card.catalog.providerKey, card.catalog.displayName)} ({card.catalog.providerKey})
                         </option>
                       ))}
                     </select>
@@ -1982,41 +2143,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                  </div>
                </div>
 
-               <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                 <div className="p-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl space-y-4">
-                   <h2 className={PAGE_SECTION_TITLE_CLASS}>ブランドキット</h2>
-                   <p className="text-sm text-gray-600 dark:text-gray-300">
-                     投稿ルールの設定は専用ページへ移動しました。
-                   </p>
-                   <button
-                     type="button"
-                     onClick={() => openView('BRAND_KIT')}
-                     className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg"
-                   >
-                     ブランドキットを開く
-                   </button>
-                 </div>
-
-                 <div className="p-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl space-y-4">
-                   <h2 className={PAGE_SECTION_TITLE_CLASS}>投稿テンプレート</h2>
-                   <p className="text-sm text-gray-600 dark:text-gray-300">
-                     テンプレート管理は専用ページへ移動しました。
-                   </p>
-                   <button
-                     type="button"
-                     onClick={() => openView('POST_TEMPLATES')}
-                     className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg"
-                   >
-                     投稿テンプレートを開く
-                   </button>
-                 </div>
-               </div>
-
                {isAdmin && (
                  <div className="p-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl space-y-4">
                    <div>
                      <h2 className={PAGE_SECTION_TITLE_CLASS}>サイドバーメニュー順序</h2>
-                     <p className={PAGE_SECTION_DESCRIPTION_CLASS}>ドラッグ＆ドロップで順序を変更し、保存で反映します。</p>
+                     <p className={PAGE_SECTION_DESCRIPTION_CLASS}>ドラッグ＆ドロップで順序を変更し、表示名を編集して保存できます。</p>
                    </div>
                    <div className="space-y-2">
                      {sidebarMenuOrder.map((viewId) => (
@@ -2037,9 +2168,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                              : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/60'
                          }`}
                        >
-                         <div className="flex items-center gap-3">
+                         <div className="flex items-center gap-3 flex-1 min-w-0">
                            <span className="text-gray-400 text-sm">⋮⋮</span>
-                           <span className="text-sm font-medium text-gray-800 dark:text-white">{NAV_LABELS[viewId]}</span>
+                           <input
+                             type="text"
+                             value={sidebarMenuLabels[viewId] || SIDEBAR_NAV_DEFAULT_LABELS[viewId] || NAV_LABELS[viewId]}
+                             onChange={(event) => handleSidebarMenuLabelChange(viewId, event.target.value)}
+                             className="w-full max-w-xs p-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
+                           />
                          </div>
                        </div>
                      ))}
@@ -2060,6 +2196,139 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onProfi
                        初期順に戻す
                      </button>
                    </div>
+                 </div>
+               )}
+
+               {isAdmin && (
+                 <div className="p-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl space-y-5">
+                   <div>
+                     <h2 className={PAGE_SECTION_TITLE_CLASS}>管理ユニット管理（ADMIN専用）</h2>
+                     <p className={PAGE_SECTION_DESCRIPTION_CLASS}>
+                       SUPERVISORの管理範囲を決める内部設定です。SUPERVISOR/MANAGER/USERには表示されません。
+                     </p>
+                   </div>
+
+                   {isLoadingManagementUnits ? (
+                     <p className="text-sm text-gray-500 dark:text-gray-400">管理ユニットを読み込み中...</p>
+                   ) : (
+                     <>
+                       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+                         <div>
+                           <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">管理ユニット</label>
+                           <select
+                             value={editingManagementUnitId}
+                             onChange={(event) => {
+                               const unitId = event.target.value;
+                               setEditingManagementUnitId(unitId);
+                               const selected = managementUnits.find((unit) => unit.id === unitId);
+                               setManagementUnitNameInput(selected?.name || '');
+                             }}
+                             className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl"
+                           >
+                             <option value="">新規作成</option>
+                             {managementUnits.map((unit) => (
+                               <option key={unit.id} value={unit.id}>
+                                 {unit.name}
+                               </option>
+                             ))}
+                           </select>
+                         </div>
+                         <div className="xl:col-span-2">
+                           <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">管理ユニット名</label>
+                           <div className="flex gap-2">
+                             <input
+                               value={managementUnitNameInput}
+                               onChange={(event) => setManagementUnitNameInput(event.target.value)}
+                               placeholder="例: 東日本代理店"
+                               className="flex-1 p-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl"
+                             />
+                             <button
+                               type="button"
+                               onClick={() => void handleSaveManagementUnit()}
+                               disabled={isSavingManagementUnit}
+                               className="px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                             >
+                               {isSavingManagementUnit ? '保存中...' : '保存'}
+                             </button>
+                           </div>
+                         </div>
+                       </div>
+
+                       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                         <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/60 space-y-3">
+                           <h3 className="text-sm font-bold text-gray-900 dark:text-white">SUPERVISOR割当</h3>
+                           <select
+                             value={assignSupervisorUnitId}
+                             onChange={(event) => setAssignSupervisorUnitId(event.target.value)}
+                             className="w-full p-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl text-sm"
+                           >
+                             <option value="">管理ユニットを選択</option>
+                             {managementUnits.map((unit) => (
+                               <option key={unit.id} value={unit.id}>
+                                 {unit.name}
+                               </option>
+                             ))}
+                           </select>
+                           <select
+                             value={assignSupervisorUserId}
+                             onChange={(event) => setAssignSupervisorUserId(event.target.value)}
+                             className="w-full p-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl text-sm"
+                           >
+                             <option value="">SUPERVISORを選択</option>
+                             {supervisorCandidates.map((candidate) => (
+                               <option key={candidate.userId} value={candidate.userId}>
+                                 {candidate.name}（{candidate.email}）
+                               </option>
+                             ))}
+                           </select>
+                           <button
+                             type="button"
+                             onClick={() => void handleAssignSupervisorToUnit()}
+                             disabled={isSavingManagementUnit || !assignSupervisorUnitId || !assignSupervisorUserId}
+                             className="px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                           >
+                             SUPERVISORを割り当て
+                           </button>
+                         </div>
+
+                         <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/60 space-y-3">
+                           <h3 className="text-sm font-bold text-gray-900 dark:text-white">グループ割当</h3>
+                           <select
+                             value={assignGroupOrgId}
+                             onChange={(event) => setAssignGroupOrgId(event.target.value)}
+                             className="w-full p-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl text-sm"
+                           >
+                             <option value="">グループを選択</option>
+                             {groupsWithUnits.map((group) => (
+                               <option key={group.id} value={group.id}>
+                                 {group.name}
+                               </option>
+                             ))}
+                           </select>
+                           <select
+                             value={assignGroupUnitId}
+                             onChange={(event) => setAssignGroupUnitId(event.target.value)}
+                             className="w-full p-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl text-sm"
+                           >
+                             <option value="">管理ユニットを選択</option>
+                             {managementUnits.map((unit) => (
+                               <option key={unit.id} value={unit.id}>
+                                 {unit.name}
+                               </option>
+                             ))}
+                           </select>
+                           <button
+                             type="button"
+                             onClick={() => void handleAssignGroupToUnit()}
+                             disabled={isSavingManagementUnit || !assignGroupOrgId || !assignGroupUnitId}
+                             className="px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                           >
+                             グループを割り当て
+                           </button>
+                         </div>
+                       </div>
+                     </>
+                   )}
                  </div>
                )}
 

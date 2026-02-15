@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BillingPlan, Role, StoreGroup, User, VisibilityState } from '../types';
-import { MOCK_USERS } from '../constants';
+import { BillingPlan, Role, User } from '../types';
 import {
   Trash2,
   UserPlus,
@@ -15,6 +14,7 @@ import {
   Upload,
   FileWarning,
   CheckCircle2,
+  Link2,
 } from 'lucide-react';
 import { useNotification } from '../contexts/NotificationContext';
 import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
@@ -22,13 +22,15 @@ import { ManagedUserStoreSummary, userManagementService } from '../services/user
 import { userStoreControlsService } from '../services/userStoreControlsService';
 import { storeCsvImportService, StoreCsvParseResult } from '../services/storeCsvImportService';
 import { storeLifecycleService } from '../services/storeLifecycleService';
-import { featureFlagsService } from '../services/featureFlagsService';
 import { billingService } from '../services/billingService';
 import { getErrorMessage } from '../services/errorMessage';
 import { useStore } from '../contexts/StoreContext';
-import { storeGroupsService } from '../services/storeGroupsService';
+import { groupService, AccessibleGroup } from '../services/groupService';
+import { storesService } from '../services/storesService';
 import { ModalPortal } from './ModalPortal';
 import { PAGE_CARD_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS, PAGE_WARNING_CLASS } from './ui/pageLayout';
+import { getFunctionErrorMessage, invokeFunctionByHttp } from '../services/functionHttpClient';
+import { formatViewLabel } from './ui/formatters';
 
 interface UserManagementProps {
   currentUser: User;
@@ -40,24 +42,15 @@ type ControlDraft = {
   isSaving: boolean;
 };
 
-const defaultSummaryFromUser = (user: User): ManagedUserStoreSummary => ({
-  user,
-  currentStoreCount: user.role === Role.USER ? 1 : 0,
-  effectiveStoreLimit: user.role === Role.USER ? 1 : 0,
-  maxStoresOverride: undefined,
-  allowCsvStoreBulkCreate: false,
-});
+type UserSortKey =
+  | 'REGISTERED_AT'
+  | 'USER_INFO'
+  | 'PLAN'
+  | 'ROLE'
+  | 'STORE_COUNT'
+  | 'STORE_LIMIT';
 
-const fallbackSummary = MOCK_USERS.map(defaultSummaryFromUser);
-
-const BULK_FEATURE_OPTIONS: { key: string; label: string; description: string }[] = [
-  { key: 'dashboard', label: 'ダッシュボード', description: 'メニュー表示: ダッシュボード' },
-  { key: 'calendar', label: 'カレンダー', description: 'メニュー表示: カレンダー' },
-  { key: 'survey', label: 'アンケート', description: 'メニュー表示: アンケート' },
-  { key: 'create_post', label: '新規投稿', description: 'メニュー表示: 新規投稿' },
-  { key: 'post_list', label: '投稿一覧', description: 'メニュー表示: 投稿一覧' },
-  { key: 'inbox', label: '受信箱', description: 'メニュー表示: 受信箱' },
-];
+const fallbackSummary: ManagedUserStoreSummary[] = [];
 
 export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
@@ -70,83 +63,52 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const [controlDrafts, setControlDrafts] = useState<Record<string, ControlDraft>>({});
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<Role | 'ALL'>('ALL');
+  const [planFilter, setPlanFilter] = useState<string>('ALL');
+  const [sortKey, setSortKey] = useState<UserSortKey>('REGISTERED_AT');
+  const [sortDirection, setSortDirection] = useState<'ASC' | 'DESC'>('DESC');
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteName, setInviteName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<Role>(Role.USER);
+  const [inviteGroupMode, setInviteGroupMode] = useState<'EXISTING' | 'NEW'>('EXISTING');
+  const [inviteGroupId, setInviteGroupId] = useState<string>('');
+  const [inviteNewGroupName, setInviteNewGroupName] = useState<string>('');
+  const [inviteStoreMode, setInviteStoreMode] = useState<'EXISTING' | 'NEW'>('EXISTING');
   const [inviteStoreId, setInviteStoreId] = useState<string>('');
+  const [inviteNewStoreName, setInviteNewStoreName] = useState<string>('');
   const [invitePlanCode, setInvitePlanCode] = useState<string>('');
   const [invitePassword, setInvitePassword] = useState<string>('');
   const [isInviting, setIsInviting] = useState(false);
-  const [orgPlanCode, setOrgPlanCode] = useState<string>('');
-  const [isOrgPlanMissing, setIsOrgPlanMissing] = useState<boolean>(false);
+  const [isGeneratingInviteLink, setIsGeneratingInviteLink] = useState(false);
   const [invitePlanCatalog, setInvitePlanCatalog] = useState<BillingPlan[]>([]);
   const [isLoadingInvitePlans, setIsLoadingInvitePlans] = useState<boolean>(false);
+  const [inviteGroups, setInviteGroups] = useState<AccessibleGroup[]>([]);
+  const [isLoadingInviteGroups, setIsLoadingInviteGroups] = useState(false);
+  const [planDrafts, setPlanDrafts] = useState<Record<string, string>>({});
+  const [savingPlanUserId, setSavingPlanUserId] = useState<string | null>(null);
 
-  const [storeGroups, setStoreGroups] = useState<StoreGroup[]>([]);
-  const [isLoadingGroups, setIsLoadingGroups] = useState(false);
-  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
-  const [editingGroup, setEditingGroup] = useState<StoreGroup | null>(null);
-  const [groupName, setGroupName] = useState('');
-  const [groupDescription, setGroupDescription] = useState('');
-  const [groupStoreIds, setGroupStoreIds] = useState<string[]>([]);
-  const [isSavingGroup, setIsSavingGroup] = useState(false);
-  const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
-  const [bulkSettingGroupId, setBulkSettingGroupId] = useState<string>('');
-  const [bulkSettingFeatureKey, setBulkSettingFeatureKey] = useState<string>('create_post');
-  const [bulkSettingState, setBulkSettingState] = useState<VisibilityState>('ENABLED');
-  const [isApplyingBulkSetting, setIsApplyingBulkSetting] = useState(false);
+  const [isAttachExistingOpen, setIsAttachExistingOpen] = useState(false);
+  const [attachRole, setAttachRole] = useState<Role>(Role.USER);
+  const [attachGroupId, setAttachGroupId] = useState<string>('');
+  const [attachStoreId, setAttachStoreId] = useState<string>('');
+  const [attachSearchTerm, setAttachSearchTerm] = useState('');
+  const [attachCandidates, setAttachCandidates] = useState<Array<{ userId: string; name: string; email: string }>>([]);
+  const [selectedAttachUserId, setSelectedAttachUserId] = useState('');
+  const [isSearchingExisting, setIsSearchingExisting] = useState(false);
+  const [isAttachingExisting, setIsAttachingExisting] = useState(false);
+
+  const [editingUserSummary, setEditingUserSummary] = useState<ManagedUserStoreSummary | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editRole, setEditRole] = useState<Role>(Role.USER);
+  const [editStoreIds, setEditStoreIds] = useState<string[]>([]);
+  const [isSavingEditUser, setIsSavingEditUser] = useState(false);
 
   const [selectedCsvUserId, setSelectedCsvUserId] = useState<string>('');
   const [csvFileName, setCsvFileName] = useState('');
   const [csvParseResult, setCsvParseResult] = useState<StoreCsvParseResult>({ rows: [], errors: [] });
   const [csvExecutionErrors, setCsvExecutionErrors] = useState<StoreCsvParseResult['errors']>([]);
   const [isExecutingCsv, setIsExecutingCsv] = useState(false);
-
-  const invokeAdminFunctionByHttp = async (
-    functionName: string,
-    payload: Record<string, unknown>
-  ): Promise<Record<string, unknown> | null> => {
-    if (!supabase) throw new Error('Supabase client is not initialized.');
-
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-    if (!supabaseUrl || !anonKey) {
-      throw new Error('Supabase環境変数が不足しています。VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY を確認してください。');
-    }
-
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
-    const accessToken = sessionData.session?.access_token;
-    if (!accessToken) {
-      throw new Error('ログインセッションが無効です。いったんログアウトして再ログインしてください。');
-    }
-
-    const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}?client=direct-http-v3`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: anonKey,
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const text = await response.text();
-    let body: Record<string, unknown> | null = null;
-    try {
-      body = text ? (JSON.parse(text) as Record<string, unknown>) : null;
-    } catch {
-      body = null;
-    }
-
-    if (!response.ok) {
-      const message = body?.error || body?.message || text || `status=${response.status}`;
-      throw new Error(`${String(message)}（status=${response.status}）`);
-    }
-    return body;
-  };
 
   const activeOrgId = useMemo(() => {
     if (!activeStoreId) return null;
@@ -160,6 +122,26 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     return map;
   }, [stores]);
 
+  const storesByOrgId = useMemo(() => {
+    const map = new Map<string, typeof stores>();
+    stores.forEach((store) => {
+      const current = map.get(store.orgId) || [];
+      current.push(store);
+      map.set(store.orgId, current);
+    });
+    return map;
+  }, [stores]);
+
+  const inviteStoreCandidates = useMemo(() => {
+    if (!inviteGroupId) return [];
+    return storesByOrgId.get(inviteGroupId) || [];
+  }, [inviteGroupId, storesByOrgId]);
+
+  const attachStoreCandidates = useMemo(() => {
+    if (!attachGroupId) return [];
+    return storesByOrgId.get(attachGroupId) || [];
+  }, [attachGroupId, storesByOrgId]);
+
   const userOnlyRows = useMemo(
     () => userRows.filter((row) => row.user.role === Role.USER),
     [userRows]
@@ -169,25 +151,75 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     () => userOnlyRows.find((row) => row.user.id === selectedCsvUserId) || null,
     [selectedCsvUserId, userOnlyRows]
   );
-  const selectedBulkSettingGroup = useMemo(
-    () => storeGroups.find((group) => group.id === bulkSettingGroupId) || null,
-    [bulkSettingGroupId, storeGroups]
+  const availablePlanCodes = useMemo(() => {
+    const unique = new Set<string>();
+    userRows.forEach((row) => {
+      const code = String(row.user.plan || 'FREE').trim().toUpperCase();
+      if (!code) return;
+      unique.add(code);
+    });
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [userRows]);
+  const selectablePlanCodeSet = useMemo(
+    () => new Set(invitePlanCatalog.map((plan) => plan.code.trim().toUpperCase())),
+    [invitePlanCatalog]
   );
-  const canApplyBulkSetting = isInternal;
+
   const filteredUserRows = useMemo(() => {
     const normalizedSearch = userSearchTerm.trim().toLowerCase();
-    return userRows.filter((row) => {
-      if (roleFilter !== 'ALL' && row.user.role !== roleFilter) {
-        return false;
-      }
-      if (!normalizedSearch) {
-        return true;
-      }
-      const name = row.user.name.toLowerCase();
-      const email = row.user.email.toLowerCase();
-      return name.includes(normalizedSearch) || email.includes(normalizedSearch);
-    });
-  }, [roleFilter, userRows, userSearchTerm]);
+    const roleRank: Record<Role, number> = {
+      [Role.ADMIN]: 4,
+      [Role.SUPERVISOR]: 3,
+      [Role.MANAGER]: 2,
+      [Role.USER]: 1,
+    };
+
+    const compareByDirection = (left: number, right: number) => (
+      sortDirection === 'ASC' ? left - right : right - left
+    );
+
+    const toTextCompare = (left: string, right: string) => {
+      const compared = left.localeCompare(right, 'ja');
+      return sortDirection === 'ASC' ? compared : compared * -1;
+    };
+
+    return userRows
+      .filter((row) => {
+        if (roleFilter !== 'ALL' && row.user.role !== roleFilter) {
+          return false;
+        }
+        if (planFilter !== 'ALL' && (row.user.plan || 'FREE').toUpperCase() !== planFilter) {
+          return false;
+        }
+        if (!normalizedSearch) {
+          return true;
+        }
+        const name = row.user.name.toLowerCase();
+        const email = row.user.email.toLowerCase();
+        const username = row.user.username.toLowerCase();
+        return name.includes(normalizedSearch) || email.includes(normalizedSearch) || username.includes(normalizedSearch);
+      })
+      .sort((a, b) => {
+        if (sortKey === 'REGISTERED_AT') {
+          return compareByDirection(a.user.lastLoginAt.getTime(), b.user.lastLoginAt.getTime());
+        }
+        if (sortKey === 'USER_INFO') {
+          const byName = toTextCompare(a.user.name, b.user.name);
+          if (byName !== 0) return byName;
+          return toTextCompare(a.user.email, b.user.email);
+        }
+        if (sortKey === 'PLAN') {
+          return toTextCompare(a.user.plan || 'FREE', b.user.plan || 'FREE');
+        }
+        if (sortKey === 'ROLE') {
+          return compareByDirection(roleRank[a.user.role], roleRank[b.user.role]);
+        }
+        if (sortKey === 'STORE_COUNT') {
+          return compareByDirection(a.currentStoreCount, b.currentStoreCount);
+        }
+        return compareByDirection(a.effectiveStoreLimit, b.effectiveStoreLimit);
+      });
+  }, [planFilter, roleFilter, sortDirection, sortKey, userRows, userSearchTerm]);
 
   const syncControlDrafts = (rows: ManagedUserStoreSummary[]) => {
     const next: Record<string, ControlDraft> = {};
@@ -202,15 +234,25 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     setControlDrafts(next);
   };
 
+  const syncPlanDrafts = (rows: ManagedUserStoreSummary[]) => {
+    const next: Record<string, string> = {};
+    rows.forEach((row) => {
+      next[row.user.id] = String(row.user.plan || '').trim().toUpperCase();
+    });
+    setPlanDrafts(next);
+  };
+
   const loadUsers = async (orgId: string | null) => {
     if (!isSupabaseConfigured) {
       setUserRows(fallbackSummary);
       syncControlDrafts(fallbackSummary);
+      syncPlanDrafts(fallbackSummary);
       return;
     }
     if (!orgId) {
       setUserRows([]);
       syncControlDrafts([]);
+      syncPlanDrafts([]);
       return;
     }
     setIsLoading(true);
@@ -218,62 +260,15 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       const data = await userManagementService.listUsersByOrgWithStoreStats(orgId);
       setUserRows(data);
       syncControlDrafts(data);
+      syncPlanDrafts(data);
     } catch (error) {
       console.error('[UserManagement] Failed to load users:', error);
       addNotification('読み込みエラー', 'ユーザー一覧の取得に失敗しました。', 'ERROR');
       setUserRows([]);
       syncControlDrafts([]);
+      syncPlanDrafts([]);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const loadStoreGroups = async (orgId: string | null) => {
-    if (!isSupabaseConfigured) {
-      setStoreGroups([]);
-      return;
-    }
-    if (!orgId) {
-      setStoreGroups([]);
-      return;
-    }
-    setIsLoadingGroups(true);
-    try {
-      const groups = await storeGroupsService.listByOrg(orgId);
-      setStoreGroups(groups);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '店舗グループの取得に失敗しました。';
-      addNotification('店舗グループ取得エラー', message, 'ERROR');
-      setStoreGroups([]);
-    } finally {
-      setIsLoadingGroups(false);
-    }
-  };
-
-  const loadOrgPlan = async (orgId: string | null) => {
-    if (!isSupabaseConfigured) {
-      setOrgPlanCode('FREE');
-      setIsOrgPlanMissing(false);
-      return;
-    }
-    if (!orgId) {
-      setOrgPlanCode('');
-      setIsOrgPlanMissing(false);
-      return;
-    }
-
-    try {
-      const subscription = await billingService.getOrgSubscription(orgId);
-      const code = subscription?.billingPlan?.code ? String(subscription.billingPlan.code) : '';
-      setOrgPlanCode(code);
-      setIsOrgPlanMissing(!code);
-      if (code) {
-        setInvitePlanCode('');
-      }
-    } catch (error) {
-      console.error('[UserManagement] Failed to load org plan:', error);
-      setOrgPlanCode('');
-      setIsOrgPlanMissing(true);
     }
   };
 
@@ -296,39 +291,93 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     }
   };
 
+  const loadInviteGroups = async () => {
+    if (!isSupabaseConfigured) {
+      setInviteGroups([]);
+      return;
+    }
+    setIsLoadingInviteGroups(true);
+    try {
+      const groups = await groupService.listAccessibleGroups(currentUser.id);
+      setInviteGroups(groups);
+      if (groups.length > 0) {
+        setInviteGroupId((prev) => {
+          if (prev && groups.some((group) => group.id === prev)) return prev;
+          if (activeOrgId && groups.some((group) => group.id === activeOrgId)) return activeOrgId;
+          return groups[0].id;
+        });
+      }
+    } catch (error) {
+      setInviteGroups([]);
+      addNotification('グループ取得エラー', getErrorMessage(error) || 'グループ一覧の取得に失敗しました。', 'ERROR');
+    } finally {
+      setIsLoadingInviteGroups(false);
+    }
+  };
+
   useEffect(() => {
+    if (!inviteGroupId && activeOrgId) {
+      setInviteGroupId(activeOrgId);
+    }
     if (!inviteStoreId && activeStoreId) {
       setInviteStoreId(activeStoreId);
     }
+    if (!attachGroupId && activeOrgId) {
+      setAttachGroupId(activeOrgId);
+    }
+    if (!attachStoreId && activeStoreId) {
+      setAttachStoreId(activeStoreId);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStoreId]);
+  }, [activeOrgId, activeStoreId]);
 
   useEffect(() => {
     const loadData = async () => {
       await loadUsers(activeOrgId);
-      await loadStoreGroups(activeOrgId);
-      await loadOrgPlan(activeOrgId);
     };
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeOrgId]);
+  }, [activeOrgId, activeStoreId]);
 
   useEffect(() => {
-    if (!isInviteOpen) return;
-    if (!isInternal) return;
-    if (!activeOrgId) return;
-    if (!isOrgPlanMissing) return;
-    void loadInvitePlanCatalog();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isInviteOpen, isInternal, activeOrgId, isOrgPlanMissing]);
-
-  useEffect(() => {
-    if (storeGroups.length === 0) {
-      setBulkSettingGroupId('');
+    if (!isInternal || !activeOrgId) {
+      setInvitePlanCatalog([]);
       return;
     }
-    setBulkSettingGroupId((prev) => (storeGroups.some((group) => group.id === prev) ? prev : storeGroups[0].id));
-  }, [storeGroups]);
+    void loadInvitePlanCatalog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInternal, activeOrgId]);
+
+  useEffect(() => {
+    if (!isInviteOpen && !isAttachExistingOpen) return;
+    void loadInviteGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInviteOpen, isAttachExistingOpen, currentUser.id]);
+
+  useEffect(() => {
+    if (inviteGroupMode !== 'EXISTING') return;
+    const groupStores = storesByOrgId.get(inviteGroupId) || [];
+    setInviteStoreId((prev) => {
+      if (prev && groupStores.some((store) => store.id === prev)) return prev;
+      if (groupStores.length === 0) return '';
+      return groupStores[0].id;
+    });
+  }, [inviteGroupId, inviteGroupMode, storesByOrgId]);
+
+  useEffect(() => {
+    const groupStores = storesByOrgId.get(attachGroupId) || [];
+    setAttachStoreId((prev) => {
+      if (prev && groupStores.some((store) => store.id === prev)) return prev;
+      if (groupStores.length === 0) return '';
+      return groupStores[0].id;
+    });
+  }, [attachGroupId, storesByOrgId]);
+
+  useEffect(() => {
+    if (editRole !== Role.USER) {
+      setEditStoreIds([]);
+    }
+  }, [editRole]);
 
   const canManage = (targetUser: User) => {
     if (currentUser.role === Role.ADMIN) return true;
@@ -341,8 +390,67 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     return false;
   };
 
-  const handleDelete = (userId: string) => {
-    if (!window.confirm('本当にこのユーザーを削除しますか？この組織への所属が解除されます。')) {
+  const closeEditUserModal = () => {
+    setEditingUserSummary(null);
+    setEditName('');
+    setEditRole(Role.USER);
+    setEditStoreIds([]);
+  };
+
+  const toggleEditStoreId = (storeId: string) => {
+    setEditStoreIds((prev) => (
+      prev.includes(storeId) ? prev.filter((id) => id !== storeId) : [...prev, storeId]
+    ));
+  };
+
+  const openEditUserModal = (summary: ManagedUserStoreSummary) => {
+    setEditingUserSummary(summary);
+    setEditName(summary.user.name);
+    setEditRole(summary.user.role);
+    setEditStoreIds(summary.user.role === Role.USER ? summary.userStoreIds : []);
+  };
+
+  const handleSaveUserEdit = async () => {
+    if (!editingUserSummary) return;
+    if (!activeOrgId) {
+      addNotification('店舗未選択', '店舗が選択されていません。', 'WARNING');
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      addNotification('準備中', 'Supabase未設定のためユーザー編集は利用できません。', 'INFO');
+      return;
+    }
+
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      addNotification('入力エラー', '表示名を入力してください。', 'WARNING');
+      return;
+    }
+
+    setIsSavingEditUser(true);
+    try {
+      await userManagementService.updateManagedUser({
+        orgId: activeOrgId,
+        targetUserId: editingUserSummary.user.id,
+        patch: {
+          name: trimmedName,
+          role: editRole,
+          storeIds: editRole === Role.USER ? editStoreIds : [],
+        },
+      });
+      addNotification('ユーザー更新', 'ユーザー情報を更新しました。', 'SUCCESS');
+      closeEditUserModal();
+      await loadUsers(activeOrgId);
+    } catch (error) {
+      const message = getErrorMessage(error) || 'ユーザー編集に失敗しました。';
+      addNotification('更新エラー', message, 'ERROR');
+    } finally {
+      setIsSavingEditUser(false);
+    }
+  };
+
+  const handleRemoveFromOrg = (userId: string) => {
+    if (!window.confirm('本当にこのユーザーを削除しますか？このグループへの所属が解除されます。')) {
       return;
     }
 
@@ -375,14 +483,121 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       });
   };
 
-  const handleInvite = async () => {
-    if (!inviteName.trim() || !inviteEmail.trim()) {
-      addNotification('入力エラー', '名前とメールアドレスを入力してください。', 'WARNING');
+  const handleFullDelete = async (summary: ManagedUserStoreSummary) => {
+    if (currentUser.role !== Role.ADMIN) {
+      addNotification('権限エラー', '完全削除はADMINのみ実行できます。', 'ERROR');
+      return;
+    }
+    if (!activeOrgId) {
+      addNotification('店舗未選択', '店舗が選択されていません。', 'WARNING');
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      addNotification('準備中', 'Supabase未設定のため完全削除は利用できません。', 'INFO');
+      return;
+    }
+    if (!window.confirm(`「${summary.user.name}」を完全削除しますか？この操作は取り消せません。`)) {
       return;
     }
 
-    if (!activeOrgId) {
-      addNotification('店舗未選択', '店舗を選択してください。', 'WARNING');
+    setDeletingUserId(summary.user.id);
+    try {
+      const first = await userManagementService.deleteManagedUser({
+        orgId: activeOrgId,
+        targetUserId: summary.user.id,
+        mode: 'FULL_DELETE',
+      });
+
+      if (first.confirmRequired) {
+        if (!first.confirmToken) {
+          throw new Error('confirmTokenの取得に失敗しました。');
+        }
+        if (!window.confirm('最終確認: 完全削除を実行します。問題なければOKを押してください。')) {
+          addNotification('完全削除を中止', '最終確認でキャンセルしました。', 'INFO');
+          return;
+        }
+        await userManagementService.deleteManagedUser({
+          orgId: activeOrgId,
+          targetUserId: summary.user.id,
+          mode: 'FULL_DELETE',
+          confirmToken: first.confirmToken,
+        });
+      }
+
+      addNotification('完全削除完了', 'Authユーザーを完全削除しました。', 'SUCCESS');
+      await loadUsers(activeOrgId);
+    } catch (error) {
+      const message = getErrorMessage(error) || '完全削除に失敗しました。';
+      addNotification('完全削除エラー', message, 'ERROR');
+    } finally {
+      setDeletingUserId(null);
+    }
+  };
+
+  const resolveInviteGroupAndStore = async (): Promise<{ orgId: string; storeId: string }> => {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase未設定のため実行できません。');
+    }
+
+    if (inviteGroupMode === 'NEW') {
+      if (!(currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR)) {
+        throw new Error('グループ新規作成はADMIN/SUPERVISORのみ実行できます。');
+      }
+      const groupName = inviteNewGroupName.trim();
+      const initialStoreName = inviteNewStoreName.trim();
+      if (!groupName || !initialStoreName) {
+        throw new Error('新規グループ作成時はグループ名と初期店舗名が必須です。');
+      }
+      const selectedGroup = inviteGroups.find((group) => group.id === inviteGroupId);
+      const managementUnitId = currentUser.role === Role.ADMIN
+        ? (selectedGroup?.managementUnitId || undefined)
+        : undefined;
+      const created = await groupService.createGroup({
+        groupName,
+        initialStoreName,
+        managementUnitId,
+      });
+      await reloadStores();
+      setInviteGroupMode('EXISTING');
+      setInviteStoreMode('EXISTING');
+      setInviteGroupId(created.orgId);
+      setInviteStoreId(created.storeId);
+      return created;
+    }
+
+    const orgId = inviteGroupId || activeOrgId || '';
+    if (!orgId) {
+      throw new Error('グループを選択してください。');
+    }
+
+    if (inviteStoreMode === 'NEW') {
+      const storeName = inviteNewStoreName.trim();
+      if (!storeName) {
+        throw new Error('新規店舗名を入力してください。');
+      }
+      const createdStore = await storesService.createStore({
+        name: storeName,
+        orgId,
+      });
+      await reloadStores();
+      setInviteStoreMode('EXISTING');
+      setInviteStoreId(createdStore.id);
+      return { orgId, storeId: createdStore.id };
+    }
+
+    if (!inviteStoreId) {
+      throw new Error('店舗を選択してください。');
+    }
+    const selectedStore = stores.find((store) => store.id === inviteStoreId);
+    if (!selectedStore || selectedStore.orgId !== orgId) {
+      throw new Error('選択した店舗がグループに属していません。');
+    }
+    return { orgId, storeId: inviteStoreId };
+  };
+
+  const handleInvite = async () => {
+    if (!inviteName.trim() || !inviteEmail.trim()) {
+      addNotification('入力エラー', '名前とメールアドレスを入力してください。', 'WARNING');
       return;
     }
 
@@ -391,44 +606,49 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       return;
     }
 
-    const needsPlanCode = isInternal && isOrgPlanMissing && (inviteRole === Role.MANAGER || inviteRole === Role.USER);
-    if (needsPlanCode) {
-      const code = invitePlanCode.trim().toUpperCase();
-      if (!code) {
-        addNotification('入力エラー', '契約プランを選択してください。', 'WARNING');
-        return;
-      }
-    }
-
     setIsInviting(true);
     try {
-      const normalizedStoreId = inviteRole === Role.USER && inviteStoreId ? inviteStoreId : null;
-      const normalizedPlanCode = needsPlanCode ? invitePlanCode.trim().toUpperCase() : null;
+      const { orgId, storeId } = await resolveInviteGroupAndStore();
+      const canSetPlan = isInternal && Boolean(storeId) && (inviteRole === Role.MANAGER || inviteRole === Role.USER);
+      const normalizedPlanCode = canSetPlan && invitePlanCode.trim().length > 0 ? invitePlanCode.trim().toUpperCase() : null;
       const normalizedPassword = invitePassword.trim();
-      const data = await invokeAdminFunctionByHttp('admin-create-user', {
+      const result = await invokeFunctionByHttp('admin-create-user', {
         name: inviteName.trim(),
         email: inviteEmail.trim(),
         role: inviteRole,
-        orgId: activeOrgId,
-        storeId: normalizedStoreId,
+        orgId,
+        storeId,
         planCode: normalizedPlanCode,
         password: normalizedPassword.length > 0 ? normalizedPassword : undefined,
+        redirectTo: `${window.location.origin}/invite`,
       });
-      if (data?.error) throw new Error(String(data.error));
+      if (!result.ok) {
+        throw new Error(getFunctionErrorMessage(result, 'ユーザー招待に失敗しました。'));
+      }
+      const body = result.body && typeof result.body === 'object' ? (result.body as Record<string, unknown>) : null;
+      if (body?.error) {
+        throw new Error(String(body.error));
+      }
+      const successMessage = normalizedPassword.length > 0 ? 'ユーザーを作成しました。' : '招待メールを送信しました。';
 
       addNotification(
         '招待完了',
-        normalizedPassword.length > 0 ? 'ユーザーを作成しました。' : '招待メールを送信しました。',
+        successMessage,
         'SUCCESS'
       );
       setInviteName('');
       setInviteEmail('');
       setInviteRole(Role.USER);
+      setInviteGroupMode('EXISTING');
+      setInviteStoreMode('EXISTING');
+      setInviteGroupId(activeOrgId || '');
       setInviteStoreId(activeStoreId || '');
+      setInviteNewGroupName('');
+      setInviteNewStoreName('');
       setInvitePlanCode('');
       setInvitePassword('');
       setIsInviteOpen(false);
-      await loadUsers(activeOrgId);
+      await Promise.all([loadUsers(orgId), loadInviteGroups()]);
     } catch (err) {
       console.error('[UserManagement] Failed to invite user:', err);
       const message =
@@ -438,6 +658,177 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       addNotification('招待エラー', message || '招待に失敗しました。', 'ERROR');
     } finally {
       setIsInviting(false);
+    }
+  };
+
+  const handleCopyInviteLink = async (linkType: 'INVITE' | 'RECOVERY' = 'INVITE') => {
+    if (!inviteName.trim() || !inviteEmail.trim()) {
+      addNotification('入力エラー', '名前とメールアドレスを入力してください。', 'WARNING');
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      addNotification('準備中', 'Supabase未設定のため招待リンクを生成できません。', 'INFO');
+      return;
+    }
+
+    setIsGeneratingInviteLink(true);
+    try {
+      const { orgId, storeId } = await resolveInviteGroupAndStore();
+      const canSetPlan = isInternal && Boolean(storeId) && (inviteRole === Role.MANAGER || inviteRole === Role.USER);
+      const result = await userManagementService.generateAuthLink({
+        orgId,
+        email: inviteEmail.trim(),
+        name: inviteName.trim(),
+        role: inviteRole,
+        storeId,
+        planCode: canSetPlan && invitePlanCode.trim().length > 0 ? invitePlanCode.trim().toUpperCase() : undefined,
+        linkType,
+        redirectTo: `${window.location.origin}/invite`,
+      });
+
+      await navigator.clipboard.writeText(result.actionLink);
+      const title = linkType === 'RECOVERY' ? 'パスワード再設定URLをコピー' : '招待URLをコピー';
+      const message = 'URLをクリップボードにコピーしました。';
+      addNotification(title, message, 'SUCCESS');
+
+      await loadUsers(orgId);
+    } catch (error) {
+      const message = getErrorMessage(error) || '招待リンクの生成に失敗しました。';
+      addNotification('招待リンク生成エラー', message, 'ERROR');
+    } finally {
+      setIsGeneratingInviteLink(false);
+    }
+  };
+
+  const handleCopyRecoveryLinkForUser = async (summary: ManagedUserStoreSummary) => {
+    if (!activeOrgId) {
+      addNotification('店舗未選択', '店舗を選択してください。', 'WARNING');
+      return;
+    }
+    if (!summary.user.email) {
+      addNotification('入力エラー', '対象ユーザーのメールアドレスが未設定です。', 'WARNING');
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      addNotification('準備中', 'Supabase未設定のため再設定URLを生成できません。', 'INFO');
+      return;
+    }
+
+    setIsGeneratingInviteLink(true);
+    try {
+      const result = await userManagementService.generateAuthLink({
+        orgId: activeOrgId,
+        email: summary.user.email,
+        name: summary.user.name || 'ユーザー',
+        role: summary.user.role,
+        linkType: 'RECOVERY',
+        redirectTo: `${window.location.origin}/invite`,
+      });
+      await navigator.clipboard.writeText(result.actionLink);
+      addNotification('再設定URLをコピー', 'パスワード再設定URLをコピーしました。', 'SUCCESS');
+    } catch (error) {
+      const message = getErrorMessage(error) || '再設定URLの生成に失敗しました。';
+      addNotification('再設定URL生成エラー', message, 'ERROR');
+    } finally {
+      setIsGeneratingInviteLink(false);
+    }
+  };
+
+  const openAttachExistingModal = () => {
+    setAttachRole(Role.USER);
+    setAttachGroupId(activeOrgId || inviteGroupId || '');
+    setAttachStoreId(activeStoreId || '');
+    setAttachSearchTerm('');
+    setAttachCandidates([]);
+    setSelectedAttachUserId('');
+    setIsAttachExistingOpen(true);
+  };
+
+  const openInviteModal = () => {
+    setInviteName('');
+    setInviteEmail('');
+    setInviteRole(Role.USER);
+    setInviteGroupMode('EXISTING');
+    setInviteStoreMode('EXISTING');
+    setInviteGroupId(activeOrgId || '');
+    setInviteStoreId(activeStoreId || '');
+    setInviteNewGroupName('');
+    setInviteNewStoreName('');
+    setInvitePlanCode('');
+    setInvitePassword('');
+    setIsInviteOpen(true);
+  };
+
+  const searchExistingUsers = async () => {
+    if (!attachGroupId) {
+      addNotification('入力エラー', '追加先グループを選択してください。', 'WARNING');
+      return;
+    }
+    const query = attachSearchTerm.trim();
+    if (!query) {
+      addNotification('入力エラー', '検索キーワードを入力してください。', 'WARNING');
+      return;
+    }
+    setIsSearchingExisting(true);
+    try {
+      const result = await invokeFunctionByHttp('admin-user-attach-existing', {
+        orgId: attachGroupId,
+        query,
+      });
+      if (!result.ok) {
+        throw new Error(getFunctionErrorMessage(result, '既存ユーザー検索に失敗しました。'));
+      }
+      const body = result.body && typeof result.body === 'object' ? (result.body as Record<string, unknown>) : null;
+      const candidatesRaw = Array.isArray(body?.candidates) ? body?.candidates : [];
+      const candidates = candidatesRaw
+        .map((item) => {
+          if (!item || typeof item !== 'object') return null;
+          const typed = item as Record<string, unknown>;
+          const userId = String(typed.userId || '');
+          const email = String(typed.email || '');
+          const name = String(typed.name || '');
+          if (!userId || !email) return null;
+          return { userId, email, name: name || email.split('@')[0] || userId.slice(0, 8) };
+        })
+        .filter((item): item is { userId: string; email: string; name: string } => Boolean(item));
+      setAttachCandidates(candidates);
+      setSelectedAttachUserId('');
+      if (candidates.length === 0) {
+        addNotification('検索結果', '条件に一致する既存ユーザーが見つかりませんでした。', 'INFO');
+      }
+    } catch (error) {
+      addNotification('既存ユーザー検索エラー', getErrorMessage(error) || '既存ユーザーの検索に失敗しました。', 'ERROR');
+      setAttachCandidates([]);
+    } finally {
+      setIsSearchingExisting(false);
+    }
+  };
+
+  const handleAttachExistingUser = async () => {
+    if (!attachGroupId || !attachStoreId || !selectedAttachUserId) {
+      addNotification('入力エラー', '追加先グループ・店舗・ユーザーを選択してください。', 'WARNING');
+      return;
+    }
+    if (!window.confirm('選択した既存ユーザーを追加します。よろしいですか？')) {
+      return;
+    }
+    setIsAttachingExisting(true);
+    try {
+      await userManagementService.attachExistingUserToStoreOrGroup({
+        orgId: attachGroupId,
+        storeId: attachStoreId,
+        targetUserId: selectedAttachUserId,
+        role: attachRole,
+      });
+      addNotification('追加完了', '既存ユーザーをグループ/店舗へ追加しました。', 'SUCCESS');
+      setIsAttachExistingOpen(false);
+      if (attachGroupId === activeOrgId) {
+        await loadUsers(activeOrgId);
+      }
+    } catch (error) {
+      addNotification('追加エラー', getErrorMessage(error) || '既存ユーザーの追加に失敗しました。', 'ERROR');
+    } finally {
+      setIsAttachingExisting(false);
     }
   };
 
@@ -456,6 +847,64 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
         },
       };
     });
+  };
+
+  const setPlanDraft = (userId: string, planCode: string) => {
+    setPlanDrafts((prev) => ({
+      ...prev,
+      [userId]: planCode.trim().toUpperCase(),
+    }));
+  };
+
+  const handleSaveUserPlan = async (summary: ManagedUserStoreSummary) => {
+    if (!isInternal) {
+      addNotification('権限エラー', '契約プランの変更は内部ユーザーのみ実行できます。', 'ERROR');
+      return;
+    }
+    if (!activeOrgId) {
+      addNotification('店舗未選択', '店舗が選択されていません。', 'WARNING');
+      return;
+    }
+    if (!canManage(summary.user) || summary.user.id === currentUser.id) {
+      addNotification('権限エラー', 'このユーザーの契約プランを変更する権限がありません。', 'ERROR');
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      addNotification('準備中', 'Supabase未設定のため契約プランを変更できません。', 'INFO');
+      return;
+    }
+    const targetStoreIds = Array.from(new Set(summary.userStoreIds));
+    if (targetStoreIds.length === 0) {
+      addNotification('店舗未割り当て', 'このユーザーは店舗未割り当てのため、契約プランを変更できません。', 'WARNING');
+      return;
+    }
+
+    const rawPlanCode = String(planDrafts[summary.user.id] || '').trim().toUpperCase();
+    if (!rawPlanCode) {
+      addNotification('入力エラー', '変更先の契約プランを選択してください。', 'WARNING');
+      return;
+    }
+
+    setSavingPlanUserId(summary.user.id);
+    try {
+      for (const storeId of targetStoreIds) {
+        await billingService.setStorePlan({
+          storeId,
+          planCode: rawPlanCode,
+        });
+      }
+      addNotification(
+        '契約プラン更新',
+        `${summary.user.name} の対象店舗 ${targetStoreIds.length} 件を ${rawPlanCode} に更新しました。`,
+        'SUCCESS'
+      );
+      await loadUsers(activeOrgId);
+    } catch (error) {
+      const message = getErrorMessage(error) || '契約プランの更新に失敗しました。';
+      addNotification('契約プラン更新エラー', message, 'ERROR');
+    } finally {
+      setSavingPlanUserId(null);
+    }
   };
 
   const handleSaveUserControl = async (summary: ManagedUserStoreSummary) => {
@@ -583,155 +1032,6 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     }
   };
 
-  const openCreateGroupModal = () => {
-    setEditingGroup(null);
-    setGroupName('');
-    setGroupDescription('');
-    setGroupStoreIds([]);
-    setIsGroupModalOpen(true);
-  };
-
-  const openEditGroupModal = (group: StoreGroup) => {
-    setEditingGroup(group);
-    setGroupName(group.name);
-    setGroupDescription(group.description || '');
-    setGroupStoreIds(group.storeIds);
-    setIsGroupModalOpen(true);
-  };
-
-  const closeGroupModal = () => {
-    setIsGroupModalOpen(false);
-    setEditingGroup(null);
-    setGroupName('');
-    setGroupDescription('');
-    setGroupStoreIds([]);
-  };
-
-  const toggleGroupStore = (storeId: string) => {
-    setGroupStoreIds((prev) => {
-      if (prev.includes(storeId)) {
-        return prev.filter((id) => id !== storeId);
-      }
-      return [...prev, storeId];
-    });
-  };
-
-  const handleSaveGroup = async () => {
-    if (!groupName.trim()) {
-      addNotification('入力エラー', 'グループ名を入力してください。', 'WARNING');
-      return;
-    }
-    if (!activeOrgId) {
-      addNotification('店舗未選択', '店舗が選択されていません。', 'WARNING');
-      return;
-    }
-    if (groupStoreIds.length === 0) {
-      addNotification('入力エラー', 'グループに1店舗以上を選択してください。', 'WARNING');
-      return;
-    }
-    if (!isSupabaseConfigured) {
-      addNotification('準備中', 'Supabase未設定のためグループ管理は利用できません。', 'INFO');
-      return;
-    }
-
-    setIsSavingGroup(true);
-    try {
-      if (editingGroup) {
-        await storeGroupsService.update({
-          id: editingGroup.id,
-          name: groupName.trim(),
-          description: groupDescription.trim() || undefined,
-          storeIds: groupStoreIds,
-        });
-        addNotification('店舗グループ更新', '店舗グループを更新しました。', 'SUCCESS');
-      } else {
-        await storeGroupsService.create({
-          orgId: activeOrgId,
-          name: groupName.trim(),
-          description: groupDescription.trim() || undefined,
-          storeIds: groupStoreIds,
-        });
-        addNotification('店舗グループ作成', '店舗グループを作成しました。', 'SUCCESS');
-      }
-      closeGroupModal();
-      await loadStoreGroups(activeOrgId);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '店舗グループの保存に失敗しました。';
-      addNotification('店舗グループ保存エラー', message, 'ERROR');
-    } finally {
-      setIsSavingGroup(false);
-    }
-  };
-
-  const handleDeleteGroup = async (group: StoreGroup) => {
-    if (!window.confirm(`店舗グループ「${group.name}」を削除しますか？`)) return;
-    if (!isSupabaseConfigured) {
-      setStoreGroups((prev) => prev.filter((item) => item.id !== group.id));
-      addNotification('店舗グループ削除', '店舗グループを削除しました。', 'SUCCESS');
-      return;
-    }
-    if (!activeOrgId) {
-      addNotification('店舗未選択', '店舗が選択されていません。', 'WARNING');
-      return;
-    }
-
-    setDeletingGroupId(group.id);
-    try {
-      await storeGroupsService.remove(group.id);
-      addNotification('店舗グループ削除', '店舗グループを削除しました。', 'SUCCESS');
-      await loadStoreGroups(activeOrgId);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '店舗グループの削除に失敗しました。';
-      addNotification('店舗グループ削除エラー', message, 'ERROR');
-    } finally {
-      setDeletingGroupId(null);
-    }
-  };
-
-  const handleApplyBulkSetting = async () => {
-    if (!activeOrgId) {
-      addNotification('店舗未選択', '店舗が選択されていません。', 'WARNING');
-      return;
-    }
-    if (!canApplyBulkSetting) {
-      addNotification('権限エラー', '店舗グループ一括設定はADMINのみ実行できます。', 'ERROR');
-      return;
-    }
-    if (!selectedBulkSettingGroup) {
-      addNotification('グループ未選択', '対象グループを選択してください。', 'WARNING');
-      return;
-    }
-    if (selectedBulkSettingGroup.storeIds.length === 0) {
-      addNotification('対象店舗なし', '対象グループに店舗がありません。', 'WARNING');
-      return;
-    }
-    if (!isSupabaseConfigured) {
-      addNotification('準備中', 'Supabase未設定のため実行できません。', 'INFO');
-      return;
-    }
-
-    setIsApplyingBulkSetting(true);
-    try {
-      const result = await featureFlagsService.upsertForStoreGroup({
-        orgId: activeOrgId,
-        storeIds: selectedBulkSettingGroup.storeIds,
-        featureKey: bulkSettingFeatureKey,
-        state: bulkSettingState,
-        updatedBy: currentUser.id,
-      });
-      addNotification(
-        '一括設定完了',
-        `${selectedBulkSettingGroup.name} の ${result.appliedStoreCount} 店舗へ「${bulkSettingFeatureKey}=${bulkSettingState}」を反映しました。`,
-        'SUCCESS'
-      );
-    } catch (error) {
-      const message = getErrorMessage(error) || '店舗グループ一括設定に失敗しました。';
-      addNotification('一括設定エラー', message, 'ERROR');
-    } finally {
-      setIsApplyingBulkSetting(false);
-    }
-  };
-
   const handleExport = () => {
     const headers = ['ID', 'Username', 'Name', 'Email', 'Role', 'Plan', 'Registered At'];
     const csvContent = [
@@ -791,6 +1091,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     }
   };
 
+  const editableRolesForActor = useMemo<Role[]>(() => {
+    if (currentUser.role === Role.ADMIN) {
+      return [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER];
+    }
+    if (currentUser.role === Role.SUPERVISOR) {
+      return [Role.MANAGER, Role.USER];
+    }
+    if (currentUser.role === Role.MANAGER) {
+      return [Role.USER];
+    }
+    return [];
+  }, [currentUser.role]);
+
   const totalUsers = userRows.length;
   const activeUsers = userRows.filter(
     (row) => new Date().getTime() - row.user.lastLoginAt.getTime() < 7 * 24 * 60 * 60 * 1000
@@ -815,11 +1128,11 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     <div className={PAGE_CONTAINER_CLASS}>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className={PAGE_HEADER_TITLE_CLASS}>ユーザー管理</h1>
+          <h1 className={PAGE_HEADER_TITLE_CLASS}>{formatViewLabel('USER_MANAGEMENT')}</h1>
           <p className={PAGE_HEADER_DESCRIPTION_CLASS}>
             {isInternal
-              ? '内部ユーザーとして、顧客企業のユーザーと契約プランを管理します。'
-              : '自組織の顧客ユーザーを管理します。'}
+              ? '内部ユーザーとして、顧客グループのユーザーと契約プランを管理します。'
+              : '自グループの顧客ユーザーを管理します。'}
           </p>
         </div>
         <div id="user-management-actions" className="flex gap-3">
@@ -831,7 +1144,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             <span>CSVエクスポート</span>
           </button>
           <button
-            onClick={() => setIsInviteOpen(true)}
+            onClick={openAttachExistingModal}
+            className="flex items-center space-x-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-white px-4 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-600 transition-all"
+          >
+            <Layers size={18} />
+            <span>既存ユーザーを追加</span>
+          </button>
+          <button
+            onClick={openInviteModal}
             className="flex items-center space-x-2 bg-primary-600 text-white px-4 py-2 rounded-xl hover:bg-primary-700 shadow-md shadow-primary-200 dark:shadow-none transition-all"
           >
             <UserPlus size={18} />
@@ -845,12 +1165,6 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
           店舗が選択されていません。右上の店舗セレクタから選択してください。
         </div>
       )}
-      {isInternal && activeOrgId && isOrgPlanMissing && (
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-sm rounded-xl p-4">
-          この組織は契約プランが未設定です。内部担当が最初の顧客ユーザー（店舗責任者 / 一般ユーザー）を作成する場合、契約プランを選択してください。
-          可能であれば、事前に「契約プラン」画面でこの組織へプランを割り当てる運用がおすすめです。
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard title="総ユーザー数" value={totalUsers} icon={UsersIcon} color="bg-blue-500" />
@@ -859,7 +1173,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       </div>
 
       <div className={`${PAGE_CARD_CLASS} p-6`}>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
           <div className="md:col-span-2">
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
               ユーザー検索（名前 / メール）
@@ -888,6 +1202,53 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               <option value={Role.SUPERVISOR}>{roleLabel(Role.SUPERVISOR)}</option>
               <option value={Role.MANAGER}>{roleLabel(Role.MANAGER)}</option>
               <option value={Role.USER}>{roleLabel(Role.USER)}</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">契約プラン</label>
+            <select
+              id="user-filter-plan"
+              data-testid="user-filter-plan"
+              value={planFilter}
+              onChange={(e) => setPlanFilter(e.target.value)}
+              className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+            >
+              <option value="ALL">すべて</option>
+              {availablePlanCodes.map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">並び替え項目</label>
+            <select
+              id="user-sort-key"
+              data-testid="user-sort-key"
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as UserSortKey)}
+              className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+            >
+              <option value="REGISTERED_AT">登録日</option>
+              <option value="USER_INFO">ユーザー情報</option>
+              <option value="PLAN">契約プラン</option>
+              <option value="ROLE">権限ロール</option>
+              <option value="STORE_COUNT">店舗数</option>
+              <option value="STORE_LIMIT">上限店舗数</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">並び順</label>
+            <select
+              id="user-sort-direction"
+              data-testid="user-sort-direction"
+              value={sortDirection}
+              onChange={(e) => setSortDirection(e.target.value as 'ASC' | 'DESC')}
+              className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+            >
+              <option value="DESC">降順</option>
+              <option value="ASC">昇順</option>
             </select>
           </div>
         </div>
@@ -937,6 +1298,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                   } satisfies ControlDraft);
 
                 const canEditStoreControl = isInternal && user.id !== currentUser.id && user.role === Role.USER;
+                const rawPlanCode = String(user.plan || '').trim().toUpperCase();
+                const draftPlanCode = String(planDrafts[user.id] || rawPlanCode).trim().toUpperCase();
+                const selectedPlanCode = selectablePlanCodeSet.has(draftPlanCode) ? draftPlanCode : '';
+                const canAssignPlan = isInternal && user.id !== currentUser.id && canManage(user) && summary.userStoreIds.length > 0;
+                const isSavingPlan = savingPlanUserId === user.id;
+                const hasPlanSelection = selectedPlanCode.length > 0;
+                const hasPlanChanged = hasPlanSelection && selectedPlanCode !== rawPlanCode;
 
                 return (
                   <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors align-top">
@@ -960,9 +1328,43 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     </td>
 
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-gray-800 dark:text-white">{user.plan || 'FREE'}</span>
-                        <span className="text-xs text-gray-400">請求管理: 別システム</span>
+                      <div className="flex flex-col gap-2">
+                        <span className="text-sm font-bold text-gray-800 dark:text-white">{rawPlanCode || 'UNASSIGNED'}</span>
+                        <span className="text-xs text-gray-400">
+                          対象店舗: {summary.userStoreIds.length}件
+                        </span>
+                        {canAssignPlan ? (
+                          <div className="flex items-center gap-2">
+                            <select
+                              data-testid={`user-plan-select-${user.id}`}
+                              value={selectedPlanCode}
+                              onChange={(e) => setPlanDraft(user.id, e.target.value)}
+                              disabled={isLoadingInvitePlans || isSavingPlan}
+                              className="w-36 p-1.5 text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg"
+                            >
+                              <option value="">プランを選択</option>
+                              {invitePlanCatalog.map((plan) => (
+                                <option key={plan.id} value={plan.code.toUpperCase()}>
+                                  {plan.code.toUpperCase()}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              data-testid={`user-plan-save-${user.id}`}
+                              onClick={() => void handleSaveUserPlan(summary)}
+                              disabled={isSavingPlan || isLoadingInvitePlans || !hasPlanSelection || !hasPlanChanged}
+                              className="px-2.5 py-1.5 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              {isSavingPlan ? '変更中...' : '変更'}
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {isInternal && user.id !== currentUser.id && canManage(user)
+                              ? '店舗未割り当てのため変更不可'
+                              : '請求管理: 別システム'}
+                          </span>
+                        )}
                       </div>
                     </td>
 
@@ -1032,6 +1434,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       {user.id !== currentUser.id && canManage(user) ? (
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            data-testid={`user-edit-${user.id}`}
+                            onClick={() => openEditUserModal(summary)}
+                            disabled={deletingUserId === user.id}
+                            className="px-3 py-2 text-xs font-bold text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg hover:bg-primary-100 dark:hover:bg-primary-900/30 disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            編集
+                          </button>
                           {canEditStoreControl && (
                             <button
                               data-testid={`user-control-save-${user.id}`}
@@ -1043,13 +1453,24 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                             </button>
                           )}
                           <button
-                            onClick={() => handleDelete(user.id)}
+                            data-testid={`user-remove-${user.id}`}
+                            onClick={() => handleRemoveFromOrg(user.id)}
                             disabled={deletingUserId === user.id}
                             className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                            title="削除"
+                            title="グループから外す"
                           >
                             <Trash2 size={16} />
                           </button>
+                          {currentUser.role === Role.ADMIN && (
+                            <button
+                              data-testid={`user-full-delete-${user.id}`}
+                              onClick={() => void handleFullDelete(summary)}
+                              disabled={deletingUserId === user.id}
+                              className="px-3 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              完全削除
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="text-gray-300 dark:text-gray-600 text-xs italic">
@@ -1191,159 +1612,6 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
         </div>
       )}
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Layers size={18} />
-              店舗グループ管理
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              店舗をグルーピングして、次チケットの一括投稿/一括設定で利用します。
-            </p>
-          </div>
-          <button
-            data-testid="store-group-add"
-            onClick={openCreateGroupModal}
-            className="px-3 py-2 text-sm font-bold rounded-xl bg-primary-600 text-white hover:bg-primary-700"
-          >
-            グループ追加
-          </button>
-        </div>
-
-        <div className="p-6">
-          {isLoadingGroups ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">店舗グループを読み込み中...</p>
-          ) : storeGroups.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">店舗グループはまだありません。</p>
-          ) : (
-            <div className="space-y-3">
-              {storeGroups.map((group) => (
-                <div
-                  key={group.id}
-                  className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 p-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-bold text-gray-900 dark:text-white">{group.name}</div>
-                      {group.description && (
-                        <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">{group.description}</div>
-                      )}
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">対象店舗: {group.storeIds.length}件</div>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {group.storeIds.map((storeId) => (
-                          <span
-                            key={storeId}
-                            className="px-2 py-1 rounded-full text-[11px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
-                          >
-                            {storeNameById.get(storeId) || 'アクセス不可店舗'}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => openEditGroupModal(group)}
-                        className="p-2 text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg"
-                        title="編集"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        onClick={() => void handleDeleteGroup(group)}
-                        disabled={deletingGroupId === group.id}
-                        className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/20 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
-                        title="削除"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="px-6 pb-6 border-t border-gray-100 dark:border-gray-700">
-          <div id="store-group-bulk-settings" className="pt-4 space-y-4">
-            <div>
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white">店舗グループ一括設定（機能公開）</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                対象グループの全店舗へ、同じ機能公開状態をまとめて反映します。
-              </p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">対象グループ</label>
-                <select
-                  data-testid="store-group-bulk-group-select"
-                  value={bulkSettingGroupId}
-                  onChange={(e) => setBulkSettingGroupId(e.target.value)}
-                  className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm"
-                >
-                  {storeGroups.length === 0 && <option value="">グループがありません</option>}
-                  {storeGroups.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}（{group.storeIds.length}店舗）
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">設定対象</label>
-                <select
-                  data-testid="store-group-bulk-feature-select"
-                  value={bulkSettingFeatureKey}
-                  onChange={(e) => setBulkSettingFeatureKey(e.target.value)}
-                  className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm"
-                >
-                  {BULK_FEATURE_OPTIONS.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">公開状態</label>
-                <select
-                  data-testid="store-group-bulk-state-select"
-                  value={bulkSettingState}
-                  onChange={(e) => setBulkSettingState(e.target.value as VisibilityState)}
-                  className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm"
-                >
-                  <option value="HIDDEN">非表示</option>
-                  <option value="ADMIN_ONLY">内部のみ</option>
-                  <option value="ENABLED">全体公開</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-700 p-3">
-              <p className="text-xs text-gray-600 dark:text-gray-300">
-                {BULK_FEATURE_OPTIONS.find((option) => option.key === bulkSettingFeatureKey)?.description || '機能公開設定'}
-              </p>
-              {!canApplyBulkSetting && (
-                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                  顧客MANAGERは参照のみです。実行は内部ユーザー（ADMIN/SUPERVISOR）で行ってください。
-                </p>
-              )}
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                data-testid="store-group-bulk-apply"
-                onClick={() => void handleApplyBulkSetting()}
-                disabled={isApplyingBulkSetting || !canApplyBulkSetting || !selectedBulkSettingGroup}
-                className="px-4 py-2 text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isApplyingBulkSetting ? '一括設定を適用中...' : '一括設定を適用'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {isInviteOpen && (
         <ModalPortal>
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -1353,6 +1621,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">名前</label>
                   <input
+                    data-testid="invite-name-input"
                     type="text"
                     value={inviteName}
                     onChange={(e) => setInviteName(e.target.value)}
@@ -1369,26 +1638,34 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    監査用パスワード（任意）
-                  </label>
-                  <input
-                    data-testid="invite-password-input"
-                    type="password"
-                    value={invitePassword}
-                    onChange={(e) => setInvitePassword(e.target.value)}
-                    placeholder="入力時はメール招待せず即時作成"
-                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
-                  />
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    監査自動化用の任意項目です。空欄の場合は従来どおり招待メールを送信します。
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+                {isInternal && (
+                  <details className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 p-3">
+                    <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">
+                      詳細（監査用）
+                    </summary>
+                    <div className="mt-3">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        監査用パスワード（任意）
+                      </label>
+                      <input
+                        data-testid="invite-password-input"
+                        type="password"
+                        value={invitePassword}
+                        onChange={(e) => setInvitePassword(e.target.value)}
+                        placeholder="入力時はメール招待せず即時作成"
+                        className="w-full p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl"
+                      />
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        監査自動化用の任意項目です。空欄の場合は招待メールを送信します。
+                      </p>
+                    </div>
+                  </details>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">権限ロール</label>
                     <select
+                      data-testid="invite-role-select"
                       value={inviteRole}
                       onChange={(e) => setInviteRole(e.target.value as Role)}
                       className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
@@ -1413,62 +1690,139 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">初期店舗（任意）</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">グループ（必須）</label>
+                    {(currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR) && (
+                      <div className="mb-2 flex gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setInviteGroupMode('EXISTING')}
+                          className={`px-3 py-1 rounded-full border ${
+                            inviteGroupMode === 'EXISTING'
+                              ? 'border-primary-500 bg-primary-50 text-primary-700'
+                              : 'border-gray-300 text-gray-600'
+                          }`}
+                        >
+                          既存グループを選ぶ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInviteGroupMode('NEW');
+                            setInviteStoreMode('NEW');
+                          }}
+                          className={`px-3 py-1 rounded-full border ${
+                            inviteGroupMode === 'NEW'
+                              ? 'border-primary-500 bg-primary-50 text-primary-700'
+                              : 'border-gray-300 text-gray-600'
+                          }`}
+                        >
+                          新規グループを作成
+                        </button>
+                      </div>
+                    )}
+                    {inviteGroupMode === 'NEW' ? (
+                      <input
+                        value={inviteNewGroupName}
+                        onChange={(event) => setInviteNewGroupName(event.target.value)}
+                        placeholder="新規グループ名"
+                        className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                      />
+                    ) : (
+                      <select
+                        value={inviteGroupId}
+                        onChange={(event) => setInviteGroupId(event.target.value)}
+                        disabled={isLoadingInviteGroups}
+                        className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                      >
+                        <option value="">選択してください</option>
+                        {inviteGroups.map((group) => (
+                          <option key={group.id} value={group.id}>
+                            {group.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">店舗（必須）</label>
+                  {inviteGroupMode === 'EXISTING' && (
+                    <div className="mb-2 flex gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setInviteStoreMode('EXISTING')}
+                        className={`px-3 py-1 rounded-full border ${
+                          inviteStoreMode === 'EXISTING'
+                            ? 'border-primary-500 bg-primary-50 text-primary-700'
+                            : 'border-gray-300 text-gray-600'
+                        }`}
+                      >
+                        既存店舗を選ぶ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInviteStoreMode('NEW')}
+                        className={`px-3 py-1 rounded-full border ${
+                          inviteStoreMode === 'NEW'
+                            ? 'border-primary-500 bg-primary-50 text-primary-700'
+                            : 'border-gray-300 text-gray-600'
+                        }`}
+                      >
+                        新規店舗を作成
+                      </button>
+                    </div>
+                  )}
+
+                  {(inviteGroupMode === 'NEW' || inviteStoreMode === 'NEW') ? (
+                    <input
+                      value={inviteNewStoreName}
+                      onChange={(event) => setInviteNewStoreName(event.target.value)}
+                      placeholder={inviteGroupMode === 'NEW' ? '初期店舗名' : '新規店舗名'}
+                      className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                    />
+                  ) : (
                     <select
                       value={inviteStoreId}
-                      onChange={(e) => setInviteStoreId(e.target.value)}
-                      disabled={inviteRole !== Role.USER}
+                      onChange={(event) => setInviteStoreId(event.target.value)}
+                      disabled={!inviteGroupId}
                       className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
                     >
-                      <option value="">未選択（招待後に本人が作成）</option>
-                      {stores.map((store) => (
+                      <option value="">選択してください</option>
+                      {inviteStoreCandidates.map((store) => (
                         <option key={store.id} value={store.id}>
                           {store.name}
                         </option>
                       ))}
                     </select>
-                  </div>
+                  )}
                 </div>
-                {isInternal && activeOrgId && (
+
+                {isInternal && (
                   <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 p-3">
-                    {isOrgPlanMissing ? (
-                      <>
-                        <div className="text-xs font-bold text-amber-700 dark:text-amber-300 mb-2">
-                          この組織は契約プラン未設定です（内部担当が最初の顧客ユーザーを作成する場合、契約プランが必須です）。
-                        </div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          契約プラン
-                          {(inviteRole === Role.MANAGER || inviteRole === Role.USER) && <span className="text-red-500"> *</span>}
-                        </label>
-                        <select
-                          value={invitePlanCode}
-                          onChange={(e) => setInvitePlanCode(e.target.value)}
-                          disabled={isLoadingInvitePlans || !(inviteRole === Role.MANAGER || inviteRole === Role.USER)}
-                          className="w-full p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl"
-                        >
-                          <option value="">選択してください</option>
-                          {invitePlanCatalog.map((plan) => (
-                            <option key={plan.id} value={plan.code}>
-                              {plan.code}（{plan.name}）
-                            </option>
-                          ))}
-                        </select>
-                        {invitePlanCatalog.length === 0 && !isLoadingInvitePlans && (
-                          <div className="text-xs text-amber-700 dark:text-amber-300 mt-2">
-                            利用可能なプランがありません。先に「課金・請求」画面でプランを作成してください。
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="text-xs text-gray-600 dark:text-gray-300">
-                        現在の契約プラン: <span className="font-bold">{orgPlanCode || 'FREE'}</span>
-                        <span className="ml-2 text-gray-500 dark:text-gray-400">（変更は「課金・請求」画面で行います）</span>
-                      </div>
-                    )}
+                    <div className="text-xs text-gray-600 dark:text-gray-300 mb-2">
+                      ここで選んだプランは、作成/選択した店舗に即時反映されます（任意）。
+                    </div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      契約プラン（任意）
+                    </label>
+                    <select
+                      value={invitePlanCode}
+                      onChange={(e) => setInvitePlanCode(e.target.value)}
+                      disabled={isLoadingInvitePlans || !(inviteRole === Role.MANAGER || inviteRole === Role.USER)}
+                      className="w-full p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl"
+                    >
+                      <option value="">指定しない（既存の店舗プランを維持）</option>
+                      {invitePlanCatalog.map((plan) => (
+                        <option key={plan.id} value={plan.code}>
+                          {plan.code}（{plan.name}）
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 )}
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  USERは初期店舗未選択でも招待できます（招待後に設定画面から店舗作成）。ADMIN/SUPERVISOR/MANAGERは全店アクセスです。
+                  新規ユーザー作成では、グループと店舗の作成または割当が必須です。
                 </p>
               </div>
               <div className="flex justify-end gap-2 mt-6">
@@ -1477,6 +1831,15 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                   className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg"
                 >
                   キャンセル
+                </button>
+                <button
+                  data-testid="invite-copy-link-button"
+                  onClick={() => void handleCopyInviteLink('INVITE')}
+                  disabled={isGeneratingInviteLink || isInviting}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Link2 size={16} />
+                  {isGeneratingInviteLink ? '生成中...' : '招待URLをコピー'}
                 </button>
                 <button
                   onClick={() => void handleInvite()}
@@ -1491,76 +1854,223 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
         </ModalPortal>
       )}
 
-      {isGroupModalOpen && (
+      {isAttachExistingOpen && (
         <ModalPortal>
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div
-              data-testid="store-group-modal"
-              className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-xl p-6"
-            >
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{editingGroup ? '店舗グループ編集' : '店舗グループ作成'}</h2>
-              <div className="space-y-4">
+            <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-xl p-6 space-y-4">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">既存ユーザーを追加</h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">グループ名</label>
-                  <input
-                    data-testid="store-group-name"
-                    type="text"
-                    value={groupName}
-                    onChange={(e) => setGroupName(e.target.value)}
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">追加ロール</label>
+                  <select
+                    value={attachRole}
+                    onChange={(event) => setAttachRole(event.target.value as Role)}
                     className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
-                    placeholder="例: 福岡エリア"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">説明（任意）</label>
-                  <input
-                    type="text"
-                    value={groupDescription}
-                    onChange={(e) => setGroupDescription(e.target.value)}
-                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
-                    placeholder="例: 福岡県内の直営店舗"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">対象店舗</label>
-                  <div className="max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-xl divide-y divide-gray-100 dark:divide-gray-700">
-                    {stores.length === 0 ? (
-                      <p className="p-3 text-sm text-gray-500 dark:text-gray-400">選択可能な店舗がありません。</p>
-                    ) : (
-                      stores.map((store) => (
-                        <label
-                          key={store.id}
-                          className="flex items-center justify-between gap-3 p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30"
-                        >
-                          <span className="text-sm text-gray-800 dark:text-gray-100">{store.name}</span>
-                          <input
-                            type="checkbox"
-                            checked={groupStoreIds.includes(store.id)}
-                            onChange={() => toggleGroupStore(store.id)}
-                            className="h-4 w-4"
-                          />
-                        </label>
-                      ))
+                  >
+                    {currentUser.role === Role.ADMIN && (
+                      <>
+                        <option value={Role.SUPERVISOR}>SUPERVISOR</option>
+                        <option value={Role.MANAGER}>MANAGER</option>
+                        <option value={Role.USER}>USER</option>
+                      </>
                     )}
-                  </div>
+                    {currentUser.role === Role.SUPERVISOR && (
+                      <>
+                        <option value={Role.MANAGER}>MANAGER</option>
+                        <option value={Role.USER}>USER</option>
+                      </>
+                    )}
+                    {currentUser.role === Role.MANAGER && (
+                      <option value={Role.USER}>USER</option>
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">追加先グループ</label>
+                  <select
+                    value={attachGroupId}
+                    onChange={(event) => setAttachGroupId(event.target.value)}
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                  >
+                    <option value="">選択してください</option>
+                    {inviteGroups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">追加先店舗</label>
+                  <select
+                    value={attachStoreId}
+                    onChange={(event) => setAttachStoreId(event.target.value)}
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                    disabled={!attachGroupId}
+                  >
+                    <option value="">選択してください</option>
+                    {attachStoreCandidates.map((store) => (
+                      <option key={store.id} value={store.id}>
+                        {store.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
-              <div className="flex justify-end gap-2 mt-6">
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">既存ユーザー検索（メール / 名前）</label>
+                <div className="flex gap-2">
+                  <input
+                    value={attachSearchTerm}
+                    onChange={(event) => setAttachSearchTerm(event.target.value)}
+                    placeholder="例: sample@example.com"
+                    className="flex-1 p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void searchExistingUsers()}
+                    disabled={isSearchingExisting}
+                    className="px-4 py-2 text-sm font-semibold rounded-xl border border-primary-200 bg-primary-50 text-primary-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isSearchingExisting ? '検索中...' : '検索'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
+                {attachCandidates.length === 0 ? (
+                  <div className="p-4 text-sm text-gray-500 dark:text-gray-400">検索結果がありません。</div>
+                ) : (
+                  attachCandidates.map((candidate) => (
+                    <label key={candidate.userId} className="flex items-start gap-3 p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                      <input
+                        type="radio"
+                        name="attach-existing-user"
+                        checked={selectedAttachUserId === candidate.userId}
+                        onChange={() => setSelectedAttachUserId(candidate.userId)}
+                        className="mt-1"
+                      />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">{candidate.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{candidate.email}</p>
+                      </div>
+                    </label>
+                  ))
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2">
                 <button
-                  onClick={closeGroupModal}
-                  disabled={isSavingGroup}
+                  onClick={() => setIsAttachExistingOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={() => void handleAttachExistingUser()}
+                  disabled={isAttachingExisting || !selectedAttachUserId || !attachGroupId || !attachStoreId}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isAttachingExisting ? '追加中...' : '既存ユーザーを追加'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {editingUserSummary && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-xl p-6">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">ユーザー編集</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">表示名</label>
+                  <input
+                    data-testid="user-edit-name-input"
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">権限ロール</label>
+                  <select
+                    data-testid="user-edit-role-select"
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value as Role)}
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl"
+                  >
+                    {Array.from(new Set([...editableRolesForActor, editingUserSummary.user.role])).map((role) => (
+                      <option key={role} value={role}>
+                        {roleLabel(role)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {editRole === Role.USER && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      利用可能な店舗（複数選択）
+                    </label>
+                    <div className="max-h-52 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
+                      {stores.length === 0 ? (
+                        <div className="p-3 text-sm text-gray-500 dark:text-gray-400">選択可能な店舗がありません。</div>
+                      ) : (
+                        stores.map((store) => (
+                          <label
+                            key={store.id}
+                            className="flex items-center justify-between p-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer"
+                          >
+                            <span>{store.name}</span>
+                            <input
+                              data-testid={`user-edit-store-${store.id}`}
+                              type="checkbox"
+                              checked={editStoreIds.includes(store.id)}
+                              onChange={() => toggleEditStoreId(store.id)}
+                              className="h-4 w-4"
+                            />
+                          </label>
+                        ))
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      未選択でも保存できます（所属は残り、店舗アクセスは0件になります）。
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="mt-6 flex flex-wrap justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleCopyRecoveryLinkForUser(editingUserSummary)}
+                  disabled={isGeneratingInviteLink}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Link2 size={16} />
+                  {isGeneratingInviteLink ? '生成中...' : '再設定URLをコピー'}
+                </button>
+                <div className="flex gap-2">
+                <button
+                  onClick={closeEditUserModal}
+                  disabled={isSavingEditUser}
                   className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg disabled:opacity-60"
                 >
                   キャンセル
                 </button>
                 <button
-                  data-testid="store-group-save"
-                  onClick={() => void handleSaveGroup()}
-                  disabled={isSavingGroup}
+                  data-testid="user-edit-save-button"
+                  onClick={() => void handleSaveUserEdit()}
+                  disabled={isSavingEditUser}
                   className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {isSavingGroup ? '保存中...' : editingGroup ? '更新' : '作成'}
+                  {isSavingEditUser ? '保存中...' : '保存'}
                 </button>
+                </div>
               </div>
             </div>
           </div>

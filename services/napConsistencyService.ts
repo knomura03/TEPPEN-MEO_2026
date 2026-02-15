@@ -344,7 +344,7 @@ export const napConsistencyService = {
           status === 'MATCH'
             ? '一致'
             : status === 'MISSING'
-              ? '店舗情報がSNS連携設定に見つかりません。'
+              ? '連携情報が見つかりません。プラットフォーム管理で連携を設定してください。'
               : `不一致: ${mismatchLabel}`;
 
         return {

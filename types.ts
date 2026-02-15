@@ -2,7 +2,7 @@
 export enum Role {
   ADMIN = 'ADMIN',           // 内部: 全権管理者
   SUPERVISOR = 'SUPERVISOR', // 内部: 販売代理店（旧MANAGER）
-  MANAGER = 'MANAGER',       // 顧客: ORGリーダー（店舗責任者）
+  MANAGER = 'MANAGER',       // 顧客: グループリーダー（店舗責任者）
   USER = 'USER'              // 顧客: 一般ユーザー
 }
 
@@ -17,6 +17,22 @@ export interface BillingPlan {
   currency: string;
   isActive: boolean;
   description?: string;
+  featureRules?: Record<string, boolean>;
+  snsConnectionLimit: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface OrgPlanSchedule {
+  id: string;
+  orgId: string;
+  billingPlanId: string;
+  billingPlan?: BillingPlan | null;
+  status: 'SCHEDULED' | 'APPLIED' | 'CANCELED';
+  effectiveAt: Date;
+  appliedAt?: Date;
+  canceledAt?: Date;
+  note?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -30,6 +46,30 @@ export interface OrgSubscription {
   currentPeriodStart?: Date;
   currentPeriodEnd?: Date;
   cancelAtPeriodEnd: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface StorePlanSchedule {
+  id: string;
+  storeId: string;
+  billingPlanId: string;
+  billingPlan?: BillingPlan | null;
+  status: 'SCHEDULED' | 'APPLIED' | 'CANCELED';
+  effectiveAt: Date;
+  appliedAt?: Date;
+  canceledAt?: Date;
+  note?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface StoreSubscription {
+  id: string;
+  storeId: string;
+  billingPlanId?: string | null;
+  billingPlan?: BillingPlan | null;
+  status: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,12 +94,28 @@ export interface Store {
   businessHours?: string;
 }
 
-export interface StoreGroup {
+export interface ManagementUnit {
   id: string;
-  orgId: string;
   name: string;
-  description?: string;
-  storeIds: string[];
+  createdBy?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ManagementUnitSupervisor {
+  id: string;
+  managementUnitId: string;
+  supervisorUserId: string;
+  createdBy?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ManagementUnitBranding {
+  managementUnitId: string;
+  serviceName: string;
+  logoPath?: string;
+  updatedBy?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -287,6 +343,8 @@ export interface User {
   avatarUrl?: string;
   plan: PlanType;
   lastLoginAt: Date;
+  invitedAt?: Date;
+  passwordSetAt?: Date;
   storeInfo?: StoreInfo;
 }
 
@@ -377,11 +435,6 @@ export interface FeatureFlag {
   featureKey: string;
   state: VisibilityState;
   note?: string;
-}
-
-export interface StoreGroupFeatureFlagApplyResult {
-  appliedStoreCount: number;
-  skippedStoreCount: number;
 }
 
 export interface ProviderAdapter {
@@ -558,6 +611,13 @@ export interface ExternalProviderPost {
   content: string;
   createdAt: Date;
   permalink?: string;
+  metrics?: {
+    impressions?: number | null;
+    profileViews?: number | null;
+    likes?: number | null;
+    comments?: number | null;
+    shares?: number | null;
+  };
   raw?: Record<string, unknown>;
 }
 
@@ -584,6 +644,16 @@ export interface InboxReplyLog {
 }
 
 export type InboxSlaStatus = 'ON_TRACK' | 'AT_RISK' | 'OVERDUE' | 'COMPLETED';
+export type InboxMessageChannel = 'REVIEWS' | 'DM';
+export type InboxMessageSource = 'DB' | 'REMOTE_CACHE';
+export type InboxAttachmentType = 'IMAGE' | 'VIDEO';
+
+export interface InboxMediaAttachment {
+  type: InboxAttachmentType;
+  url: string;
+  thumbnailUrl?: string;
+  mimeType?: string;
+}
 
 export interface InboxAssignableUser {
   id: string;
@@ -606,12 +676,19 @@ export interface PostApprovalComment {
 }
 
 export type ReplyDraftStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'DISMISSED';
+export type InboxReactionType = 'LIKE' | 'ANGRY';
 
 export interface InboxMessage {
   id: string;
   platform: SocialPlatform;
   senderName: string;
   senderAvatar?: string;
+  source?: InboxMessageSource;
+  channel?: InboxMessageChannel;
+  externalMessageId?: string;
+  externalThreadId?: string;
+  permalink?: string;
+  mediaAttachments?: InboxMediaAttachment[];
   content: string;
   receivedAt: Date;
   isReplied: boolean;
@@ -626,6 +703,7 @@ export interface InboxMessage {
   assignedUserName?: string;
   dueAt?: Date;
   slaStatus?: InboxSlaStatus;
+  reaction?: InboxReactionType;
 }
 
 export type ViewState =
@@ -637,6 +715,10 @@ export type ViewState =
   | 'BRAND_KIT'
   | 'POST_LIST'
   | 'USER_MANAGEMENT'
+  | 'STORE_MANAGEMENT'
+  | 'PLATFORM_MANAGEMENT'
+  | 'GROUP_MANAGEMENT'
+  | 'MANAGEMENT_UNIT_MANAGEMENT'
   | 'CALENDAR'
   | 'INBOX'
   | 'SURVEY'

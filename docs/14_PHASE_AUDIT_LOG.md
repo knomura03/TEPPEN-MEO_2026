@@ -784,3 +784,33 @@
 - preflight(users): PASS
   - logs: `output/audit/phase4/20260210_105134/preflight_users`
 - C(e2e): PASS (artifacts: `output/audit/phase4/20260210_105134/C_e2e`)
+## 2026-02-16T03:30:57.470Z PHASE1 FAIL
+
+- command: `npm run audit:phase1`
+- commit: `9d88e33d311d5bc4fc2e8ed94fda57d53640f9da`
+- output: `output/audit/phase1/20260216_123057`
+- A(static): FAIL (run typecheck=OK(12.4s), run build=OK(45.3s), run smoke:contracts=FAIL(1)(910ms))
+- B(db): SKIPPED
+- preflight(users): SKIPPED
+- C(e2e): SKIPPED
+
+## 2026-02-16T03:30:57.455Z PHASE2 FAIL
+
+- command: `npm run audit:phase2`
+- commit: `9d88e33d311d5bc4fc2e8ed94fda57d53640f9da`
+- output: `output/audit/phase2/20260216_123057`
+- A(static): FAIL (run typecheck=OK(12.3s), run build=OK(45.4s), run smoke:contracts=FAIL(1)(830ms))
+- B(db): SKIPPED
+- preflight(users): SKIPPED
+- C(e2e): SKIPPED
+
+## 2026-02-16T03:30:57.445Z PHASE3 FAIL
+
+- command: `npm run audit:phase3`
+- commit: `9d88e33d311d5bc4fc2e8ed94fda57d53640f9da`
+- output: `output/audit/phase3/20260216_123057`
+- A(static): FAIL (run typecheck=OK(12.4s), run build=OK(45.6s), run smoke:contracts=FAIL(1)(689ms))
+- B(db): SKIPPED
+- preflight(users): SKIPPED
+- C(e2e): SKIPPED
+

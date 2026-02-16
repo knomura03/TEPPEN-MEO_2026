@@ -1,5 +1,6 @@
 import { decryptAesGcm } from './crypto.ts';
 import { ensureGoogleAccessToken } from './googleAuth.ts';
+import { resolveAndPersistGbpLocation } from './googleLocation.ts';
 import { resolveMetaPageAccessToken, resolveMetaUserAccessToken } from './metaAuth.ts';
 import { extractProviderErrorMessage, fetchJson, readString, toFormBody } from './http.ts';
 
@@ -16,6 +17,7 @@ type PostRow = {
 
 type ProviderContext = {
   providerKey: PublishProvider;
+  configurationId: string;
   config: Record<string, unknown>;
   connectionStatus: string;
   integrationStatus: string;
@@ -44,6 +46,11 @@ const mapPlatformToProvider = (platform: string): PublishProvider | null => {
   const normalized = String(platform || '').toUpperCase();
   return PLATFORM_TO_PROVIDER[normalized] || null;
 };
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 const resolvePostProviders = (post: PostRow, forcedProviders?: string[]): PublishProvider[] => {
   const fromPost = Array.isArray(post.platforms) ? post.platforms : [];
@@ -85,16 +92,19 @@ const resolveProviderContext = async (params: {
     .eq('store_id', params.storeId)
     .eq('provider', params.provider)
     .maybeSingle();
-
-  if (!integration?.id) return null;
-
-  const { data: credential } = await params.supabaseAdmin
-    .from('integration_credentials')
-    .select('encrypted_payload')
-    .eq('integration_id', integration.id)
-    .maybeSingle();
-
-  if (!credential?.encrypted_payload) return null;
+  const integrationId = integration?.id ? String(integration.id) : '';
+  const integrationStatus = integration?.status ? String(integration.status) : 'DISCONNECTED';
+  let encryptedCredential = '';
+  if (integrationId) {
+    const { data: credential } = await params.supabaseAdmin
+      .from('integration_credentials')
+      .select('encrypted_payload')
+      .eq('integration_id', integrationId)
+      .maybeSingle();
+    if (credential?.encrypted_payload) {
+      encryptedCredential = String(credential.encrypted_payload);
+    }
+  }
 
   let providerSecret = '';
   if (params.provider === 'GBP') {
@@ -116,11 +126,12 @@ const resolveProviderContext = async (params: {
   const config = configuration.config && typeof configuration.config === 'object' ? (configuration.config as Record<string, unknown>) : {};
   return {
     providerKey: params.provider,
+    configurationId: configuration.id,
     config,
     connectionStatus: String(configuration.connection_status || 'DISCONNECTED'),
-    integrationStatus: String(integration.status || 'DISCONNECTED'),
-    integrationId: integration.id,
-    encryptedCredential: String(credential.encrypted_payload),
+    integrationStatus,
+    integrationId,
+    encryptedCredential,
     providerSecret: providerSecret || undefined,
     graphApiVersion: readString(config, ['graph_api_version']) || 'v20.0',
   };
@@ -195,6 +206,7 @@ const publishToFacebook = async (params: {
 const loadFirstPostMediaUrl = async (params: {
   supabaseAdmin: any;
   postId: string;
+  transformSquare?: boolean;
 }): Promise<string> => {
   const { data: mediaRows } = await params.supabaseAdmin
     .from('post_media')
@@ -206,7 +218,20 @@ const loadFirstPostMediaUrl = async (params: {
   const firstPath = mediaRows?.[0]?.storage_path;
   if (!firstPath) return '';
 
-  const signed = await params.supabaseAdmin.storage.from('post-media').createSignedUrl(firstPath, 10 * 60);
+  const signed = await params.supabaseAdmin.storage.from('post-media').createSignedUrl(
+    firstPath,
+    10 * 60,
+    params.transformSquare
+      ? {
+          transform: {
+            width: 1080,
+            height: 1080,
+            resize: 'fill',
+            format: 'origin',
+          },
+        }
+      : undefined
+  );
   if (signed.error || !signed.data?.signedUrl) return '';
   return signed.data.signedUrl;
 };
@@ -217,7 +242,11 @@ const publishToInstagram = async (params: {
   post: PostRow;
   encryptionKey: string;
 }): Promise<ProviderPublishResult> => {
-  const imageUrl = await loadFirstPostMediaUrl({ supabaseAdmin: params.supabaseAdmin, postId: params.post.id });
+  const imageUrl = await loadFirstPostMediaUrl({
+    supabaseAdmin: params.supabaseAdmin,
+    postId: params.post.id,
+    transformSquare: true,
+  });
   if (!imageUrl) {
     return {
       provider: 'INSTAGRAM',
@@ -292,28 +321,52 @@ const publishToInstagram = async (params: {
     return { provider: 'INSTAGRAM', mode: 'REAL', status: 'FAILED', message: 'Instagram media creation_id が取得できませんでした。' };
   }
 
-  const publishResult = await fetchJson(`https://graph.facebook.com/${graphVersion}/${encodeURIComponent(instagramUserId)}/media_publish`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: toFormBody({
-      creation_id: creationId,
-      access_token: usableToken,
-    }),
-  });
+  let publishBody: Record<string, unknown> | null = null;
+  let publishErrorMessage = '';
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const publishResult = await fetchJson(
+      `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(instagramUserId)}/media_publish`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: toFormBody({
+          creation_id: creationId,
+          access_token: usableToken,
+        }),
+      }
+    );
 
-  if (!publishResult.ok || !publishResult.body || typeof publishResult.body !== 'object') {
+    if (publishResult.ok && publishResult.body && typeof publishResult.body === 'object') {
+      publishBody = publishResult.body as Record<string, unknown>;
+      break;
+    }
+
+    publishErrorMessage =
+      extractProviderErrorMessage(publishResult.body) || `Instagram publishに失敗しました。（status=${publishResult.status}）`;
+    const normalized = publishErrorMessage.toLowerCase();
+    const isRetryable =
+      normalized.includes('media id is not available') ||
+      normalized.includes('media is not ready') ||
+      normalized.includes('temporarily unavailable');
+
+    if (!isRetryable || attempt === maxAttempts) {
+      break;
+    }
+
+    await sleep(attempt * 1500);
+  }
+
+  if (!publishBody) {
     return {
       provider: 'INSTAGRAM',
       mode: 'REAL',
       status: 'FAILED',
-      message:
-        extractProviderErrorMessage(publishResult.body) || `Instagram publishに失敗しました。（status=${publishResult.status}）`,
+      message: publishErrorMessage || 'Instagram publishに失敗しました。',
     };
   }
 
-  const externalPostId = typeof (publishResult.body as Record<string, unknown>).id === 'string'
-    ? String((publishResult.body as Record<string, unknown>).id)
-    : '';
+  const externalPostId = typeof publishBody.id === 'string' ? String(publishBody.id) : '';
   if (!externalPostId) {
     return { provider: 'INSTAGRAM', mode: 'REAL', status: 'FAILED', message: 'Instagram投稿IDの取得に失敗しました。' };
   }
@@ -325,21 +378,6 @@ const publishToInstagram = async (params: {
     externalPostId,
     message: 'Instagramへ投稿しました。',
   };
-};
-
-const resolveGbpLocalPostEndpoint = (config: Record<string, unknown>): string => {
-  const locationName = readString(config, ['location_name', 'gbp_location_name']);
-  if (locationName && locationName.startsWith('accounts/')) {
-    return `https://mybusiness.googleapis.com/v4/${locationName}/localPosts`;
-  }
-
-  const accountId = readString(config, ['gbp_account_id', 'account_id']);
-  const locationId = readString(config, ['gbp_location_id', 'location_id']);
-  if (accountId && locationId) {
-    return `https://mybusiness.googleapis.com/v4/accounts/${encodeURIComponent(accountId)}/locations/${encodeURIComponent(locationId)}/localPosts`;
-  }
-
-  return '';
 };
 
 const publishToGbp = async (params: {
@@ -355,16 +393,6 @@ const publishToGbp = async (params: {
       mode: 'REAL',
       status: 'FAILED',
       message: 'GBPの client_id または client_secret が不足しています。',
-    };
-  }
-
-  const endpoint = resolveGbpLocalPostEndpoint(params.context.config);
-  if (!endpoint) {
-    return {
-      provider: 'GBP',
-      mode: 'REAL',
-      status: 'FAILED',
-      message: 'GBPの account_id / location_id（または location_name）が未設定です。',
     };
   }
 
@@ -385,6 +413,25 @@ const publishToGbp = async (params: {
       message: tokenResolution.error || 'GBP access_token の取得に失敗しました。',
     };
   }
+
+  const location = await resolveAndPersistGbpLocation({
+    supabaseAdmin: params.supabaseAdmin,
+    providerConfigurationId: params.context.configurationId,
+    config: params.context.config,
+    accessToken: tokenResolution.accessToken,
+  });
+  if (!location.ok || !location.accountId || !location.locationId) {
+    return {
+      provider: 'GBP',
+      mode: 'REAL',
+      status: 'FAILED',
+      message: location.error || 'GBPの店舗ID（location_id）が未設定です。',
+    };
+  }
+
+  const endpoint = `https://mybusiness.googleapis.com/v4/accounts/${encodeURIComponent(
+    location.accountId
+  )}/locations/${encodeURIComponent(location.locationId)}/localPosts`;
 
   const imageUrl = await loadFirstPostMediaUrl({ supabaseAdmin: params.supabaseAdmin, postId: params.post.id });
 
@@ -475,6 +522,15 @@ const executeProviderPublish = async (params: {
       mode: 'REAL',
       status: 'FAILED',
       message: `${params.provider} は未接続です。接続テストを実行してください。`,
+    };
+  }
+
+  if (!context.integrationId || !context.encryptedCredential) {
+    return {
+      provider: params.provider,
+      mode: 'REAL',
+      status: 'FAILED',
+      message: `${params.provider} のOAuthトークンが未設定です。連携をやり直してください。`,
     };
   }
 

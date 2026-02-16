@@ -1,8 +1,9 @@
 import { InboxReplyLog, PostPublishMode, ReplyExecutionResult } from '../types';
 import { inboxService } from './inboxService';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { getFunctionErrorMessage, invokeFunctionByHttp } from './functionHttpClient';
 
-type ReplyProviderKey = 'FACEBOOK';
+type ReplyProviderKey = 'FACEBOOK' | 'INSTAGRAM' | 'GBP';
 
 type DbInboxMessageRow = {
   id: string;
@@ -19,7 +20,7 @@ type DbStoreRow = {
 type DbProviderCatalogRow = {
   id: string;
   provider_key: string;
-  provider_capabilities?: { can_reply: boolean }[];
+  provider_capabilities?: { can_reply: boolean }[] | { can_reply: boolean } | null;
 };
 
 type DbProviderConfigurationRow = {
@@ -48,64 +49,17 @@ type DbInboxReplyLogRow = {
   created_at: string;
 };
 
-type FunctionInvokeResult = {
-  ok: boolean;
-  status: number;
-  body: unknown;
+const providerDisplayName = (provider: ReplyProviderKey): string => {
+  if (provider === 'FACEBOOK') return 'Facebook';
+  if (provider === 'INSTAGRAM') return 'Instagram';
+  return 'Googleビジネスプロフィール';
 };
-
-const providerDisplayName = (_provider: ReplyProviderKey): string => 'Facebook';
 
 const requireSupabase = () => {
   if (!isSupabaseConfigured || !supabase) {
     throw new Error('Supabaseが未設定のため、返信連携を実行できません。');
   }
   return supabase;
-};
-
-const readFunctionContext = async (client: ReturnType<typeof requireSupabase>) => {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-  if (!supabaseUrl || !anonKey) {
-    throw new Error('Supabase環境変数が不足しています。VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY を確認してください。');
-  }
-
-  const { data, error } = await client.auth.getSession();
-  if (error) {
-    throw new Error(`ログインセッションの取得に失敗しました。（${error.message}）`);
-  }
-  const accessToken = data.session?.access_token;
-  if (!accessToken) {
-    throw new Error('ログインセッションが無効です。再ログイン後に再試行してください。');
-  }
-
-  return { supabaseUrl, anonKey, accessToken };
-};
-
-const invokeFunctionByHttp = async (
-  client: ReturnType<typeof requireSupabase>,
-  functionName: string,
-  payload: Record<string, unknown>
-): Promise<FunctionInvokeResult> => {
-  const { supabaseUrl, anonKey, accessToken } = await readFunctionContext(client);
-  const requestUrl = `${supabaseUrl}/functions/v1/${functionName}?client=direct-http-v3`;
-  const response = await fetch(requestUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: anonKey,
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(payload),
-  });
-  const text = await response.text();
-  let body: unknown = null;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = { raw: text };
-  }
-  return { ok: response.ok, status: response.status, body };
 };
 
 const getBodyError = (body: unknown): string => {
@@ -177,7 +131,10 @@ const resolveReplyMode = async (storeId: string, provider: ReplyProviderKey): Pr
     throw new Error(`${providerDisplayName(provider)} provider が見つかりません。`);
   }
   const catalogRow = catalog as DbProviderCatalogRow;
-  const canReply = Boolean(catalogRow.provider_capabilities?.[0]?.can_reply);
+  const capabilityRaw = catalogRow.provider_capabilities;
+  const canReply = Array.isArray(capabilityRaw)
+    ? Boolean(capabilityRaw[0]?.can_reply)
+    : Boolean(capabilityRaw && typeof capabilityRaw === 'object' && (capabilityRaw as { can_reply?: boolean }).can_reply);
   if (!canReply) {
     throw new Error(`${providerDisplayName(provider)} provider の reply 権限が無効です。`);
   }
@@ -220,6 +177,26 @@ const loadMessageForReply = async (messageId: string): Promise<DbInboxMessageRow
   return data as DbInboxMessageRow;
 };
 
+const invokeReplyFunction = async (params: {
+  functionName: string;
+  payload: Record<string, unknown>;
+  fallbackMessage: string;
+}): Promise<{ externalReplyId?: string }> => {
+  const result = await invokeFunctionByHttp(params.functionName, params.payload);
+  if (!result.ok) {
+    throw new Error(getFunctionErrorMessage(result, params.fallbackMessage));
+  }
+
+  const body = (result.body || {}) as Record<string, unknown>;
+  if (!body.ok) {
+    throw new Error(getBodyError(result.body) || params.fallbackMessage);
+  }
+
+  return {
+    externalReplyId: typeof body.externalReplyId === 'string' ? body.externalReplyId : undefined,
+  };
+};
+
 export const messageReplyService = {
   async replyFacebookMessage(params: {
     messageId: string;
@@ -258,13 +235,12 @@ export const messageReplyService = {
     }
 
     try {
-      const result = await invokeFunctionByHttp(client, 'facebook-reply-message', {
+      const result = await invokeFunctionByHttp('facebook-reply-message', {
         messageId: message.id,
         replyText: params.replyContent,
       });
       if (!result.ok) {
-        const bodyError = getBodyError(result.body);
-        throw new Error(bodyError ? `${bodyError}（status=${result.status}）` : `status=${result.status}`);
+        throw new Error(getFunctionErrorMessage(result, 'Facebook返信に失敗しました。'));
       }
       const body = (result.body || {}) as Record<string, unknown>;
       if (!body.ok) {
@@ -304,6 +280,272 @@ export const messageReplyService = {
       });
       throw new Error(messageText);
     }
+  },
+
+  async replyFacebookExternalMessage(params: {
+    storeId: string;
+    externalMessageId: string;
+    replyContent: string;
+  }): Promise<ReplyExecutionResult> {
+    const mode = await resolveReplyMode(params.storeId, 'FACEBOOK');
+    if (mode === 'MOCK') {
+      return {
+        ok: true,
+        provider: 'FACEBOOK',
+        mode: 'MOCK',
+        status: 'SUCCESS',
+        message: 'MOCK返信として完了しました。',
+      };
+    }
+
+    const result = await invokeFunctionByHttp('facebook-reply-message', {
+      storeId: params.storeId,
+      externalMessageId: params.externalMessageId,
+      replyText: params.replyContent,
+    });
+    if (!result.ok) {
+      throw new Error(getFunctionErrorMessage(result, 'Facebook返信に失敗しました。'));
+    }
+
+    const body = (result.body || {}) as Record<string, unknown>;
+    if (!body.ok) {
+      throw new Error(getBodyError(result.body) || 'Facebook返信に失敗しました。');
+    }
+
+    return {
+      ok: true,
+      provider: 'FACEBOOK',
+      mode: 'REAL',
+      status: 'SUCCESS',
+      externalReplyId: typeof body.externalReplyId === 'string' ? body.externalReplyId : undefined,
+      message: 'Facebookへ返信しました。',
+    };
+  },
+
+  async replyInstagramMessage(params: {
+    messageId: string;
+    actorUserId: string;
+    replyContent: string;
+  }): Promise<ReplyExecutionResult> {
+    const message = await loadMessageForReply(params.messageId);
+    if (message.provider !== 'INSTAGRAM') {
+      throw new Error('このメッセージはInstagram返信対象ではありません。');
+    }
+    if (message.is_replied) {
+      throw new Error('このメッセージはすでに返信済みです。');
+    }
+
+    const mode = await resolveReplyMode(message.store_id, 'INSTAGRAM');
+    if (mode === 'MOCK') {
+      await inboxService.replyToMessage(message.id, params.replyContent);
+      await saveReplyLog({
+        messageId: message.id,
+        storeId: message.store_id,
+        actorUserId: params.actorUserId,
+        provider: 'INSTAGRAM',
+        mode: 'MOCK',
+        status: 'SUCCESS',
+        message: 'GUI設定未完了のためInstagram返信をMOCKとして記録しました。',
+      });
+      return {
+        ok: true,
+        provider: 'INSTAGRAM',
+        mode: 'MOCK',
+        status: 'SUCCESS',
+        message: 'MOCK返信として完了しました。',
+      };
+    }
+
+    try {
+      const { externalReplyId } = await invokeReplyFunction({
+        functionName: 'instagram-reply-comment',
+        payload: {
+          messageId: message.id,
+          replyText: params.replyContent,
+        },
+        fallbackMessage: 'Instagram返信に失敗しました。',
+      });
+      await inboxService.replyToMessage(message.id, params.replyContent);
+      await saveReplyLog({
+        messageId: message.id,
+        storeId: message.store_id,
+        actorUserId: params.actorUserId,
+        provider: 'INSTAGRAM',
+        mode: 'REAL',
+        status: 'SUCCESS',
+        message: 'Instagram Graph API への返信に成功しました。',
+        externalReplyId,
+      });
+      return {
+        ok: true,
+        provider: 'INSTAGRAM',
+        mode: 'REAL',
+        status: 'SUCCESS',
+        externalReplyId,
+        message: 'Instagramへ返信しました。',
+      };
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : 'Instagram返信に失敗しました。';
+      await saveReplyLog({
+        messageId: message.id,
+        storeId: message.store_id,
+        actorUserId: params.actorUserId,
+        provider: 'INSTAGRAM',
+        mode: 'REAL',
+        status: 'FAILED',
+        message: messageText,
+      });
+      throw new Error(messageText);
+    }
+  },
+
+  async replyInstagramExternalComment(params: {
+    storeId: string;
+    externalMessageId: string;
+    replyContent: string;
+  }): Promise<ReplyExecutionResult> {
+    const mode = await resolveReplyMode(params.storeId, 'INSTAGRAM');
+    if (mode === 'MOCK') {
+      return {
+        ok: true,
+        provider: 'INSTAGRAM',
+        mode: 'MOCK',
+        status: 'SUCCESS',
+        message: 'MOCK返信として完了しました。',
+      };
+    }
+
+    const { externalReplyId } = await invokeReplyFunction({
+      functionName: 'instagram-reply-comment',
+      payload: {
+        storeId: params.storeId,
+        externalMessageId: params.externalMessageId,
+        replyText: params.replyContent,
+      },
+      fallbackMessage: 'Instagram返信に失敗しました。',
+    });
+
+    return {
+      ok: true,
+      provider: 'INSTAGRAM',
+      mode: 'REAL',
+      status: 'SUCCESS',
+      externalReplyId,
+      message: 'Instagramへ返信しました。',
+    };
+  },
+
+  async replyGbpReview(params: {
+    messageId: string;
+    actorUserId: string;
+    replyContent: string;
+  }): Promise<ReplyExecutionResult> {
+    const message = await loadMessageForReply(params.messageId);
+    if (message.provider !== 'GBP') {
+      throw new Error('このメッセージはGoogleビジネスプロフィール返信対象ではありません。');
+    }
+    if (message.is_replied) {
+      throw new Error('このメッセージはすでに返信済みです。');
+    }
+
+    const mode = await resolveReplyMode(message.store_id, 'GBP');
+    if (mode === 'MOCK') {
+      await inboxService.replyToMessage(message.id, params.replyContent);
+      await saveReplyLog({
+        messageId: message.id,
+        storeId: message.store_id,
+        actorUserId: params.actorUserId,
+        provider: 'GBP',
+        mode: 'MOCK',
+        status: 'SUCCESS',
+        message: 'GUI設定未完了のためGBP返信をMOCKとして記録しました。',
+      });
+      return {
+        ok: true,
+        provider: 'GBP',
+        mode: 'MOCK',
+        status: 'SUCCESS',
+        message: 'MOCK返信として完了しました。',
+      };
+    }
+
+    try {
+      const { externalReplyId } = await invokeReplyFunction({
+        functionName: 'gbp-reply-review',
+        payload: {
+          messageId: message.id,
+          replyText: params.replyContent,
+        },
+        fallbackMessage: 'Googleビジネスプロフィール返信に失敗しました。',
+      });
+      await inboxService.replyToMessage(message.id, params.replyContent);
+      await saveReplyLog({
+        messageId: message.id,
+        storeId: message.store_id,
+        actorUserId: params.actorUserId,
+        provider: 'GBP',
+        mode: 'REAL',
+        status: 'SUCCESS',
+        message: 'Googleビジネスプロフィール API への返信に成功しました。',
+        externalReplyId,
+      });
+      return {
+        ok: true,
+        provider: 'GBP',
+        mode: 'REAL',
+        status: 'SUCCESS',
+        externalReplyId,
+        message: 'Googleビジネスプロフィールへ返信しました。',
+      };
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : 'Googleビジネスプロフィール返信に失敗しました。';
+      await saveReplyLog({
+        messageId: message.id,
+        storeId: message.store_id,
+        actorUserId: params.actorUserId,
+        provider: 'GBP',
+        mode: 'REAL',
+        status: 'FAILED',
+        message: messageText,
+      });
+      throw new Error(messageText);
+    }
+  },
+
+  async replyGbpExternalReview(params: {
+    storeId: string;
+    externalMessageId: string;
+    replyContent: string;
+  }): Promise<ReplyExecutionResult> {
+    const mode = await resolveReplyMode(params.storeId, 'GBP');
+    if (mode === 'MOCK') {
+      return {
+        ok: true,
+        provider: 'GBP',
+        mode: 'MOCK',
+        status: 'SUCCESS',
+        message: 'MOCK返信として完了しました。',
+      };
+    }
+
+    const { externalReplyId } = await invokeReplyFunction({
+      functionName: 'gbp-reply-review',
+      payload: {
+        storeId: params.storeId,
+        externalMessageId: params.externalMessageId,
+        replyText: params.replyContent,
+      },
+      fallbackMessage: 'Googleビジネスプロフィール返信に失敗しました。',
+    });
+
+    return {
+      ok: true,
+      provider: 'GBP',
+      mode: 'REAL',
+      status: 'SUCCESS',
+      externalReplyId,
+      message: 'Googleビジネスプロフィールへ返信しました。',
+    };
   },
 
   async listByMessage(messageId: string): Promise<InboxReplyLog[]> {

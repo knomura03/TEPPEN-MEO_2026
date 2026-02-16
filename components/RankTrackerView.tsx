@@ -23,6 +23,7 @@ import { napConsistencyService } from '../services/napConsistencyService';
 import { napAlertService } from '../services/napAlertService';
 import { getErrorMessage } from '../services/errorMessage';
 import { PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
+import { formatViewLabel } from './ui/formatters';
 
 interface RankTrackerViewProps {
   currentUser: User;
@@ -685,7 +686,7 @@ export const RankTrackerView: React.FC<RankTrackerViewProps> = ({ currentUser })
     <div className={PAGE_CONTAINER_CLASS} data-testid="rank-tracker-view">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className={PAGE_HEADER_TITLE_CLASS}>検索順位チェック</h1>
+          <h1 className={PAGE_HEADER_TITLE_CLASS}>{formatViewLabel('RANK_TRACKER')}</h1>
           <p className={PAGE_HEADER_DESCRIPTION_CLASS}>
             Googleマップ検索で、店舗が何位に表示されているかをキーワードごとに確認できます。履歴比較で改善の優先順位を判断できます。
           </p>

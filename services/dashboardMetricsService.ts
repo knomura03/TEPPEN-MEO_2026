@@ -4,30 +4,101 @@ export type DashboardMetricRange = '7days' | '30days';
 
 export type DashboardMetricPoint = {
   date: string;
-  views: number;
-  actions: number;
+  posts: number;
+  messages: number;
+};
+
+export type DashboardMetricDetailedPoint = {
+  date: string;
+  totalPosts: number;
+  totalMessages: number;
+  gbpPosts: number;
+  facebookPosts: number;
+  instagramPosts: number;
+  gbpMessages: number;
+  facebookMessages: number;
+  instagramMessages: number;
+  gbpImpressions: number;
+};
+
+export type DashboardProviderMode = 'REAL' | 'NO_DATA' | 'DISCONNECTED' | 'ERROR';
+
+export type DashboardProviderMetrics = {
+  impressions: number | null;
+  profileViews: number | null;
+  posts: number;
+  comments: number;
+  likes: number;
+  phoneClicks: number | null;
+  websiteClicks: number | null;
+  routeSearches: number | null;
+};
+
+export type DashboardProviderSummary = {
+  provider: 'GBP' | 'FACEBOOK' | 'INSTAGRAM';
+  label: string;
+  connected: boolean;
+  mode: DashboardProviderMode;
+  message?: string;
+  metrics: DashboardProviderMetrics;
 };
 
 export type DashboardMetricsResult = {
-  kpis: {
-    mapViews: number;
-    routeSearches: number;
-    phoneClicks: number;
-    websiteClicks: number;
-    actions: number;
+  overview: {
+    impressions: number | null;
+    profileViews: number | null;
     postCount: number;
+    commentCount: number;
+    likeCount: number;
     inboxCount: number;
     unrepliedCount: number;
+    teppenPublishedCount: number;
   };
-  searchBreakdown: {
-    direct: number;
-    discovery: number;
+  providers: {
+    GBP: DashboardProviderSummary;
+    FACEBOOK: DashboardProviderSummary;
+    INSTAGRAM: DashboardProviderSummary;
   };
   timeseries: DashboardMetricPoint[];
+  timeseriesDetailed: DashboardMetricDetailedPoint[];
   dataSource: {
-    gbpConnected: boolean;
-    metricsMode: 'REAL' | 'FALLBACK';
-    error?: string;
+    hasErrors: boolean;
+    errors: Array<{ provider: string; message: string }>;
+  };
+};
+
+const parseNullableNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const parseProviderSummary = (value: unknown, provider: 'GBP' | 'FACEBOOK' | 'INSTAGRAM'): DashboardProviderSummary => {
+  const typed = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  const metricsObject = typed.metrics && typeof typed.metrics === 'object'
+    ? (typed.metrics as Record<string, unknown>)
+    : {};
+  return {
+    provider,
+    label: typeof typed.label === 'string' && typed.label.trim() ? typed.label.trim() : provider,
+    connected: Boolean(typed.connected),
+    mode: (
+      typed.mode === 'REAL' ||
+      typed.mode === 'NO_DATA' ||
+      typed.mode === 'DISCONNECTED' ||
+      typed.mode === 'ERROR'
+    ) ? typed.mode : 'NO_DATA',
+    message: typeof typed.message === 'string' && typed.message.trim() ? typed.message.trim() : undefined,
+    metrics: {
+      impressions: parseNullableNumber(metricsObject.impressions),
+      profileViews: parseNullableNumber(metricsObject.profileViews),
+      posts: Number(metricsObject.posts || 0),
+      comments: Number(metricsObject.comments || 0),
+      likes: Number(metricsObject.likes || 0),
+      phoneClicks: parseNullableNumber(metricsObject.phoneClicks),
+      websiteClicks: parseNullableNumber(metricsObject.websiteClicks),
+      routeSearches: parseNullableNumber(metricsObject.routeSearches),
+    },
   };
 };
 
@@ -44,11 +115,12 @@ export const dashboardMetricsService = {
 
     const body = result.body && typeof result.body === 'object' ? (result.body as Record<string, unknown>) : {};
 
-    const kpisObject = body.kpis && typeof body.kpis === 'object' ? (body.kpis as Record<string, unknown>) : {};
-    const searchObject =
-      body.searchBreakdown && typeof body.searchBreakdown === 'object'
-        ? (body.searchBreakdown as Record<string, unknown>)
-        : {};
+    const overviewObject = body.overview && typeof body.overview === 'object'
+      ? (body.overview as Record<string, unknown>)
+      : {};
+    const providersObject = body.providers && typeof body.providers === 'object'
+      ? (body.providers as Record<string, unknown>)
+      : {};
     const sourceObject = body.dataSource && typeof body.dataSource === 'object' ? (body.dataSource as Record<string, unknown>) : {};
 
     const timeseries = Array.isArray(body.timeseries)
@@ -57,32 +129,61 @@ export const dashboardMetricsService = {
         .filter((row): row is Record<string, unknown> => Boolean(row))
         .map((row) => ({
           date: typeof row.date === 'string' ? row.date : '',
-          views: Number(row.views || 0),
-          actions: Number(row.actions || 0),
+          posts: Number(row.posts || 0),
+          messages: Number(row.messages || 0),
         }))
         .filter((row) => row.date.length > 0)
       : [];
 
+    const timeseriesDetailed = Array.isArray(body.timeseriesDetailed)
+      ? body.timeseriesDetailed
+        .map((row) => (row && typeof row === 'object' ? (row as Record<string, unknown>) : null))
+        .filter((row): row is Record<string, unknown> => Boolean(row))
+        .map((row) => ({
+          date: typeof row.date === 'string' ? row.date : '',
+          totalPosts: Number(row.totalPosts || 0),
+          totalMessages: Number(row.totalMessages || 0),
+          gbpPosts: Number(row.gbpPosts || 0),
+          facebookPosts: Number(row.facebookPosts || 0),
+          instagramPosts: Number(row.instagramPosts || 0),
+          gbpMessages: Number(row.gbpMessages || 0),
+          facebookMessages: Number(row.facebookMessages || 0),
+          instagramMessages: Number(row.instagramMessages || 0),
+          gbpImpressions: Number(row.gbpImpressions || 0),
+        }))
+        .filter((row) => row.date.length > 0)
+      : [];
+
+    const errorRows = Array.isArray(sourceObject.errors) ? sourceObject.errors : [];
+
     return {
-      kpis: {
-        mapViews: Number(kpisObject.mapViews || 0),
-        routeSearches: Number(kpisObject.routeSearches || 0),
-        phoneClicks: Number(kpisObject.phoneClicks || 0),
-        websiteClicks: Number(kpisObject.websiteClicks || 0),
-        actions: Number(kpisObject.actions || 0),
-        postCount: Number(kpisObject.postCount || 0),
-        inboxCount: Number(kpisObject.inboxCount || 0),
-        unrepliedCount: Number(kpisObject.unrepliedCount || 0),
+      overview: {
+        impressions: parseNullableNumber(overviewObject.impressions),
+        profileViews: parseNullableNumber(overviewObject.profileViews),
+        postCount: Number(overviewObject.postCount || 0),
+        commentCount: Number(overviewObject.commentCount || 0),
+        likeCount: Number(overviewObject.likeCount || 0),
+        inboxCount: Number(overviewObject.inboxCount || 0),
+        unrepliedCount: Number(overviewObject.unrepliedCount || 0),
+        teppenPublishedCount: Number(overviewObject.teppenPublishedCount || 0),
       },
-      searchBreakdown: {
-        direct: Number(searchObject.direct || 0),
-        discovery: Number(searchObject.discovery || 0),
+      providers: {
+        GBP: parseProviderSummary(providersObject.GBP, 'GBP'),
+        FACEBOOK: parseProviderSummary(providersObject.FACEBOOK, 'FACEBOOK'),
+        INSTAGRAM: parseProviderSummary(providersObject.INSTAGRAM, 'INSTAGRAM'),
       },
       timeseries,
+      timeseriesDetailed,
       dataSource: {
-        gbpConnected: Boolean(sourceObject.gbpConnected),
-        metricsMode: sourceObject.metricsMode === 'REAL' ? 'REAL' : 'FALLBACK',
-        error: typeof sourceObject.error === 'string' && sourceObject.error.trim() ? sourceObject.error : undefined,
+        hasErrors: Boolean(sourceObject.hasErrors),
+        errors: errorRows
+          .map((row) => (row && typeof row === 'object' ? (row as Record<string, unknown>) : null))
+          .filter((row): row is Record<string, unknown> => Boolean(row))
+          .map((row) => ({
+            provider: typeof row.provider === 'string' ? row.provider : '',
+            message: typeof row.message === 'string' ? row.message : '',
+          }))
+          .filter((row) => row.provider && row.message),
       },
     };
   },

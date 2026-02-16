@@ -44,7 +44,7 @@
 ## 3. TEPPEN側設定（GUI）
 
 ### 3-1. Provider設定保存
-1. `設定 > SNS連携設定` を開く
+1. `プラットフォーム管理` を開く
 2. 右下 `Provider設定（Admin）` で対象providerを選ぶ
 3. 設定JSON（またはフォーム）に `app_id / client_id / graph_api_version` など必須項目を入力
    - `facebook_page_id` / `instagram_user_id` は未入力でも進めてよい（後で自動取得）
@@ -55,7 +55,7 @@
 1. Providerカードの `連携する` を押す
 2. OAuthモーダルの `認可画面を開く` を押す
 3. Google/Metaの認可画面で許可
-4. 自動でTEPPENへ戻る（`Settings > SNS連携設定`）
+4. 自動でTEPPENへ戻る（`プラットフォーム管理`）
 
 ### 3-3. ID自動取得（Facebook/Instagram）
 1. 右下 `Provider設定（Admin）` で Facebook または Instagram を選択

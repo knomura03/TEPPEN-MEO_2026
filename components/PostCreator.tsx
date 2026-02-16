@@ -1,17 +1,20 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BrandKit, PostContentTemplate, Role, SocialPlatform, StoreGroup, User } from '../types';
+import { BrandKit, PostContentTemplate, Role, SocialPlatform, User } from '../types';
 import { MOCK_ACCOUNTS } from '../constants';
 import { geminiService } from '../services/geminiService';
 import { postsService } from '../services/postsService';
 import { postMediaService } from '../services/postMediaService';
 import { postPublishService } from '../services/postPublishService';
 import { isSupabaseConfigured } from '../services/supabaseClient';
-import { storeGroupsService } from '../services/storeGroupsService';
 import { brandKitService } from '../services/brandKitService';
 import { Send, Calendar, Image as ImageIcon, Sparkles, Loader2, X, Eye, MonitorSmartphone, UploadCloud } from 'lucide-react';
 import { useNotification } from '../contexts/NotificationContext';
 import { useStore } from '../contexts/StoreContext';
-import { PAGE_CARD_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
+import { PAGE_CARD_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS, PAGE_WARNING_CLASS } from './ui/pageLayout';
+import { SocialPlatformBadge } from './ui/SocialPlatformLogo';
+import { formatViewLabel } from './ui/formatters';
+import { Avatar } from './ui/Avatar';
+import { COMMON_COPY } from './ui/copy';
 
 interface PostCreatorProps {
   currentUser: User;
@@ -19,10 +22,9 @@ interface PostCreatorProps {
 
 export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
-  const { activeStoreId, stores } = useStore();
+  const { activeStoreId, selectedStoreIds, stores } = useStore();
   const isApprovalRequester = currentUser.role === Role.USER;
-  const canUseStoreGroupTarget =
-    currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR || currentUser.role === Role.MANAGER;
+  const isMultiStoreSelected = selectedStoreIds.length > 1;
   const [content, setContent] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>([]);
   const [scheduledDate, setScheduledDate] = useState('');
@@ -36,10 +38,6 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
   const [topic, setTopic] = useState('');
   const [tone, setTone] = useState('親しみやすい');
   const [showAiModal, setShowAiModal] = useState(false);
-  const [targetMode, setTargetMode] = useState<'ACTIVE_STORE' | 'STORE_GROUP'>('ACTIVE_STORE');
-  const [storeGroups, setStoreGroups] = useState<StoreGroup[]>([]);
-  const [selectedStoreGroupId, setSelectedStoreGroupId] = useState('');
-  const [isLoadingStoreGroups, setIsLoadingStoreGroups] = useState(false);
   const [brandKit, setBrandKit] = useState<BrandKit | null>(null);
   const [templates, setTemplates] = useState<PostContentTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
@@ -48,16 +46,11 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const maxFileSizeBytes = 10 * 1024 * 1024;
 
-  const activeOrgId = useMemo(() => {
-    if (!activeStoreId) return null;
-    const store = stores.find((item) => item.id === activeStoreId);
-    return store?.orgId || null;
-  }, [activeStoreId, stores]);
-
-  const selectedStoreGroup = useMemo(
-    () => storeGroups.find((group) => group.id === selectedStoreGroupId) || null,
-    [selectedStoreGroupId, storeGroups]
+  const activeStore = useMemo(
+    () => (activeStoreId ? stores.find((item) => item.id === activeStoreId) || null : null),
+    [activeStoreId, stores]
   );
+  const activeOrgId = activeStore?.orgId || null;
 
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.id === selectedTemplateId) || null,
@@ -67,38 +60,6 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
   const contentLint = useMemo(() => {
     return brandKitService.lintContent(content, brandKit || undefined);
   }, [content, brandKit]);
-
-  useEffect(() => {
-    if (!canUseStoreGroupTarget || !isSupabaseConfigured || !activeOrgId) {
-      setStoreGroups([]);
-      setSelectedStoreGroupId('');
-      setTargetMode('ACTIVE_STORE');
-      return;
-    }
-
-    setIsLoadingStoreGroups(true);
-    storeGroupsService
-      .listByOrg(activeOrgId)
-      .then((groups) => {
-        setStoreGroups(groups);
-        if (groups.length === 0) {
-          setSelectedStoreGroupId('');
-          setTargetMode('ACTIVE_STORE');
-          return;
-        }
-        setSelectedStoreGroupId((prev) => (groups.some((group) => group.id === prev) ? prev : groups[0].id));
-      })
-      .catch((error) => {
-        console.error('[PostCreator] Failed to load store groups:', error);
-        addNotification('読み込みエラー', '店舗グループの取得に失敗しました。', 'ERROR');
-        setStoreGroups([]);
-        setSelectedStoreGroupId('');
-        setTargetMode('ACTIVE_STORE');
-      })
-      .finally(() => {
-        setIsLoadingStoreGroups(false);
-      });
-  }, [addNotification, canUseStoreGroupTarget, activeOrgId]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !activeOrgId) {
@@ -185,27 +146,15 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const targetStoreIds =
-      targetMode === 'STORE_GROUP'
-        ? selectedStoreGroup?.storeIds || []
-        : activeStoreId
-          ? [activeStoreId]
-          : [];
+    if (isMultiStoreSelected) {
+      addNotification('複数店舗選択中', COMMON_COPY.multiStoreSnsDisabled, 'ERROR');
+      return;
+    }
+    const targetStoreIds = activeStoreId ? [activeStoreId] : [];
 
     if (isSupabaseConfigured) {
-      if (targetMode === 'STORE_GROUP') {
-        if (!canUseStoreGroupTarget) {
-          addNotification('権限エラー', '一括投稿はADMIN/MANAGERのみ実行できます。', 'ERROR');
-          return;
-        }
-        if (!selectedStoreGroup) {
-          addNotification('対象未選択', '店舗グループを選択してください。', 'WARNING');
-          return;
-        }
-      }
-
       if (targetStoreIds.length === 0) {
-        addNotification('店舗未設定', '店舗が未設定のため投稿を保存できません。', 'ERROR');
+        addNotification('店舗未設定', '投稿先の店舗が未設定のため投稿を保存できません。', 'ERROR');
         return;
       }
 
@@ -293,10 +242,8 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
 
           if (successCount > 0) {
             addNotification(
-              targetMode === 'STORE_GROUP' ? '一括即時投稿完了' : '即時投稿完了',
-              targetMode === 'STORE_GROUP'
-                ? `${selectedStoreGroup?.name || '店舗グループ'} の${successCount}店舗で投稿しました。`
-                : `${successCount}件の投稿を実行しました。`,
+              '即時投稿完了',
+              `${successCount}件の投稿を実行しました。`,
               'SUCCESS'
             );
           }
@@ -309,26 +256,16 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
           }
         } else if (isApprovalRequester) {
           addNotification(
-            targetMode === 'STORE_GROUP' ? '一括承認申請を作成' : '承認申請を作成',
-            targetMode === 'STORE_GROUP'
-              ? `${selectedStoreGroup?.name || '店舗グループ'} の${targetStoreCount}店舗へ承認待ち投稿を保存しました。`
-              : `承認待ちとして保存しました（${selectedPlatforms.length}プラットフォーム）`,
+            '承認申請を作成',
+            `承認待ちとして保存しました（${targetStoreCount}店舗 / ${selectedPlatforms.length}プラットフォーム）`,
             'SUCCESS'
           );
         } else {
           addNotification(
-            targetMode === 'STORE_GROUP'
-              ? scheduledDate
-                ? '一括予約作成完了'
-                : '一括下書き保存完了'
-              : scheduledDate
-                ? '予約作成完了'
-                : '下書き保存完了',
-            targetMode === 'STORE_GROUP'
-              ? `${selectedStoreGroup?.name || '店舗グループ'} の${targetStoreCount}店舗へ${scheduledDate ? '予約投稿' : '下書き'}を作成しました。`
-              : scheduledDate
-                ? `予約投稿を作成しました（${selectedPlatforms.length}プラットフォーム）`
-                : `下書きを保存しました（${selectedPlatforms.length}プラットフォーム）`,
+            scheduledDate ? '予約作成完了' : '下書き保存完了',
+            scheduledDate
+              ? `予約投稿を作成しました（${targetStoreCount}店舗 / ${selectedPlatforms.length}プラットフォーム）`
+              : `下書きを保存しました（${targetStoreCount}店舗 / ${selectedPlatforms.length}プラットフォーム）`,
             'SUCCESS'
           );
         }
@@ -349,10 +286,8 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
     // Simulate API call
     setTimeout(() => {
       addNotification(
-        targetMode === 'STORE_GROUP' ? (scheduledDate ? '一括予約投稿完了' : '一括投稿完了') : (scheduledDate ? '予約投稿完了' : '投稿完了'),
-        targetMode === 'STORE_GROUP'
-          ? `${selectedStoreGroup?.storeIds.length || 0}店舗へ${scheduledDate ? '予約' : ''}投稿しました。`
-          : `${selectedPlatforms.length}つのプラットフォームへ${scheduledDate ? '予約' : ''}投稿しました！`,
+        scheduledDate ? '予約投稿完了' : '投稿完了',
+        `${selectedPlatforms.length}つのプラットフォームへ${scheduledDate ? '予約' : ''}投稿しました！`,
         'SUCCESS'
       );
       
@@ -413,10 +348,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
     selectedPlatforms.length === 0 ||
     !content ||
     isSubmitting ||
-    (isSupabaseConfigured &&
-      (targetMode === 'STORE_GROUP'
-        ? !selectedStoreGroup || selectedStoreGroup.storeIds.length === 0
-        : !activeStoreId));
+    (isSupabaseConfigured && (!activeStoreId || isMultiStoreSelected));
 
   // ----------------------------------------------------------------------
   // Preview Components
@@ -427,7 +359,12 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
       <div className="p-3 flex items-center space-x-2 border-b border-gray-100">
         <div className="w-8 h-8 bg-gradient-to-tr from-yellow-400 to-purple-600 p-[2px] rounded-full">
             <div className="w-full h-full bg-white rounded-full p-[2px]">
-                <img src={currentUser.avatarUrl || "https://via.placeholder.com/32"} className="w-full h-full rounded-full object-cover" alt="avatar"/>
+              <Avatar
+                src={currentUser.avatarUrl}
+                alt={`${currentUser.name} のプロフィール画像`}
+                sizeClassName="w-full h-full"
+                iconSize={12}
+              />
             </div>
         </div>
         <span className="font-semibold text-xs">{currentUser.username}</span>
@@ -482,7 +419,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
     <div className={`${PAGE_CONTAINER_CLASS} max-w-6xl mx-auto h-[calc(100vh-100px)] flex flex-col`}>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className={PAGE_HEADER_TITLE_CLASS}>新規投稿</h1>
+          <h1 className={PAGE_HEADER_TITLE_CLASS}>{formatViewLabel('CREATE_POST')}</h1>
           <p className={PAGE_HEADER_DESCRIPTION_CLASS}>投稿文を作成し、下書き保存や予約設定を行います。</p>
         </div>
         <button 
@@ -494,6 +431,10 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
         </button>
       </div>
 
+      {isMultiStoreSelected && (
+        <div className={PAGE_WARNING_CLASS}>{COMMON_COPY.multiStoreSnsDisabled}</div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 overflow-hidden">
         {/* Editor Column */}
         <div id="post-editor-panel" className={`${PAGE_CARD_CLASS} p-6 overflow-y-auto`}>
@@ -501,50 +442,13 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
             {/* Platform Selection */}
             <div id="post-target-mode-section">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">投稿対象</label>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-                    <input
-                      type="radio"
-                      checked={targetMode === 'ACTIVE_STORE'}
-                      onChange={() => setTargetMode('ACTIVE_STORE')}
-                    />
-                    選択中の店舗
-                  </label>
-                  {canUseStoreGroupTarget && (
-                    <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-                      <input
-                        type="radio"
-                        checked={targetMode === 'STORE_GROUP'}
-                        onChange={() => setTargetMode('STORE_GROUP')}
-                        disabled={storeGroups.length === 0}
-                      />
-                      店舗グループ（ADMIN / MANAGER）
-                    </label>
-                  )}
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-200">
+                  {isMultiStoreSelected
+                    ? COMMON_COPY.multiStoreSnsDisabled
+                    : activeStore
+                      ? `現在は「${activeStore.name}」へ投稿します。`
+                      : '右上の店舗セレクタで投稿先の店舗を選択してください。'}
                 </div>
-                {canUseStoreGroupTarget && targetMode === 'STORE_GROUP' && (
-                  <div className="mt-3 pl-6 space-y-2">
-                    <select
-                      value={selectedStoreGroupId}
-                      onChange={(e) => setSelectedStoreGroupId(e.target.value)}
-                      className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 text-sm"
-                    >
-                      {storeGroups.length === 0 && <option value="">店舗グループがありません</option>}
-                      {storeGroups.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}（{group.storeIds.length}店舗）
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {isLoadingStoreGroups
-                        ? '店舗グループを読み込み中...'
-                        : selectedStoreGroup
-                          ? `${selectedStoreGroup.storeIds.length}店舗へ同じ内容を一括反映します。`
-                          : '対象グループを選択してください。'}
-                    </p>
-                  </div>
-                )}
             </div>
 
             <div id="post-template-section">
@@ -580,7 +484,7 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
                       ? 'ブランド設定を読み込み中...'
                       : templates.length > 0
                         ? `${templates.length}件のテンプレートが利用可能です。`
-                        : 'テンプレート未登録です。設定 > システム管理で追加してください。'}
+                        : 'テンプレート未登録です。左メニューの「投稿テンプレート」から追加してください。'}
                   </p>
                   {brandKit && (
                     <div className="space-y-2">
@@ -623,7 +527,12 @@ export const PostCreator: React.FC<PostCreatorProps> = ({ currentUser }) => {
                         : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
                     }`}
                     >
-                    <span className="text-sm font-medium">{account.platform}</span>
+                    <SocialPlatformBadge
+                      platform={account.platform}
+                      size={14}
+                      className="text-sm font-medium"
+                      labelClassName="text-sm font-medium"
+                    />
                     </button>
                 ))}
                 </div>

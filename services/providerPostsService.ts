@@ -17,6 +17,12 @@ const normalizeProviderKey = (value: string): RemoteProviderKey | null => {
   return null;
 };
 
+const parseNullableMetric = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 const toExternalPost = (row: Record<string, unknown>): ExternalProviderPost | null => {
   const provider = normalizeProviderKey(String(row.provider || ''));
   const externalPostId = typeof row.externalPostId === 'string' ? row.externalPostId.trim() : '';
@@ -31,6 +37,16 @@ const toExternalPost = (row: Record<string, unknown>): ExternalProviderPost | nu
     content: typeof row.content === 'string' ? row.content : '',
     createdAt: Number.isNaN(createdAt.getTime()) ? new Date() : createdAt,
     permalink: typeof row.permalink === 'string' ? row.permalink : undefined,
+    metrics:
+      row.metrics && typeof row.metrics === 'object'
+        ? {
+            impressions: parseNullableMetric((row.metrics as Record<string, unknown>).impressions),
+            profileViews: parseNullableMetric((row.metrics as Record<string, unknown>).profileViews),
+            likes: parseNullableMetric((row.metrics as Record<string, unknown>).likes),
+            comments: parseNullableMetric((row.metrics as Record<string, unknown>).comments),
+            shares: parseNullableMetric((row.metrics as Record<string, unknown>).shares),
+          }
+        : undefined,
     raw: row.raw && typeof row.raw === 'object' ? (row.raw as Record<string, unknown>) : undefined,
   };
 };
@@ -96,6 +112,7 @@ const writeCache = (cacheKey: string, result: ProviderPostsFetchResult) => {
       content: row.content,
       createdAt: row.createdAt.toISOString(),
       permalink: row.permalink,
+      metrics: row.metrics || {},
       raw: row.raw || {},
     })),
     byProvider: Object.fromEntries(
@@ -107,6 +124,7 @@ const writeCache = (cacheKey: string, result: ProviderPostsFetchResult) => {
           content: row.content,
           createdAt: row.createdAt.toISOString(),
           permalink: row.permalink,
+          metrics: row.metrics || {},
           raw: row.raw || {},
         })),
       ])

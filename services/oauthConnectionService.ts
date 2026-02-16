@@ -1,93 +1,12 @@
 import { OAuthCompleteResult, OAuthDisconnectResult, OAuthStartResult } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { getFunctionErrorMessage, invokeFunctionByHttp } from './functionHttpClient';
 
 const requireSupabase = () => {
   if (!isSupabaseConfigured || !supabase) {
     throw new Error('Supabaseが未設定のため、OAuth連携を実行できません。');
   }
   return supabase;
-};
-
-type FunctionInvokeResult = {
-  ok: boolean;
-  status: number;
-  body: unknown;
-  text: string;
-};
-
-const requireFunctionRequestContext = async (client: ReturnType<typeof requireSupabase>) => {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-  if (!supabaseUrl || !anonKey) {
-    throw new Error('Supabase環境変数が不足しています。VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY を確認してください。');
-  }
-
-  const { data, error } = await client.auth.getSession();
-  let accessToken = data.session?.access_token?.trim() || '';
-
-  if (!accessToken) {
-    const { data: refreshedData, error: refreshError } = await client.auth.refreshSession();
-    accessToken = refreshedData.session?.access_token?.trim() || '';
-    if (!accessToken) {
-      const reason = refreshError?.message || error?.message || 'Auth session missing';
-      throw new Error(`ログインセッションが無効です。いったんログアウトして再ログインしてください。（${reason}）`);
-    }
-  }
-
-  return { supabaseUrl, anonKey, accessToken };
-};
-
-const isSessionAuthError = (status: number, body: unknown, text: string): boolean => {
-  if (status !== 401) return false;
-  const message =
-    body && typeof body === 'object'
-      ? String((body as Record<string, unknown>).error || (body as Record<string, unknown>).message || '')
-      : text || '';
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes('auth session missing') ||
-    normalized.includes('missing authorization') ||
-    normalized.includes('invalid jwt')
-  );
-};
-
-const invokeFunctionByHttp = async (
-  client: ReturnType<typeof requireSupabase>,
-  functionName: string,
-  payload: Record<string, unknown>
-): Promise<FunctionInvokeResult> => {
-  const { supabaseUrl, anonKey, accessToken } = await requireFunctionRequestContext(client);
-  const requestUrl = `${supabaseUrl}/functions/v1/${functionName}?client=direct-http-v3`;
-  const execute = async (token: string): Promise<FunctionInvokeResult> => {
-    const response = await fetch(requestUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: anonKey,
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const text = await response.text();
-    let body: unknown = null;
-    try {
-      body = text ? JSON.parse(text) : null;
-    } catch {
-      body = null;
-    }
-    return { ok: response.ok, status: response.status, body, text };
-  };
-
-  const initialResult = await execute(accessToken);
-  if (isSessionAuthError(initialResult.status, initialResult.body, initialResult.text)) {
-    const { data: refreshedData } = await client.auth.refreshSession();
-    const refreshedToken = refreshedData.session?.access_token?.trim() || '';
-    if (refreshedToken && refreshedToken !== accessToken) {
-      return execute(refreshedToken);
-    }
-  }
-  return initialResult;
 };
 
 const normalizeJsonObject = (value: unknown): Record<string, unknown> => {
@@ -111,25 +30,20 @@ const toDate = (value: unknown): Date | undefined => {
 
 export const oauthConnectionService = {
   async start(params: { storeId: string; providerKey: string; returnTo?: string }): Promise<OAuthStartResult> {
-    const client = requireSupabase();
     const returnTo =
       params.returnTo && params.returnTo.trim().length > 0
         ? params.returnTo.trim()
         : typeof window !== 'undefined'
-          ? `${window.location.origin}/?view=SETTINGS&tab=INTEGRATIONS`
+          ? `${window.location.origin}/?view=PLATFORM_MANAGEMENT`
           : undefined;
 
-    const result = await invokeFunctionByHttp(client, 'oauth-start', {
+    const result = await invokeFunctionByHttp('oauth-start', {
       storeId: params.storeId,
       providerKey: params.providerKey,
       returnTo,
     });
     if (!result.ok) {
-      const bodyError =
-        result.body && typeof result.body === 'object'
-          ? String((result.body as Record<string, unknown>).error || (result.body as Record<string, unknown>).message || '')
-          : '';
-      throw new Error(`OAuth開始に失敗しました。${bodyError ? `（${bodyError} / status=${result.status}）` : `（status=${result.status}）`}`);
+      throw new Error(getFunctionErrorMessage(result, 'OAuth開始に失敗しました。'));
     }
 
     const body = normalizeJsonObject(result.body);

@@ -1,6 +1,10 @@
 /* Minimal CSS for Tailwind CDN + Vite build.
    (Tailwind itself is loaded via CDN in index.html) */
 
+body {
+  font-family: 'Noto Sans JP', 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -55,4 +59,3 @@
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.25);
 }
-

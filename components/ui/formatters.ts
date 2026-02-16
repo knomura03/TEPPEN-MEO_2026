@@ -1,5 +1,6 @@
 import { PostStatus, Role, ViewState } from '../../types';
 import { NAV_LABELS } from './copy';
+import { getSidebarNavLabelByViewState } from '../../services/navigationOrderService';
 
 const ROLE_LABEL_MAP: Record<Role, string> = {
   ADMIN: '管理者',
@@ -17,7 +18,11 @@ const POST_STATUS_LABEL_MAP: Record<PostStatus, string> = {
 
 export const formatRoleLabel = (role: Role): string => ROLE_LABEL_MAP[role] || role;
 
-export const formatViewLabel = (view: ViewState): string => NAV_LABELS[view] || view;
+export const formatViewLabel = (view: ViewState): string => {
+  const customized = getSidebarNavLabelByViewState(view);
+  if (customized) return customized;
+  return NAV_LABELS[view] || view;
+};
 
 export const formatPostStatusLabel = (status: PostStatus): string => POST_STATUS_LABEL_MAP[status] || status;
 
@@ -28,4 +33,3 @@ export const formatDateYmd = (date: Date | null | undefined): string => {
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}/${m}/${d}`;
 };
-

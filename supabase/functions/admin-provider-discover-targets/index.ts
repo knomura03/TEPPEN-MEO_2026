@@ -336,12 +336,12 @@ Deno.serve(async (req) => {
   if (membershipError || !memberships || memberships.length === 0) {
     return jsonResponse(403, { error: 'Not allowed' });
   }
-  const isInternal = memberships.some((row: { role: string }) => {
+  const isAdmin = memberships.some((row: { role: string }) => {
     const role = (row.role || '').toUpperCase();
-    return role === 'ADMIN' || role === 'SUPERVISOR';
+    return role === 'ADMIN';
   });
-  if (!isInternal) {
-    return jsonResponse(403, { error: 'Only ADMIN/SUPERVISOR can discover provider targets' });
+  if (!isAdmin) {
+    return jsonResponse(403, { error: 'Only ADMIN can discover provider targets' });
   }
 
   const integrationProviders = providerKey === 'INSTAGRAM' ? ['INSTAGRAM', 'FACEBOOK'] : ['FACEBOOK'];

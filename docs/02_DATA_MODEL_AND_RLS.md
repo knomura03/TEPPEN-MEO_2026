@@ -1,23 +1,23 @@
 # TEPPEN MEO：データモデル & RLS方針（MVP）
 
-最終更新: 2026-02-03
+最終更新: 2026-02-14
 
 ## 目的
 モック脱却を最短で進めるために、MVPで必要なテーブルとRLS（行レベルセキュリティ）の方針を先に固定し、後戻り（作り直し）を防ぎます。
 
 ## テナントモデル（用語）
-- **Organization（組織）**: 代理店/ブランド/チェーンなど、契約の単位
+- **Group（グループ）**: `organizations`。代理店/ブランド/チェーンなどの分離単位
 - **Store（店舗）**: 実店舗（MEO運用の単位、GBPロケーションに紐付く）
-- **Membership（所属）**: ユーザーがどの組織/店舗に属するか + ロール/権限フラグ
+- **Membership（所属）**: ユーザーがどのグループ/店舗に属するか + ロール/権限フラグ
 
-### MVPの基本ルール（決定）
+### MVPの基本ルール（現行）
 - データの基本スコープは **Store**（店舗）です。
-- 同じOrganization配下に複数Storeがあり得ます。
-- Membershipは「Store単位」または「Organization単位（全店舗）」のどちらかを表現できる形にします。
+- 同じGroup配下に複数Storeがあり得ます。
+- Membershipは `memberships` テーブルで管理し、以下でスコープを表現します。
   - `store_id` が入っていれば **店舗スコープ**
-  - `store_id` がNULLなら **組織スコープ（配下の全店舗）**
-
-※将来、1ユーザーが複数店舗に属するケースが増えた場合は `membership_stores` のような中間テーブルで拡張します。
+  - `store_id` がNULLなら **グループスコープ（配下全店舗）**
+- `USER` が複数店舗にアクセスする場合は、**`memberships` 行を複数持つ**（`role=USER` で `store_id` を店舗ごとに保持）運用です。
+- `ADMIN/SUPERVISOR/MANAGER` は原則 `store_id=NULL` のグループスコープ行で扱います。
 
 ## 主要テーブル（MVP）
 以下は“最小”の想定です（詳細カラムは実装で確定）。
@@ -31,6 +31,10 @@
   - `id`, `org_id`, `name`, `address`, `phone`, `category`, `business_hours`, `created_at`
 - `memberships`
   - `id`, `user_id`, `org_id`, `store_id`(nullable), `role`, `permissions`(jsonb), `created_at`
+- `store_subscriptions`
+  - `id`, `store_id`, `billing_plan_id`, `status`, `created_at`, `updated_at`
+- `store_subscription_plan_schedules`
+  - `id`, `store_id`, `billing_plan_id`, `status`, `effective_at`, `applied_at`, `created_at`, `updated_at`
 
 ### 投稿
 - `posts`
@@ -59,7 +63,7 @@
 ## RLS（行レベルセキュリティ）方針
 ### 原則
 1. **Storeスコープ外のデータは見えない/触れない**（最重要）
-2. OrganizationスコープのMembershipを持つユーザーは、そのOrg配下のStoreにアクセスできる
+2. GroupスコープのMembershipを持つユーザーは、そのGroup配下のStoreにアクセスできる
 3. Platform ADMIN（knomura）は例外的に全件アクセス可能（ただしログを残す）
 4. Edge Functions（サービスロール）は必要最小限の範囲で実行し、監査ログに残す
 
@@ -73,11 +77,11 @@
 - いつ（created_at）
 - 何をしたか（action）
 - 何に対して（target_type/target_id）
-- どの店舗/組織か（store_id/org_id）
+- どの店舗/グループか（store_id/org_id）
 - 追加情報（payload：変更前後の要点、エラー理由など）
 
 ## 関連ドキュメント
 - `docs/00_MVP_DEFINITION.md`
 - `docs/01_ROLES_PERMISSIONS.md`
 - `docs/03_INTEGRATION_GBP.md`
-
+- `docs/23_DATABASE_ERD.md`

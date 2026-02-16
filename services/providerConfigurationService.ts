@@ -1,5 +1,6 @@
 import { ProviderConfiguration, ProviderConnectionStatus, ProviderTargetDiscoveryResult } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { getFunctionErrorMessage, invokeFunctionByHttp } from './functionHttpClient';
 
 type DbProviderConfigurationRow = {
   id: string;
@@ -13,106 +14,11 @@ type DbProviderConfigurationRow = {
   secret_updated_at: string | null;
 };
 
-type InvokeErrorContextLike = {
-  status?: number;
-  statusText?: string;
-  json?: () => Promise<unknown>;
-  text?: () => Promise<string>;
-  clone?: () => InvokeErrorContextLike;
-};
-
-type InvokeErrorLike = {
-  message?: string;
-  context?: InvokeErrorContextLike;
-};
-
-type FunctionInvokeResult = {
-  ok: boolean;
-  status: number;
-  body: unknown;
-  text: string;
-};
-
 const requireSupabase = () => {
   if (!isSupabaseConfigured || !supabase) {
     throw new Error('Supabaseが未設定のため、provider設定を取得できません。');
   }
   return supabase;
-};
-
-const requireFunctionRequestContext = async (client: ReturnType<typeof requireSupabase>) => {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-  if (!supabaseUrl || !anonKey) {
-    throw new Error('Supabase環境変数が不足しています。VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY を確認してください。');
-  }
-
-  const { data, error } = await client.auth.getSession();
-  let accessToken = data.session?.access_token?.trim() || '';
-
-  if (!accessToken) {
-    const { data: refreshedData, error: refreshError } = await client.auth.refreshSession();
-    accessToken = refreshedData.session?.access_token?.trim() || '';
-    if (!accessToken) {
-      const reason = refreshError?.message || error?.message || 'Auth session missing';
-      throw new Error(`ログインセッションが無効です。いったんログアウトして再ログインしてください。（${reason}）`);
-    }
-  }
-
-  return { supabaseUrl, anonKey, accessToken };
-};
-
-const isSessionAuthError = (status: number, body: unknown, text: string): boolean => {
-  if (status !== 401) return false;
-  const message =
-    body && typeof body === 'object'
-      ? String((body as Record<string, unknown>).error || (body as Record<string, unknown>).message || '')
-      : text || '';
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes('auth session missing') ||
-    normalized.includes('missing authorization') ||
-    normalized.includes('invalid jwt')
-  );
-};
-
-const invokeFunctionByHttp = async (
-  client: ReturnType<typeof requireSupabase>,
-  functionName: string,
-  payload: Record<string, unknown>
-): Promise<FunctionInvokeResult> => {
-  const { supabaseUrl, anonKey, accessToken } = await requireFunctionRequestContext(client);
-  const requestUrl = `${supabaseUrl}/functions/v1/${functionName}?client=direct-http-v3`;
-  const execute = async (token: string): Promise<FunctionInvokeResult> => {
-    const response = await fetch(requestUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: anonKey,
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const text = await response.text();
-    let body: unknown = null;
-    try {
-      body = text ? JSON.parse(text) : null;
-    } catch {
-      body = null;
-    }
-    return { ok: response.ok, status: response.status, body, text };
-  };
-
-  const initialResult = await execute(accessToken);
-  if (isSessionAuthError(initialResult.status, initialResult.body, initialResult.text)) {
-    const { data: refreshedData } = await client.auth.refreshSession();
-    const refreshedToken = refreshedData.session?.access_token?.trim() || '';
-    if (refreshedToken && refreshedToken !== accessToken) {
-      return execute(refreshedToken);
-    }
-  }
-  return initialResult;
 };
 
 const mapConfiguration = (row: DbProviderConfigurationRow): ProviderConfiguration => ({
@@ -126,47 +32,6 @@ const mapConfiguration = (row: DbProviderConfigurationRow): ProviderConfiguratio
   lastError: row.last_error || undefined,
   secretUpdatedAt: row.secret_updated_at ? new Date(row.secret_updated_at) : undefined,
 });
-
-const extractInvokeErrorMessage = async (action: string, error: unknown): Promise<string> => {
-  const fallback = `${action}に失敗しました。`;
-  if (!error || typeof error !== 'object') {
-    return `${fallback}${error ? `（${String(error)}）` : ''}`;
-  }
-
-  const typed = error as InvokeErrorLike;
-  const context = typed.context;
-  if (context) {
-    try {
-      const reader = context.clone ? context.clone() : context;
-      if (typeof reader.json === 'function') {
-        const body = await reader.json();
-        if (body && typeof body === 'object') {
-          const mappedBody = body as Record<string, unknown>;
-          const bodyError = String(mappedBody.error || mappedBody.message || '').trim();
-          const bodyCode = mappedBody.code ? String(mappedBody.code).trim() : '';
-          if (bodyError) {
-            return `${fallback}（${bodyCode ? `${bodyCode}: ` : ''}${bodyError}）`;
-          }
-        }
-      } else if (typeof reader.text === 'function') {
-        const text = (await reader.text()).trim();
-        if (text) {
-          return `${fallback}（${text}）`;
-        }
-      }
-    } catch {
-      // ignore body parse error and use fallback message
-    }
-    if (typeof context.status === 'number') {
-      return `${fallback}（status=${context.status}${context.statusText ? ` ${context.statusText}` : ''}）`;
-    }
-  }
-
-  if (typed.message && typed.message.trim().length > 0) {
-    return `${fallback}（${typed.message.trim()}）`;
-  }
-  return fallback;
-};
 
 export const providerConfigurationService = {
   async listByStore(storeId: string): Promise<ProviderConfiguration[]> {
@@ -212,18 +77,9 @@ export const providerConfigurationService = {
   },
 
   async upsertSecret(params: { providerConfigurationId: string; secret: string }): Promise<void> {
-    const client = requireSupabase();
-    const result = await invokeFunctionByHttp(client, 'admin-provider-secret-upsert', params);
+    const result = await invokeFunctionByHttp('admin-provider-secret-upsert', params);
     if (!result.ok) {
-      const bodyError =
-        result.body && typeof result.body === 'object'
-          ? String((result.body as Record<string, unknown>).error || (result.body as Record<string, unknown>).message || '')
-          : '';
-      throw new Error(
-        `Providerシークレットの保存に失敗しました。${
-          bodyError ? `（${bodyError} / status=${result.status}）` : `（status=${result.status}）`
-        }`
-      );
+      throw new Error(getFunctionErrorMessage(result, 'Providerシークレットの保存に失敗しました。'));
     }
     if (
       result.body &&
@@ -236,18 +92,9 @@ export const providerConfigurationService = {
   },
 
   async testConnection(params: { providerConfigurationId: string }): Promise<ProviderConnectionStatus> {
-    const client = requireSupabase();
-    const result = await invokeFunctionByHttp(client, 'admin-provider-connection-test', params);
+    const result = await invokeFunctionByHttp('admin-provider-connection-test', params);
     if (!result.ok) {
-      const bodyError =
-        result.body && typeof result.body === 'object'
-          ? String((result.body as Record<string, unknown>).error || (result.body as Record<string, unknown>).message || '')
-          : '';
-      throw new Error(
-        `接続テストに失敗しました。${
-          bodyError ? `（${bodyError} / status=${result.status}）` : `（status=${result.status}）`
-        }`
-      );
+      throw new Error(getFunctionErrorMessage(result, '接続テストに失敗しました。'));
     }
     if (
       result.body &&
@@ -265,18 +112,9 @@ export const providerConfigurationService = {
   },
 
   async discoverTargets(params: { providerConfigurationId: string }): Promise<ProviderTargetDiscoveryResult> {
-    const client = requireSupabase();
-    const result = await invokeFunctionByHttp(client, 'admin-provider-discover-targets', params);
+    const result = await invokeFunctionByHttp('admin-provider-discover-targets', params);
     if (!result.ok) {
-      const bodyError =
-        result.body && typeof result.body === 'object'
-          ? String((result.body as Record<string, unknown>).error || (result.body as Record<string, unknown>).message || '')
-          : '';
-      throw new Error(
-        `ID自動取得に失敗しました。${
-          bodyError ? `（${bodyError} / status=${result.status}）` : `（status=${result.status}）`
-        }`
-      );
+      throw new Error(getFunctionErrorMessage(result, 'ID自動取得に失敗しました。'));
     }
     if (!result.body || typeof result.body !== 'object') {
       throw new Error('ID自動取得のレスポンス形式が不正です。');

@@ -146,6 +146,13 @@ const appendApprovalComment = async (
 
 export const postsService = {
   async listByStore(storeId: string): Promise<Post[]> {
+    return postsService.listByStores([storeId]);
+  },
+
+  async listByStores(storeIds: string[]): Promise<Post[]> {
+    const uniqueStoreIds = Array.from(new Set(storeIds.filter(Boolean)));
+    if (uniqueStoreIds.length === 0) return [];
+
     const client = requireSupabase();
     const selectWithApproval =
       'id, store_id, author_user_id, content, status, platforms, scheduled_at, published_at, approval_status, submitted_for_approval_at, approved_at, approved_by_user_id, rejected_at, rejected_by_user_id, rejection_reason, post_media (storage_path)';
@@ -154,7 +161,7 @@ export const postsService = {
     const { data: primaryData, error } = await client
       .from('posts')
       .select(selectWithApproval)
-      .eq('store_id', storeId)
+      .in('store_id', uniqueStoreIds)
       .order('scheduled_at', { ascending: true, nullsFirst: false });
 
     if (error && isMissingColumnError(error)) {
@@ -162,7 +169,7 @@ export const postsService = {
       const { data: legacyData, error: legacyError } = await client
         .from('posts')
         .select(legacySelect)
-        .eq('store_id', storeId)
+        .in('store_id', uniqueStoreIds)
         .order('scheduled_at', { ascending: true, nullsFirst: false });
       if (legacyError) throw legacyError;
       data = (legacyData || []) as DbPostRow[];
@@ -412,6 +419,14 @@ export const postsService = {
   async delete(postId: string): Promise<void> {
     const client = requireSupabase();
     const { error } = await client.from('posts').delete().eq('id', postId);
+    if (error) throw error;
+  },
+
+  async deleteMany(postIds: string[]): Promise<void> {
+    const client = requireSupabase();
+    const uniqueIds = Array.from(new Set(postIds.map((id) => id.trim()).filter((id) => id.length > 0)));
+    if (uniqueIds.length === 0) return;
+    const { error } = await client.from('posts').delete().in('id', uniqueIds);
     if (error) throw error;
   },
 };

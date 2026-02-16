@@ -1,5 +1,6 @@
 import { User, Role } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { getFunctionErrorMessage, invokeFunctionByHttp } from './functionHttpClient';
 
 type DbMembershipRow = {
   user_id: string;
@@ -14,6 +15,8 @@ type DbProfileRow = {
   name: string | null;
   email: string | null;
   avatar_url: string | null;
+  invited_at: string | null;
+  password_set_at: string | null;
 };
 
 type DbUserStoreControlRow = {
@@ -28,7 +31,8 @@ type DbOrgStorePolicyRow = {
   default_user_store_limit: number;
 };
 
-type DbOrgSubscriptionPlanRow = {
+type DbStoreSubscriptionPlanRow = {
+  store_id: string;
   billing_plan?: { code?: string | null } | null;
 };
 
@@ -38,6 +42,42 @@ export type ManagedUserStoreSummary = {
   effectiveStoreLimit: number;
   maxStoresOverride?: number;
   allowCsvStoreBulkCreate: boolean;
+  userStoreIds: string[];
+};
+
+type UpdateManagedUserPayload = {
+  orgId: string;
+  targetUserId: string;
+  patch: {
+    name?: string;
+    role?: Role;
+    storeIds?: string[];
+  };
+};
+
+type DeleteManagedUserPayload = {
+  orgId: string;
+  targetUserId: string;
+  mode: 'REMOVE_FROM_ORG' | 'FULL_DELETE';
+  confirmToken?: string;
+};
+
+type GenerateAuthLinkPayload = {
+  orgId: string;
+  email: string;
+  name: string;
+  role: Role;
+  storeId?: string;
+  planCode?: string;
+  linkType?: 'INVITE' | 'RECOVERY';
+  redirectTo?: string;
+};
+
+type AttachExistingUserPayload = {
+  orgId: string;
+  storeId: string;
+  targetUserId: string;
+  role: Role;
 };
 
 const requireSupabase = () => {
@@ -81,6 +121,8 @@ const buildUser = (userId: string, role: Role, createdAt: string, plan: string, 
     avatarUrl: profile?.avatar_url || undefined,
     plan: plan || 'FREE',
     lastLoginAt: createdAt ? new Date(createdAt) : new Date(),
+    invitedAt: profile?.invited_at ? new Date(profile.invited_at) : undefined,
+    passwordSetAt: profile?.password_set_at ? new Date(profile.password_set_at) : undefined,
   };
 };
 
@@ -120,7 +162,7 @@ export const userManagementService = {
     const userIds = Array.from(grouped.keys());
     const { data: profileRows, error: profileError } = await client
       .from('profiles')
-      .select('id, name, email, avatar_url')
+      .select('id, name, email, avatar_url, invited_at, password_set_at')
       .in('id', userIds);
 
     if (profileError) throw profileError;
@@ -128,19 +170,26 @@ export const userManagementService = {
     const profileMap = new Map<string, DbProfileRow>();
     (profileRows || []).forEach((row) => profileMap.set((row as DbProfileRow).id, row as DbProfileRow));
 
-    let orgPlanCode = 'FREE';
-    const { data: subscriptionData, error: subscriptionError } = await client
-      .from('org_subscriptions')
-      .select('billing_plan:billing_plans (code)')
-      .eq('org_id', orgId)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (subscriptionError && !isMissingRelationError(subscriptionError)) throw subscriptionError;
-    if (subscriptionData) {
-      const row = subscriptionData as DbOrgSubscriptionPlanRow;
-      const code = row.billing_plan?.code ? String(row.billing_plan.code) : '';
-      if (code) orgPlanCode = code;
+    const allStoreIds = Array.from(
+      new Set(
+        Array.from(grouped.values()).flatMap((item) => Array.from(item.storeIds))
+      )
+    );
+    const storePlanMap = new Map<string, string>();
+    if (allStoreIds.length > 0) {
+      const { data: storeSubscriptionRows, error: storeSubscriptionError } = await client
+        .from('store_subscriptions')
+        .select('store_id, billing_plan:billing_plans (code)')
+        .in('store_id', allStoreIds);
+      if (storeSubscriptionError && !isMissingRelationError(storeSubscriptionError)) throw storeSubscriptionError;
+      (storeSubscriptionRows || []).forEach((row) => {
+        const typed = row as DbStoreSubscriptionPlanRow;
+        const storeId = String(typed.store_id || '');
+        const code = typed.billing_plan?.code ? String(typed.billing_plan.code).toUpperCase() : '';
+        if (storeId && code) {
+          storePlanMap.set(storeId, code);
+        }
+      });
     }
 
     let policyRows: DbOrgStorePolicyRow | null = null;
@@ -176,7 +225,22 @@ export const userManagementService = {
       const info = grouped.get(userId)!;
       const profile = profileMap.get(userId) || null;
       const control = controlMap.get(userId);
-      const user = buildUser(userId, info.role, info.createdAt, orgPlanCode, profile);
+      const userStoreIds = Array.from(info.storeIds);
+      const userPlanCodes = Array.from(
+        new Set(
+          userStoreIds
+            .map((storeId) => storePlanMap.get(storeId) || '')
+            .filter((code) => code.length > 0)
+        )
+      );
+      let derivedPlanCode = 'UNASSIGNED';
+      if (userStoreIds.length > 0 && userPlanCodes.length === 1) {
+        derivedPlanCode = userPlanCodes[0];
+      } else if (userStoreIds.length > 0 && userPlanCodes.length > 1) {
+        derivedPlanCode = 'MIXED';
+      }
+
+      const user = buildUser(userId, info.role, info.createdAt, derivedPlanCode, profile);
       const currentStoreCount = info.role === Role.USER ? info.storeIds.size : 0;
       const effectiveStoreLimit = info.role === Role.USER
         ? Math.max(1, control?.max_stores ?? defaultLimit)
@@ -188,6 +252,7 @@ export const userManagementService = {
         effectiveStoreLimit,
         maxStoresOverride: control?.max_stores ?? undefined,
         allowCsvStoreBulkCreate: info.role === Role.USER ? Boolean(control?.allow_csv_store_bulk_create) : false,
+        userStoreIds,
       };
     });
   },
@@ -198,12 +263,78 @@ export const userManagementService = {
   },
 
   async removeUserFromOrg(orgId: string, userId: string): Promise<void> {
-    const client = requireSupabase();
-    const { error } = await client
-      .from('memberships')
-      .delete()
-      .eq('org_id', orgId)
-      .eq('user_id', userId);
-    if (error) throw error;
+    const result = await invokeFunctionByHttp('admin-user-delete', {
+      orgId,
+      targetUserId: userId,
+      mode: 'REMOVE_FROM_ORG',
+    } satisfies DeleteManagedUserPayload);
+    if (!result.ok) {
+      throw new Error(getFunctionErrorMessage(result, 'ユーザーの所属解除に失敗しました。'));
+    }
+  },
+
+  async updateManagedUser(payload: UpdateManagedUserPayload): Promise<void> {
+    const result = await invokeFunctionByHttp('admin-user-update', payload);
+    if (!result.ok) {
+      throw new Error(getFunctionErrorMessage(result, 'ユーザー編集に失敗しました。'));
+    }
+  },
+
+  async deleteManagedUser(payload: DeleteManagedUserPayload): Promise<{
+    confirmRequired: boolean;
+    confirmToken?: string;
+    expiresAt?: string;
+  }> {
+    const result = await invokeFunctionByHttp('admin-user-delete', payload);
+    if (result.ok) {
+      return { confirmRequired: false };
+    }
+
+    const body = result.body && typeof result.body === 'object'
+      ? (result.body as Record<string, unknown>)
+      : null;
+    if (result.status === 409 && body?.error === 'CONFIRM_REQUIRED') {
+      return {
+        confirmRequired: true,
+        confirmToken: typeof body.confirmToken === 'string' ? body.confirmToken : undefined,
+        expiresAt: typeof body.expiresAt === 'string' ? body.expiresAt : undefined,
+      };
+    }
+
+    throw new Error(getFunctionErrorMessage(result, 'ユーザー削除に失敗しました。'));
+  },
+
+  async generateAuthLink(payload: GenerateAuthLinkPayload): Promise<{
+    actionLink: string;
+    linkType: 'INVITE' | 'RECOVERY';
+    reusedExistingUser: boolean;
+  }> {
+    const result = await invokeFunctionByHttp('admin-auth-link', payload);
+    if (!result.ok) {
+      throw new Error(getFunctionErrorMessage(result, '招待リンクの生成に失敗しました。'));
+    }
+    const body = result.body && typeof result.body === 'object'
+      ? (result.body as Record<string, unknown>)
+      : null;
+    const actionLink = typeof body?.actionLink === 'string' ? body.actionLink : '';
+    const linkType = body?.linkType === 'RECOVERY' ? 'RECOVERY' : 'INVITE';
+    const reusedExistingUser = body?.reusedExistingUser === true;
+    if (!actionLink) {
+      throw new Error('招待リンクの生成結果にURLが含まれていません。');
+    }
+    return { actionLink, linkType, reusedExistingUser };
+  },
+
+  async attachExistingUserToStoreOrGroup(payload: AttachExistingUserPayload): Promise<{ attached: boolean }> {
+    const result = await invokeFunctionByHttp('admin-user-attach-existing', payload);
+    if (!result.ok) {
+      throw new Error(getFunctionErrorMessage(result, '既存ユーザーの追加に失敗しました。'));
+    }
+    const body = result.body && typeof result.body === 'object'
+      ? (result.body as Record<string, unknown>)
+      : null;
+    return {
+      attached: body?.attached !== false,
+    };
   },
 };

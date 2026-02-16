@@ -5,6 +5,8 @@ export type Profile = {
   name?: string;
   email?: string;
   avatarUrl?: string;
+  invitedAt?: Date;
+  passwordSetAt?: Date;
 };
 
 type DbProfileRow = {
@@ -12,6 +14,8 @@ type DbProfileRow = {
   name: string | null;
   email: string | null;
   avatar_url: string | null;
+  invited_at: string | null;
+  password_set_at: string | null;
 };
 
 const mapDbProfile = (row: DbProfileRow): Profile => {
@@ -20,6 +24,8 @@ const mapDbProfile = (row: DbProfileRow): Profile => {
     name: row.name || undefined,
     email: row.email || undefined,
     avatarUrl: row.avatar_url || undefined,
+    invitedAt: row.invited_at ? new Date(row.invited_at) : undefined,
+    passwordSetAt: row.password_set_at ? new Date(row.password_set_at) : undefined,
   };
 };
 
@@ -35,7 +41,7 @@ export const profilesService = {
     const client = requireSupabase();
     const { data, error } = await client
       .from('profiles')
-      .select('id, name, email, avatar_url')
+      .select('id, name, email, avatar_url, invited_at, password_set_at')
       .eq('id', userId)
       .maybeSingle();
     if (error) throw error;
@@ -59,7 +65,7 @@ export const profilesService = {
         },
         { onConflict: 'id' }
       )
-      .select('id, name, email, avatar_url')
+      .select('id, name, email, avatar_url, invited_at, password_set_at')
       .single();
     if (error) throw error;
     return mapDbProfile(data as DbProfileRow);

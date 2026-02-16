@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { User, Role, ViewState, FeatureFlag, VisibilityState } from '../types';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { User, Role, ViewState, FeatureFlag, ManagementUnitBranding, VisibilityState } from '../types';
 import { 
   LayoutDashboard, 
   PenSquare, 
@@ -7,6 +7,8 @@ import {
   BookOpenText,
   List, 
   Users, 
+  Building2,
+  Store,
   LogOut, 
   Menu,
   Calendar,
@@ -16,22 +18,27 @@ import {
   Sun,
   HelpCircle,
   Settings,
-  Search,
+  ShieldCheck,
+  Link2,
   TrendingUp,
   CreditCard,
   Lightbulb
 } from 'lucide-react';
 import { OnboardingTour } from './OnboardingTour';
 import { NotificationCenter } from './NotificationCenter';
-import { StoreSelector } from './StoreSelector';
+import { HeaderScopeSelectors } from './HeaderScopeSelectors';
 import { useStore } from '../contexts/StoreContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { featureFlagsService, resolveFeatureState } from '../services/featureFlagsService';
-import { NAV_LABELS } from './ui/copy';
+import { billingService } from '../services/billingService';
+import { managementUnitService, MANAGEMENT_UNIT_BRANDING_UPDATED_EVENT } from '../services/managementUnitService';
+import { COMMON_COPY, NAV_LABELS } from './ui/copy';
 import { formatRoleLabel, formatViewLabel } from './ui/formatters';
+import { Avatar } from './ui/Avatar';
 import {
   SIDEBAR_NAV_ORDER_UPDATED_EVENT,
   applySidebarNavOrder,
+  getSidebarNavLabels,
   getSidebarNavOrder,
 } from '../services/navigationOrderService';
 
@@ -92,19 +99,87 @@ export const Layout: React.FC<LayoutProps> = ({
   toggleTheme,
   children 
 }) => {
-  const { stores, activeStoreId, isLoadingStores, storesError, reloadStores } = useStore();
+  const {
+    stores,
+    filteredGroups,
+    selectedManagementUnitIds,
+    selectedOrgIds,
+    activeStoreId,
+    selectedStoreIds,
+    isLoadingStores,
+    storesError,
+    reloadStores,
+  } = useStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlag[]>([]);
   const [isLoadingFlags, setIsLoadingFlags] = useState(false);
+  const [planFeatureRules, setPlanFeatureRules] = useState<Record<string, boolean>>({});
   const [sidebarOrder, setSidebarOrder] = useState(() => getSidebarNavOrder());
+  const [sidebarLabels, setSidebarLabels] = useState(() => getSidebarNavLabels());
 
   const activeStore = useMemo(() => {
     if (!activeStoreId) return null;
     return stores.find((store) => store.id === activeStoreId) || null;
   }, [activeStoreId, stores]);
 
-  const activeOrgId = activeStore?.orgId || null;
+  const effectiveBrandingUnitId = useMemo(() => {
+    if (currentUser.role === Role.ADMIN) {
+      return selectedManagementUnitIds.length === 1 ? selectedManagementUnitIds[0] : null;
+    }
+    const groupById = new Map(filteredGroups.map((group) => [group.id, group]));
+    const unitIdSet = new Set<string>();
+    for (const orgId of selectedOrgIds) {
+      const unitId = groupById.get(orgId)?.managementUnitId;
+      if (unitId) unitIdSet.add(unitId);
+    }
+    if (unitIdSet.size === 1) return Array.from(unitIdSet)[0];
+    return null;
+  }, [currentUser.role, filteredGroups, selectedManagementUnitIds, selectedOrgIds]);
+
+  const [branding, setBranding] = useState<ManagementUnitBranding | null>(null);
+
+  const reloadBranding = useCallback(async () => {
+    if (!isSupabaseConfigured || !effectiveBrandingUnitId) {
+      setBranding(null);
+      return;
+    }
+    try {
+      const row = await managementUnitService.getBranding(effectiveBrandingUnitId);
+      setBranding(row);
+    } catch (error) {
+      console.warn('[Layout] Failed to load management unit branding:', error);
+      setBranding(null);
+    }
+  }, [effectiveBrandingUnitId]);
+
+  useEffect(() => {
+    void reloadBranding();
+  }, [reloadBranding]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { managementUnitId?: string } | undefined;
+      if (!detail?.managementUnitId) return;
+      if (detail.managementUnitId !== effectiveBrandingUnitId) return;
+      void reloadBranding();
+    };
+    window.addEventListener(MANAGEMENT_UNIT_BRANDING_UPDATED_EVENT, handler as EventListener);
+    return () => {
+      window.removeEventListener(MANAGEMENT_UNIT_BRANDING_UPDATED_EVENT, handler as EventListener);
+    };
+  }, [effectiveBrandingUnitId, reloadBranding]);
+
+  const effectiveServiceName = branding?.serviceName?.trim() || 'TEPPEN MEO';
+  const effectiveLogoSrc = useMemo(() => {
+    if (!branding?.logoPath) return '/logo.svg';
+    try {
+      return managementUnitService.getBrandingLogoPublicUrl(branding.logoPath, branding.updatedAt.getTime());
+    } catch {
+      return '/logo.svg';
+    }
+  }, [branding?.logoPath, branding?.updatedAt]);
 
   useEffect(() => {
     const hasSeenTour = localStorage.getItem('hasSeenTour');
@@ -117,6 +192,7 @@ export const Layout: React.FC<LayoutProps> = ({
     if (typeof window === 'undefined') return;
     const syncSidebarOrder = () => {
       setSidebarOrder(getSidebarNavOrder());
+      setSidebarLabels(getSidebarNavLabels());
     };
     window.addEventListener(SIDEBAR_NAV_ORDER_UPDATED_EVENT, syncSidebarOrder);
     return () => {
@@ -139,13 +215,13 @@ export const Layout: React.FC<LayoutProps> = ({
 
   useEffect(() => {
     const loadFlags = async () => {
-      if (!isSupabaseConfigured || !activeOrgId) {
+      if (!isSupabaseConfigured || !activeStore?.orgId) {
         setFeatureFlags([]);
         return;
       }
       setIsLoadingFlags(true);
       try {
-        const rows = await featureFlagsService.listByOrg(activeOrgId, activeStore?.id);
+        const rows = await featureFlagsService.listByOrg(activeStore.orgId, activeStore.id);
         setFeatureFlags(rows);
       } catch (error) {
         console.error('[Layout] Failed to load feature flags:', error);
@@ -154,24 +230,45 @@ export const Layout: React.FC<LayoutProps> = ({
       }
     };
     void loadFlags();
-  }, [activeOrgId, activeStore?.id]);
+  }, [activeStore?.id, activeStore?.orgId]);
+
+  useEffect(() => {
+    const loadPlanRules = async () => {
+      if (!isSupabaseConfigured || !activeStoreId) {
+        setPlanFeatureRules({});
+        return;
+      }
+      try {
+        const subscription = await billingService.getStoreSubscription(activeStoreId);
+        setPlanFeatureRules(subscription?.billingPlan?.featureRules || {});
+      } catch (error) {
+        console.error('[Layout] Failed to load plan feature rules:', error);
+        setPlanFeatureRules({});
+      }
+    };
+    void loadPlanRules();
+  }, [activeStoreId]);
 
   const menuItems = useMemo<MenuItem[]>(
     () => [
-      { id: 'DASHBOARD', label: NAV_LABELS.DASHBOARD, icon: LayoutDashboard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'dashboard' },
-      { id: 'CREATE_POST', label: NAV_LABELS.CREATE_POST, icon: PenSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'create_post' },
-      { id: 'POST_TEMPLATES', label: NAV_LABELS.POST_TEMPLATES, icon: FileText, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'post_templates' },
-      { id: 'BRAND_KIT', label: NAV_LABELS.BRAND_KIT, icon: BookOpenText, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'brand_kit' },
-      { id: 'POST_LIST', label: NAV_LABELS.POST_LIST, icon: List, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'post_list' },
-      { id: 'CALENDAR', label: NAV_LABELS.CALENDAR, icon: Calendar, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'calendar' },
-      { id: 'INBOX', label: NAV_LABELS.INBOX, icon: MessageSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'inbox' },
-      { id: 'SURVEY', label: NAV_LABELS.SURVEY, icon: ClipboardList, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'survey' },
-      { id: 'RANK_TRACKER', label: NAV_LABELS.RANK_TRACKER, icon: TrendingUp, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'rank_tracker' },
-      { id: 'ADVICE', label: NAV_LABELS.ADVICE, icon: Lightbulb, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'advice' },
-      { id: 'USER_MANAGEMENT', label: NAV_LABELS.USER_MANAGEMENT, icon: Users, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER], featureKey: 'user_management' },
-      { id: 'BILLING', label: NAV_LABELS.BILLING, icon: CreditCard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'billing' },
+      { id: 'DASHBOARD', label: sidebarLabels.DASHBOARD || NAV_LABELS.DASHBOARD, icon: LayoutDashboard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'dashboard' },
+      { id: 'CREATE_POST', label: sidebarLabels.CREATE_POST || NAV_LABELS.CREATE_POST, icon: PenSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'create_post' },
+      { id: 'POST_TEMPLATES', label: sidebarLabels.POST_TEMPLATES || NAV_LABELS.POST_TEMPLATES, icon: FileText, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'post_templates' },
+      { id: 'BRAND_KIT', label: sidebarLabels.BRAND_KIT || NAV_LABELS.BRAND_KIT, icon: BookOpenText, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'brand_kit' },
+      { id: 'POST_LIST', label: sidebarLabels.POST_LIST || NAV_LABELS.POST_LIST, icon: List, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'post_list' },
+      { id: 'CALENDAR', label: sidebarLabels.CALENDAR || NAV_LABELS.CALENDAR, icon: Calendar, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'calendar' },
+      { id: 'INBOX', label: sidebarLabels.INBOX || NAV_LABELS.INBOX, icon: MessageSquare, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'inbox' },
+      { id: 'SURVEY', label: sidebarLabels.SURVEY || NAV_LABELS.SURVEY, icon: ClipboardList, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'survey' },
+      { id: 'RANK_TRACKER', label: sidebarLabels.RANK_TRACKER || NAV_LABELS.RANK_TRACKER, icon: TrendingUp, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'rank_tracker' },
+      { id: 'ADVICE', label: sidebarLabels.ADVICE || NAV_LABELS.ADVICE, icon: Lightbulb, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'advice' },
+      { id: 'USER_MANAGEMENT', label: sidebarLabels.USER_MANAGEMENT || NAV_LABELS.USER_MANAGEMENT, icon: Users, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER], featureKey: 'user_management' },
+      { id: 'STORE_MANAGEMENT', label: sidebarLabels.STORE_MANAGEMENT || NAV_LABELS.STORE_MANAGEMENT, icon: Store, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'store_management' },
+      { id: 'PLATFORM_MANAGEMENT', label: sidebarLabels.PLATFORM_MANAGEMENT || NAV_LABELS.PLATFORM_MANAGEMENT, icon: Link2, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'settings_integrations' },
+      { id: 'GROUP_MANAGEMENT', label: sidebarLabels.GROUP_MANAGEMENT || NAV_LABELS.GROUP_MANAGEMENT, icon: Building2, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER], featureKey: 'group_management' },
+      { id: 'MANAGEMENT_UNIT_MANAGEMENT', label: sidebarLabels.MANAGEMENT_UNIT_MANAGEMENT || NAV_LABELS.MANAGEMENT_UNIT_MANAGEMENT, icon: ShieldCheck, allowed: [Role.ADMIN], featureKey: 'management_unit_management' },
+      { id: 'BILLING', label: sidebarLabels.BILLING || NAV_LABELS.BILLING, icon: CreditCard, allowed: [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER], featureKey: 'billing' },
     ],
-    []
+    [sidebarLabels]
   );
 
   const canAccess = (allowedRoles: Role[]) => allowedRoles.includes(currentUser.role);
@@ -183,18 +280,24 @@ export const Layout: React.FC<LayoutProps> = ({
     const visibility = getFeatureVisibility(featureKey);
     if (visibility === 'HIDDEN') return false;
     if (visibility === 'ADMIN_ONLY') return currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR;
+    if (currentUser.role !== Role.ADMIN && currentUser.role !== Role.SUPERVISOR) {
+      if (featureKey in planFeatureRules && planFeatureRules[featureKey] === false) {
+        return false;
+      }
+    }
     return true;
   };
 
   const hasStoresError = isSupabaseConfigured && !isLoadingStores && Boolean(storesError);
   const needsStoreBootstrap = isSupabaseConfigured && !isLoadingStores && stores.length === 0 && !storesError;
+  const isMultiStoreSelected = selectedStoreIds.length > 1;
   const orderedMenuItems = useMemo(() => applySidebarNavOrder(menuItems, sidebarOrder), [menuItems, sidebarOrder]);
   const visibleMenuItems = orderedMenuItems.filter((item) => canAccess(item.allowed) && canUseFeature(item.featureKey));
   const canOpenSettings =
     canUseFeature('settings_profile') ||
-    canUseFeature('settings_store') ||
-    canUseFeature('settings_integrations') ||
     ((currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR) && canUseFeature('settings_system'));
+  const canOpenStoreManagement = canUseFeature('store_management') && [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER, Role.USER].includes(currentUser.role);
+  const canOpenGroupManagement = canUseFeature('group_management') && [Role.ADMIN, Role.SUPERVISOR, Role.MANAGER].includes(currentUser.role);
 
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden transition-colors duration-200`}>
@@ -203,7 +306,10 @@ export const Layout: React.FC<LayoutProps> = ({
       {/* Sidebar for Desktop */}
       <aside className="hidden md:flex flex-col w-72 bg-white dark:bg-gray-800 border-r border-gray-100 dark:border-gray-700 shadow-sm z-10">
         <div className="p-6 flex items-center gap-3">
-          <img src="/logo.svg" alt="TEPPEN MEO PLATFORM" className="h-9 w-auto" />
+          <img src={effectiveLogoSrc} alt={effectiveServiceName} className="h-9 w-auto" />
+          <div className="text-sm font-bold text-gray-900 dark:text-white leading-tight">
+            {effectiveServiceName}
+          </div>
         </div>
 
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto py-4">
@@ -245,10 +351,10 @@ export const Layout: React.FC<LayoutProps> = ({
               onClick={() => onNavigate('SETTINGS')}
               className="w-full flex items-center space-x-3 px-4 py-3 bg-white dark:bg-gray-700/50 rounded-xl border border-gray-100 dark:border-gray-600 hover:border-primary-300 hover:shadow-sm transition-all group text-left"
             >
-              <img 
-                src={currentUser.avatarUrl || 'https://via.placeholder.com/40'} 
-                alt={currentUser.name} 
-                className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-600 object-cover"
+              <Avatar
+                src={currentUser.avatarUrl}
+                alt={currentUser.name}
+                sizeClassName="w-10 h-10"
               />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-gray-800 dark:text-white truncate group-hover:text-primary-600 transition-colors">{currentUser.name}</p>
@@ -280,7 +386,10 @@ export const Layout: React.FC<LayoutProps> = ({
         {/* Mobile Header */}
         <header className="md:hidden bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 p-4 flex items-center justify-between z-20 shadow-sm">
           <div className="flex items-center space-x-2">
-            <img src="/logo.svg" alt="TEPPEN MEO PLATFORM" className="h-7 w-auto" />
+            <img src={effectiveLogoSrc} alt={effectiveServiceName} className="h-7 w-auto" />
+            <div className="text-sm font-bold text-gray-900 dark:text-white leading-tight">
+              {effectiveServiceName}
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <NotificationCenter />
@@ -290,26 +399,27 @@ export const Layout: React.FC<LayoutProps> = ({
           </div>
         </header>
 
-        {/* Desktop Header Bar (New) */}
-        <header className="hidden md:flex items-center justify-between py-4 px-8 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800 sticky top-0 z-20">
+        <div className="hidden md:block sticky top-0 z-20">
+          {/* Desktop Header Bar */}
+          <header className="flex items-center justify-between py-4 px-8 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800">
             <h2 className="text-xl font-bold text-gray-800 dark:text-white tracking-tight">
-                {formatViewLabel(currentView)}
+              {formatViewLabel(currentView)}
             </h2>
-            <div className="flex items-center gap-4">
-                <StoreSelector />
-                <div className="relative group">
-                    <Search className="absolute left-3 top-2.5 text-gray-400 h-4 w-4" />
-                    <input 
-                        type="text" 
-                        placeholder="検索（準備中）"
-                        disabled
-                        className="w-64 pl-10 pr-4 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-gray-400 cursor-not-allowed"
-                    />
-                </div>
-                <div className="h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
-                <NotificationCenter />
+            <div className="flex items-center gap-3">
+              <HeaderScopeSelectors currentUser={currentUser} />
+              <div className="h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
+              <NotificationCenter />
             </div>
-        </header>
+          </header>
+          {isMultiStoreSelected && (
+            <div
+              data-testid="multi-store-sns-disabled-banner"
+              className="px-8 py-2 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-900/40 text-yellow-900 dark:text-yellow-100 text-sm"
+            >
+              {COMMON_COPY.multiStoreSnsDisabled}
+            </div>
+          )}
+        </div>
 
         {/* Mobile Menu Overlay */}
         {isMobileMenuOpen && (
@@ -334,10 +444,10 @@ export const Layout: React.FC<LayoutProps> = ({
                       }}
                       className="w-full flex items-center space-x-3 px-4 py-3 mb-4 rounded-xl bg-gray-50 dark:bg-gray-800"
                   >
-                      <img 
-                      src={currentUser.avatarUrl || 'https://via.placeholder.com/40'} 
-                      alt={currentUser.name} 
-                      className="w-8 h-8 rounded-full"
+                      <Avatar
+                        src={currentUser.avatarUrl}
+                        alt={currentUser.name}
+                        sizeClassName="w-8 h-8"
                       />
                       <span className="text-sm font-bold text-gray-800 dark:text-white">設定・プロフィール</span>
                   </button>
@@ -369,7 +479,7 @@ export const Layout: React.FC<LayoutProps> = ({
                   <div className="space-y-2">
                     <div className="font-bold text-sm md:text-base">店舗一覧の取得に失敗しました</div>
                     <div className="text-xs md:text-sm opacity-90 leading-relaxed">
-                      Supabaseから店舗一覧（stores）を取得できていないため、店舗セレクタが「未設定」になり、投稿/カレンダー/店舗情報が空に見えます。
+                      Supabaseから店舗一覧（stores）を取得できていないため、店舗セレクタが「未設定」になり、投稿/カレンダー/店舗管理などが空に見えます。
                     </div>
                     <div className="text-[11px] md:text-xs opacity-90 leading-relaxed break-all">
                       <span className="font-bold">詳細:</span> {storesError}
@@ -390,10 +500,10 @@ export const Layout: React.FC<LayoutProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => onNavigate('SETTINGS')}
+                      onClick={() => onNavigate('STORE_MANAGEMENT')}
                       className="px-4 py-2 text-xs md:text-sm font-bold rounded-xl bg-red-600 text-white hover:bg-red-700 transition-colors"
                     >
-                      設定へ
+                      店舗管理へ
                     </button>
                   </div>
                 </div>
@@ -403,17 +513,22 @@ export const Layout: React.FC<LayoutProps> = ({
               <div className="mb-6 p-4 md:p-5 rounded-2xl border border-yellow-200 dark:border-yellow-900/50 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100">
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                   <div className="space-y-2">
-                    <div className="font-bold text-sm md:text-base">店舗が未設定です（設定画面から作成できます）</div>
-                    <div className="text-xs md:text-sm opacity-90 leading-relaxed">
-                      現在のバージョンでは、SQL Editorを使わずにGUIから初回店舗を作成できます。
-                      「設定」→「店舗情報 (MEO)」へ進み、店舗名を入力して「店舗を作成」を押してください。
+                    <div className="font-bold text-sm md:text-base">
+                      店舗が未設定です
                     </div>
-                    <ol className="text-xs md:text-sm list-decimal list-inside space-y-1 opacity-95">
-                      <li>「設定」を開く</li>
-                      <li>「店舗情報 (MEO)」タブを開く</li>
-                      <li>店舗情報を入力して「店舗を作成」を押す</li>
-                      <li>作成後に「店舗一覧を再読み込み」を押す</li>
-                    </ol>
+                    {currentUser.role === Role.USER ? (
+                      <div className="text-xs md:text-sm opacity-90 leading-relaxed">
+                        担当店舗がまだ割り当てられていません。管理者に店舗の割り当てを依頼してください。
+                      </div>
+                    ) : currentUser.role === Role.MANAGER ? (
+                      <div className="text-xs md:text-sm opacity-90 leading-relaxed">
+                        左メニューの「店舗管理」から店舗を作成できます（グループが必要です）。グループが未作成の場合は管理者へ連絡してください。
+                      </div>
+                    ) : (
+                      <div className="text-xs md:text-sm opacity-90 leading-relaxed">
+                        左メニューの「グループ管理」で「グループ＋初期店舗」を作成するか、「店舗管理」で既存グループへ店舗を追加してください。
+                      </div>
+                    )}
                     <div className="text-xs md:text-sm opacity-90">
                       それでも作成できない場合は、エラーメッセージを添えて管理者へ連絡してください。
                     </div>
@@ -426,13 +541,24 @@ export const Layout: React.FC<LayoutProps> = ({
                     >
                       店舗一覧を再読み込み
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onNavigate('SETTINGS')}
-                      className="px-4 py-2 text-xs md:text-sm font-bold rounded-xl bg-yellow-600 text-white hover:bg-yellow-700 transition-colors"
-                    >
-                      設定へ
-                    </button>
+                    {canOpenStoreManagement && currentUser.role !== Role.USER && (
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('STORE_MANAGEMENT')}
+                        className="px-4 py-2 text-xs md:text-sm font-bold rounded-xl bg-yellow-600 text-white hover:bg-yellow-700 transition-colors"
+                      >
+                        店舗管理を開く
+                      </button>
+                    )}
+                    {canOpenGroupManagement && (currentUser.role === Role.ADMIN || currentUser.role === Role.SUPERVISOR) && (
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('GROUP_MANAGEMENT')}
+                        className="px-4 py-2 text-xs md:text-sm font-bold rounded-xl bg-yellow-600 text-white hover:bg-yellow-700 transition-colors"
+                      >
+                        グループ管理を開く
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

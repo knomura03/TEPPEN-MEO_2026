@@ -96,7 +96,7 @@ const resolveReturnTo = (req: Request, returnToRaw: string | undefined): { ok: b
   }
 
   if (requestOrigin) {
-    return normalize(`${requestOrigin}/?view=SETTINGS&tab=INTEGRATIONS`);
+    return normalize(`${requestOrigin}/?view=PLATFORM_MANAGEMENT`);
   }
 
   return { ok: false, error: 'returnTo が未指定で、デフォルトURLも設定されていません。' };
@@ -106,6 +106,61 @@ type ProviderSpec = {
   kind: 'GOOGLE' | 'META';
   scopes: string[];
   version?: string;
+};
+
+type BillingPlanRow = {
+  id: string;
+  sns_connection_limit?: number | null;
+};
+
+const resolveEmbeddedPlan = (value: BillingPlanRow | BillingPlanRow[] | null | undefined): BillingPlanRow | null => {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] || null;
+  return value;
+};
+
+const resolveSnsConnectionLimit = async (params: {
+  supabaseAdmin: any;
+  storeId: string;
+}): Promise<number> => {
+  const nowIso = new Date().toISOString();
+  const { data: dueSchedule, error: scheduleError } = await params.supabaseAdmin
+    .from('store_subscription_plan_schedules')
+    .select('billing_plan:billing_plans(id, sns_connection_limit)')
+    .eq('store_id', params.storeId)
+    .eq('status', 'SCHEDULED')
+    .lte('effective_at', nowIso)
+    .order('effective_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (scheduleError && !String(scheduleError.message || '').includes('does not exist')) {
+    throw new Error(scheduleError.message);
+  }
+  const schedulePlan = resolveEmbeddedPlan(
+    dueSchedule && typeof dueSchedule === 'object'
+      ? ((dueSchedule as Record<string, unknown>).billing_plan as BillingPlanRow | BillingPlanRow[] | null)
+      : null
+  );
+  if (schedulePlan?.id) {
+    return Math.max(0, Number(schedulePlan.sns_connection_limit ?? 3));
+  }
+
+  const { data: subscription, error: subscriptionError } = await params.supabaseAdmin
+    .from('store_subscriptions')
+    .select('billing_plan:billing_plans(id, sns_connection_limit)')
+    .eq('store_id', params.storeId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (subscriptionError) {
+    throw new Error(subscriptionError.message);
+  }
+  const plan = resolveEmbeddedPlan(
+    subscription && typeof subscription === 'object'
+      ? ((subscription as Record<string, unknown>).billing_plan as BillingPlanRow | BillingPlanRow[] | null)
+      : null
+  );
+  return Math.max(0, Number(plan?.sns_connection_limit ?? 3));
 };
 
 const resolveProviderSpec = (providerKey: string, config: Record<string, unknown>): ProviderSpec | null => {
@@ -244,6 +299,35 @@ Deno.serve(async (req) => {
   });
   if (!canManage) {
     return jsonResponse(403, { error: 'Not allowed' });
+  }
+
+  const snsConnectionLimit = await resolveSnsConnectionLimit({
+    supabaseAdmin,
+    storeId,
+  });
+
+  const [{ data: existingIntegration }, { count: connectedCount, error: connectedCountError }] = await Promise.all([
+    supabaseAdmin
+      .from('integrations')
+      .select('id, status')
+      .eq('store_id', storeId)
+      .eq('provider', providerKey)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('integrations')
+      .select('id', { count: 'exact', head: true })
+      .eq('store_id', storeId)
+      .eq('status', 'CONNECTED'),
+  ]);
+  if (connectedCountError) {
+    return jsonResponse(400, { error: connectedCountError.message });
+  }
+  const isTargetAlreadyConnected = existingIntegration?.status === 'CONNECTED';
+  if (!isTargetAlreadyConnected && Number(connectedCount || 0) >= snsConnectionLimit) {
+    return jsonResponse(400, {
+      error: `この店舗の契約プランのSNS連携上限に達しています。（上限: ${snsConnectionLimit}件 / 現在: ${Number(connectedCount || 0)}件）`,
+      code: 'PLAN_SNS_CONNECTION_LIMIT_EXCEEDED',
+    });
   }
 
   const { data: catalog, error: catalogError } = await supabaseAdmin

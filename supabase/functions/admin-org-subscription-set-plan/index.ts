@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
     auth: { persistSession: false },
   });
 
-  let payload: { orgId?: string; planCode?: string };
+  let payload: { orgId?: string; planCode?: string; effectiveAt?: string | null };
   try {
     payload = await req.json();
   } catch {
@@ -86,8 +86,17 @@ Deno.serve(async (req) => {
 
   const orgId = (payload.orgId || '').trim();
   const planCode = normalizePlanCode(payload.planCode || '');
+  const effectiveAtRaw = typeof payload.effectiveAt === 'string' ? payload.effectiveAt.trim() : '';
   if (!orgId || !planCode) {
     return jsonResponse(400, { error: 'Missing required fields' });
+  }
+  let effectiveAt: Date | null = null;
+  if (effectiveAtRaw.length > 0) {
+    const parsed = new Date(effectiveAtRaw);
+    if (Number.isNaN(parsed.getTime())) {
+      return jsonResponse(400, { error: 'effectiveAt is invalid date time' });
+    }
+    effectiveAt = parsed;
   }
 
   const { data: actorMemberships, error: actorMembershipError } = await supabaseAdmin
@@ -130,6 +139,46 @@ Deno.serve(async (req) => {
   }
 
   let subscriptionId: string;
+  const now = new Date();
+  const scheduleOnly = Boolean(effectiveAt && effectiveAt.getTime() > now.getTime());
+
+  if (scheduleOnly && effectiveAt) {
+    const { error: scheduleError } = await supabaseAdmin
+      .from('org_subscription_plan_schedules')
+      .insert({
+        org_id: orgId,
+        billing_plan_id: planRow.id,
+        status: 'SCHEDULED',
+        effective_at: effectiveAt.toISOString(),
+        created_by: actorUserId,
+        updated_by: actorUserId,
+      });
+    if (scheduleError) {
+      return jsonResponse(400, { error: scheduleError.message });
+    }
+
+    await supabaseAdmin.from('audit_logs').insert({
+      org_id: orgId,
+      actor_user_id: actorUserId,
+      action: 'ORG_SUBSCRIPTION_SET_PLAN_SCHEDULED',
+      target_type: 'org_subscription_plan_schedule',
+      target_id: planCode,
+      payload: {
+        org_id: orgId,
+        plan_code: planCode,
+        effective_at: effectiveAt.toISOString(),
+      },
+    });
+
+    return jsonResponse(200, {
+      ok: true,
+      orgId,
+      planCode,
+      scheduled: true,
+      effectiveAt: effectiveAt.toISOString(),
+    });
+  }
+
   if (existingSubscription?.id) {
     const { data: updated, error: updateError } = await supabaseAdmin
       .from('org_subscriptions')
@@ -169,6 +218,7 @@ Deno.serve(async (req) => {
     payload: {
       org_id: orgId,
       plan_code: planCode,
+      effective_at: effectiveAt ? effectiveAt.toISOString() : null,
     },
   });
 

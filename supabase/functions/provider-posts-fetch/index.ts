@@ -13,6 +13,13 @@ type RemotePost = {
   content: string;
   createdAt: string;
   permalink?: string;
+  metrics?: {
+    impressions?: number | null;
+    profileViews?: number | null;
+    likes?: number | null;
+    comments?: number | null;
+    shares?: number | null;
+  };
   raw: Record<string, unknown>;
 };
 
@@ -22,6 +29,44 @@ const parseProviders = (input: unknown): ProviderKey[] => {
     .map((item) => String(item || '').trim().toUpperCase())
     .filter((item): item is ProviderKey => item === 'FACEBOOK' || item === 'INSTAGRAM' || item === 'GBP');
   return Array.from(new Set(normalized));
+};
+
+const MAX_INSIGHT_LOOKUPS = 20;
+
+const toNumberOrNull = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const parseMetaInsightMetric = (body: unknown): number | null => {
+  if (!body || typeof body !== 'object') return null;
+  const rows = Array.isArray((body as Record<string, unknown>).data)
+    ? ((body as Record<string, unknown>).data as unknown[])
+    : [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const values = Array.isArray((row as Record<string, unknown>).values)
+      ? ((row as Record<string, unknown>).values as unknown[])
+      : [];
+    if (values.length === 0) continue;
+    const first = values[0];
+    if (first && typeof first === 'object') {
+      const rawValue = (first as Record<string, unknown>).value;
+      const direct = toNumberOrNull(rawValue);
+      if (direct !== null) return direct;
+      if (rawValue && typeof rawValue === 'object') {
+        const nested = Object.values(rawValue as Record<string, unknown>)
+          .map((candidate) => toNumberOrNull(candidate))
+          .find((candidate) => candidate !== null);
+        if (nested !== undefined) return nested as number | null;
+      }
+    } else {
+      const direct = toNumberOrNull(first);
+      if (direct !== null) return direct;
+    }
+  }
+  return null;
 };
 
 const ensureStoreAccess = async (params: {
@@ -85,7 +130,8 @@ const loadProviderContext = async (params: {
     .eq('store_id', params.storeId)
     .eq('provider_catalog_id', catalog.id)
     .maybeSingle();
-  if (!configuration || configuration.connection_status !== 'CONNECTED') return null;
+  const configurationStatus = String(configuration?.connection_status || '').toUpperCase();
+  if (!configuration || configurationStatus === 'DISCONNECTED') return null;
 
   const { data: integration } = await params.supabaseAdmin
     .from('integrations')
@@ -93,7 +139,8 @@ const loadProviderContext = async (params: {
     .eq('store_id', params.storeId)
     .eq('provider', params.provider)
     .maybeSingle();
-  if (!integration?.id || integration.status !== 'CONNECTED') return null;
+  const integrationStatus = String(integration?.status || '').toUpperCase();
+  if (!integration?.id || integrationStatus === 'DISCONNECTED') return null;
 
   const { data: credential } = await params.supabaseAdmin
     .from('integration_credentials')
@@ -163,7 +210,7 @@ const fetchFacebookPosts = async (params: {
 
   if (!pageResult.ok || !pageResult.pageId || !pageResult.pageAccessToken) return [];
 
-  const endpoint = `https://graph.facebook.com/${graphApiVersion}/${encodeURIComponent(pageResult.pageId)}/posts?fields=${encodeURIComponent('id,message,created_time,permalink_url')}&limit=${params.limit}`;
+  const endpoint = `https://graph.facebook.com/${graphApiVersion}/${encodeURIComponent(pageResult.pageId)}/posts?fields=${encodeURIComponent('id,message,created_time,permalink_url,shares,likes.summary(true),comments.summary(true)')}&limit=${params.limit}`;
   const response = await fetchJson(endpoint, {
     method: 'GET',
     headers: { Authorization: `Bearer ${pageResult.pageAccessToken}` },
@@ -174,18 +221,60 @@ const fetchFacebookPosts = async (params: {
     ? ((response.body as Record<string, unknown>).data as unknown[])
     : [];
 
-  return rows
+  const postRows = rows
     .map((row) => (row && typeof row === 'object' ? (row as Record<string, unknown>) : null))
     .filter((row): row is Record<string, unknown> => Boolean(row))
-    .map((row) => ({
-      provider: 'FACEBOOK' as const,
-      externalPostId: typeof row.id === 'string' ? row.id : '',
-      content: typeof row.message === 'string' ? row.message : '',
-      createdAt: toIso(row.created_time),
-      permalink: typeof row.permalink_url === 'string' ? row.permalink_url : undefined,
-      raw: row,
-    }))
+    .map((row) => {
+      const likesSummary =
+        row.likes && typeof row.likes === 'object'
+          ? toNumberOrNull((row.likes as Record<string, unknown>).summary && typeof (row.likes as Record<string, unknown>).summary === 'object'
+            ? ((row.likes as Record<string, unknown>).summary as Record<string, unknown>).total_count
+            : null)
+          : null;
+      const commentsSummary =
+        row.comments && typeof row.comments === 'object'
+          ? toNumberOrNull((row.comments as Record<string, unknown>).summary && typeof (row.comments as Record<string, unknown>).summary === 'object'
+            ? ((row.comments as Record<string, unknown>).summary as Record<string, unknown>).total_count
+            : null)
+          : null;
+      const shares = row.shares && typeof row.shares === 'object'
+        ? toNumberOrNull((row.shares as Record<string, unknown>).count)
+        : null;
+
+      return {
+        provider: 'FACEBOOK' as const,
+        externalPostId: typeof row.id === 'string' ? row.id : '',
+        content: typeof row.message === 'string' ? row.message : '',
+        createdAt: toIso(row.created_time),
+        permalink: typeof row.permalink_url === 'string' ? row.permalink_url : undefined,
+        metrics: {
+          likes: likesSummary,
+          comments: commentsSummary,
+          shares,
+          impressions: null,
+          profileViews: null,
+        },
+        raw: row,
+      };
+    })
     .filter((row) => row.externalPostId.length > 0);
+
+  await Promise.all(
+    postRows.slice(0, MAX_INSIGHT_LOOKUPS).map(async (post) => {
+      const insightEndpoint = `https://graph.facebook.com/${graphApiVersion}/${encodeURIComponent(post.externalPostId)}/insights?metric=${encodeURIComponent('post_impressions_unique')}`;
+      const insightResponse = await fetchJson(insightEndpoint, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${pageResult.pageAccessToken}` },
+      });
+      if (!insightResponse.ok) return;
+      post.metrics = {
+        ...(post.metrics || {}),
+        impressions: parseMetaInsightMetric(insightResponse.body),
+      };
+    }),
+  );
+
+  return postRows;
 };
 
 const fetchInstagramPosts = async (params: {
@@ -211,7 +300,7 @@ const fetchInstagramPosts = async (params: {
   const instagramUserId = readString(params.context.config, ['instagram_user_id', 'ig_user_id']) || pageResult.instagramUserId || '';
   if (!instagramUserId) return [];
 
-  const endpoint = `https://graph.facebook.com/${graphApiVersion}/${encodeURIComponent(instagramUserId)}/media?fields=${encodeURIComponent('id,caption,timestamp,permalink,media_type,media_url')}&limit=${params.limit}`;
+  const endpoint = `https://graph.facebook.com/${graphApiVersion}/${encodeURIComponent(instagramUserId)}/media?fields=${encodeURIComponent('id,caption,timestamp,permalink,media_type,media_url,like_count,comments_count')}&limit=${params.limit}`;
   const response = await fetchJson(endpoint, {
     method: 'GET',
     headers: { Authorization: `Bearer ${pageResult.pageAccessToken || accessToken}` },
@@ -222,7 +311,7 @@ const fetchInstagramPosts = async (params: {
     ? ((response.body as Record<string, unknown>).data as unknown[])
     : [];
 
-  return rows
+  const postRows = rows
     .map((row) => (row && typeof row === 'object' ? (row as Record<string, unknown>) : null))
     .filter((row): row is Record<string, unknown> => Boolean(row))
     .map((row) => ({
@@ -231,9 +320,49 @@ const fetchInstagramPosts = async (params: {
       content: typeof row.caption === 'string' ? row.caption : '',
       createdAt: toIso(row.timestamp),
       permalink: typeof row.permalink === 'string' ? row.permalink : undefined,
+      metrics: {
+        likes: toNumberOrNull(row.like_count),
+        comments: toNumberOrNull(row.comments_count),
+        shares: null,
+        impressions: null,
+        profileViews: null,
+      },
       raw: row,
     }))
     .filter((row) => row.externalPostId.length > 0);
+
+  await Promise.all(
+    postRows.slice(0, MAX_INSIGHT_LOOKUPS).map(async (post) => {
+      const insightEndpoint = `https://graph.facebook.com/${graphApiVersion}/${encodeURIComponent(post.externalPostId)}/insights?metric=${encodeURIComponent('impressions,profile_activity')}`;
+      const insightResponse = await fetchJson(insightEndpoint, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${pageResult.pageAccessToken || accessToken}` },
+      });
+      if (!insightResponse.ok || !insightResponse.body || typeof insightResponse.body !== 'object') return;
+      const data = Array.isArray((insightResponse.body as Record<string, unknown>).data)
+        ? ((insightResponse.body as Record<string, unknown>).data as unknown[])
+        : [];
+
+      let impressions: number | null = null;
+      let profileViews: number | null = null;
+      for (const item of data) {
+        if (!item || typeof item !== 'object') continue;
+        const name = String((item as Record<string, unknown>).name || '').trim();
+        const metricValue = parseMetaInsightMetric({ data: [item] });
+        if (metricValue === null) continue;
+        if (name === 'impressions') impressions = metricValue;
+        if (name === 'profile_activity') profileViews = metricValue;
+      }
+
+      post.metrics = {
+        ...(post.metrics || {}),
+        impressions,
+        profileViews,
+      };
+    }),
+  );
+
+  return postRows;
 };
 
 const resolveGbpLocalPostsEndpoint = (config: Record<string, unknown>, limit: number) => {
@@ -304,6 +433,13 @@ const fetchGbpPosts = async (params: {
         content: typeof row.summary === 'string' ? row.summary : '',
         createdAt: toIso(row.createTime || row.updateTime),
         permalink: typeof row.searchUrl === 'string' ? row.searchUrl : undefined,
+        metrics: {
+          impressions: null,
+          profileViews: null,
+          likes: null,
+          comments: null,
+          shares: null,
+        },
         raw: row,
       }))
       .filter((row) => row.externalPostId.length > 0),

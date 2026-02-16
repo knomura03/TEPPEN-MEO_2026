@@ -15,19 +15,14 @@ import {
   PAGE_SECTION_TITLE_CLASS,
   PAGE_WARNING_CLASS,
 } from './ui/pageLayout';
+import { SocialPlatformBadge } from './ui/SocialPlatformLogo';
+import { formatViewLabel } from './ui/formatters';
 
 interface PostTemplatesViewProps {
   currentUser: User;
 }
 
-const PLATFORM_OPTIONS: SocialPlatform[] = ['INSTAGRAM', 'FACEBOOK', 'GOOGLE_BUSINESS', 'TIKTOK'];
-
-const PLATFORM_LABELS: Record<SocialPlatform, string> = {
-  INSTAGRAM: 'Instagram',
-  FACEBOOK: 'Facebook',
-  GOOGLE_BUSINESS: 'Googleビジネスプロフィール',
-  TIKTOK: 'TikTok',
-};
+const PLATFORM_OPTIONS: SocialPlatform[] = ['INSTAGRAM', 'FACEBOOK', 'GOOGLE_BUSINESS'];
 
 export const PostTemplatesView: React.FC<PostTemplatesViewProps> = ({ currentUser }) => {
   const { stores, activeStoreId } = useStore();
@@ -39,6 +34,8 @@ export const PostTemplatesView: React.FC<PostTemplatesViewProps> = ({ currentUse
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [removingTemplateId, setRemovingTemplateId] = useState<string | null>(null);
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
+  const [isBulkRemoving, setIsBulkRemoving] = useState(false);
 
   const activeOrgId = useMemo(() => {
     if (!activeStoreId) return null;
@@ -106,6 +103,29 @@ export const PostTemplatesView: React.FC<PostTemplatesViewProps> = ({ currentUse
     }
   };
 
+  useEffect(() => {
+    const available = new Set(templates.map((template) => template.id));
+    setSelectedTemplateIds((prev) => prev.filter((id) => available.has(id)));
+  }, [templates]);
+
+  const toggleTemplateSelection = (templateId: string) => {
+    setSelectedTemplateIds((prev) => (
+      prev.includes(templateId)
+        ? prev.filter((id) => id !== templateId)
+        : [...prev, templateId]
+    ));
+  };
+
+  const toggleSelectAllTemplates = () => {
+    if (templates.length === 0) {
+      setSelectedTemplateIds([]);
+      return;
+    }
+    setSelectedTemplateIds((prev) => (
+      prev.length === templates.length ? [] : templates.map((template) => template.id)
+    ));
+  };
+
   const handleRemove = async (templateId: string) => {
     setRemovingTemplateId(templateId);
     try {
@@ -119,10 +139,32 @@ export const PostTemplatesView: React.FC<PostTemplatesViewProps> = ({ currentUse
     }
   };
 
+  const handleBulkRemove = async () => {
+    if (selectedTemplateIds.length === 0) {
+      addNotification('選択エラー', '削除対象のテンプレートを選択してください。', 'WARNING');
+      return;
+    }
+    if (!window.confirm(`選択した ${selectedTemplateIds.length} 件のテンプレートを削除しますか？`)) {
+      return;
+    }
+
+    setIsBulkRemoving(true);
+    try {
+      await brandKitService.removeTemplates(selectedTemplateIds);
+      setTemplates((prev) => prev.filter((template) => !selectedTemplateIds.includes(template.id)));
+      setSelectedTemplateIds([]);
+      addNotification('一括削除完了', `${selectedTemplateIds.length} 件の投稿テンプレートを削除しました。`, 'SUCCESS');
+    } catch (error) {
+      addNotification('一括削除エラー', `投稿テンプレートの一括削除に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`, 'ERROR');
+    } finally {
+      setIsBulkRemoving(false);
+    }
+  };
+
   return (
     <div className={PAGE_CONTAINER_CLASS}>
       <section>
-        <h1 className={PAGE_HEADER_TITLE_CLASS}>投稿テンプレート</h1>
+        <h1 className={PAGE_HEADER_TITLE_CLASS}>{formatViewLabel('POST_TEMPLATES')}</h1>
         <p className={PAGE_HEADER_DESCRIPTION_CLASS}>よく使う投稿文を登録して、投稿作成時にすばやく呼び出せます。</p>
       </section>
 
@@ -167,7 +209,7 @@ export const PostTemplatesView: React.FC<PostTemplatesViewProps> = ({ currentUse
                   onChange={() => togglePlatform(platform)}
                   data-testid={`template-platform-${platform}`}
                 />
-                {PLATFORM_LABELS[platform]}
+                <SocialPlatformBadge platform={platform} size={13} labelClassName="text-xs" />
               </label>
             ))}
           </div>
@@ -185,7 +227,27 @@ export const PostTemplatesView: React.FC<PostTemplatesViewProps> = ({ currentUse
         </div>
 
         <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
-          <h3 className="text-sm font-semibold text-gray-800 dark:text-white mb-3">登録済みテンプレート</h3>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-white">登録済みテンプレート</h3>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleSelectAllTemplates}
+                className="px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+              >
+                {selectedTemplateIds.length === templates.length && templates.length > 0 ? '選択解除' : 'すべて選択'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBulkRemove()}
+                disabled={selectedTemplateIds.length === 0 || isBulkRemoving}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs text-red-600 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Trash2 size={12} />
+                {isBulkRemoving ? '削除中...' : `選択削除 (${selectedTemplateIds.length})`}
+              </button>
+            </div>
+          </div>
           {isLoading && <p className="text-xs text-gray-500 dark:text-gray-400">読み込み中...</p>}
           {!isLoading && templates.length === 0 && (
             <p className="text-xs text-gray-500 dark:text-gray-400">テンプレートはまだありません。</p>
@@ -194,20 +256,29 @@ export const PostTemplatesView: React.FC<PostTemplatesViewProps> = ({ currentUse
             {templates.map((template) => (
               <div key={template.id} className="p-3 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/60">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedTemplateIds.includes(template.id)}
+                      onChange={() => toggleTemplateSelection(template.id)}
+                      className="mt-1 h-4 w-4"
+                    />
+                    <div>
                     <p className="text-sm font-semibold text-gray-800 dark:text-white">{template.title}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-words mt-1">{template.body}</p>
                     <div className="flex flex-wrap gap-1 mt-2">
                       {template.defaultPlatforms.length > 0 ? template.defaultPlatforms.map((platform) => (
-                        <span
+                        <SocialPlatformBadge
                           key={`${template.id}-${platform}`}
+                          platform={platform}
+                          size={12}
                           className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700"
-                        >
-                          {PLATFORM_LABELS[platform]}
-                        </span>
+                          labelClassName="text-[10px]"
+                        />
                       )) : (
                         <span className="text-[10px] text-gray-500 dark:text-gray-400">投稿先指定なし</span>
                       )}
+                    </div>
                     </div>
                   </div>
                   <button

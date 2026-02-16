@@ -6,6 +6,7 @@ type DbInboxMessageRow = {
   id: string;
   store_id: string;
   provider: string;
+  external_message_id: string | null;
   sender_name: string | null;
   sender_avatar_url: string | null;
   content: string;
@@ -119,6 +120,9 @@ const mapDbMessage = (row: DbInboxMessageRow, assigneeMap: Map<string, string>):
   return {
     id: row.id,
     platform: toPlatform(row.provider),
+    source: 'DB',
+    channel: 'REVIEWS',
+    externalMessageId: row.external_message_id || undefined,
     senderName: row.sender_name || 'ユーザー',
     senderAvatar: row.sender_avatar_url || undefined,
     content: row.content,
@@ -144,35 +148,42 @@ const mapDbMessage = (row: DbInboxMessageRow, assigneeMap: Map<string, string>):
 
 export const inboxService = {
   async listByStore(storeId: string): Promise<InboxMessage[]> {
+    return inboxService.listByStores([storeId]);
+  },
+
+  async listByStores(storeIds: string[]): Promise<InboxMessage[]> {
+    const uniqueStoreIds = Array.from(new Set(storeIds.filter(Boolean)));
+    if (uniqueStoreIds.length === 0) return [];
+
     const client = requireSupabase();
 
     const fullSelect =
-      'id, store_id, provider, sender_name, sender_avatar_url, content, received_at, is_replied, reply_content, reply_sent_at, reply_draft_content, reply_draft_status, reply_draft_generated_at, reply_draft_approved_at, tags, assigned_user_id, due_at, sla_status';
+      'id, store_id, provider, external_message_id, sender_name, sender_avatar_url, content, received_at, is_replied, reply_content, reply_sent_at, reply_draft_content, reply_draft_status, reply_draft_generated_at, reply_draft_approved_at, tags, assigned_user_id, due_at, sla_status';
     const draftSelect =
-      'id, store_id, provider, sender_name, sender_avatar_url, content, received_at, is_replied, reply_content, reply_sent_at, reply_draft_content, reply_draft_status, reply_draft_generated_at, reply_draft_approved_at';
+      'id, store_id, provider, external_message_id, sender_name, sender_avatar_url, content, received_at, is_replied, reply_content, reply_sent_at, reply_draft_content, reply_draft_status, reply_draft_generated_at, reply_draft_approved_at';
     const legacySelect =
-      'id, store_id, provider, sender_name, sender_avatar_url, content, received_at, is_replied, reply_content, reply_sent_at';
+      'id, store_id, provider, external_message_id, sender_name, sender_avatar_url, content, received_at, is_replied, reply_content, reply_sent_at';
 
     let rows: DbInboxMessageRow[] = [];
 
     const { data: fullData, error: fullError } = await client
       .from('inbox_messages')
       .select(fullSelect)
-      .eq('store_id', storeId)
+      .in('store_id', uniqueStoreIds)
       .order('received_at', { ascending: false });
 
     if (fullError && isMissingColumnError(fullError)) {
       const { data: draftData, error: draftError } = await client
         .from('inbox_messages')
         .select(draftSelect)
-        .eq('store_id', storeId)
+        .in('store_id', uniqueStoreIds)
         .order('received_at', { ascending: false });
 
       if (draftError && isMissingColumnError(draftError)) {
         const { data: legacyData, error: legacyError } = await client
           .from('inbox_messages')
           .select(legacySelect)
-          .eq('store_id', storeId)
+          .in('store_id', uniqueStoreIds)
           .order('received_at', { ascending: false });
         if (legacyError) throw legacyError;
         rows = (legacyData || []).map((row) => ({

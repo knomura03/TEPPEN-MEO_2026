@@ -11,7 +11,7 @@ class AuthService {
 
   private mapSupabaseUser(
     user: SupabaseAuthUser,
-    override?: Partial<Pick<User, 'role' | 'name' | 'email' | 'avatarUrl' | 'plan'>>
+    override?: Partial<Pick<User, 'role' | 'name' | 'email' | 'avatarUrl' | 'plan' | 'invitedAt' | 'passwordSetAt'>>
   ): User {
     const email = user.email || '';
     const username = email.includes('@') ? email.split('@')[0] : (email || user.id);
@@ -35,6 +35,8 @@ class AuthService {
       avatarUrl: override?.avatarUrl ?? user.user_metadata?.avatarUrl,
       plan,
       lastLoginAt,
+      invitedAt: override?.invitedAt,
+      passwordSetAt: override?.passwordSetAt,
       storeInfo: storeInfoFromMeta,
     };
   }
@@ -83,6 +85,8 @@ class AuthService {
           name: profile.name,
           email: profile.email,
           avatarUrl: profile.avatarUrl,
+          invitedAt: profile.invitedAt,
+          passwordSetAt: profile.passwordSetAt,
         };
       }
     } catch {
@@ -117,7 +121,9 @@ class AuthService {
   }
 
   async getCurrentUser(): Promise<User | null> {
-    if (this.currentUser) return this.currentUser;
+    if (this.currentUser && !(this.currentUser.invitedAt && !this.currentUser.passwordSetAt)) {
+      return this.currentUser;
+    }
 
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.auth.getSession();
@@ -151,6 +157,8 @@ class AuthService {
             name: profile.name,
             email: profile.email,
             avatarUrl: profile.avatarUrl,
+            invitedAt: profile.invitedAt,
+            passwordSetAt: profile.passwordSetAt,
           };
         }
       } catch {
@@ -173,6 +181,11 @@ class AuthService {
     } catch {
       return null;
     }
+  }
+
+  async refreshCurrentUser(): Promise<User | null> {
+    this.currentUser = null;
+    return this.getCurrentUser();
   }
 
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {

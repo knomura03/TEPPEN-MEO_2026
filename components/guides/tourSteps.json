@@ -12,6 +12,7 @@
     "RANK_TRACKER": "検索順位と店舗情報の状態を確認できます。",
     "ADVICE": "この店舗の投稿・返信・アンケート・検索順位データをもとに、次に打つ施策を提案します。",
     "USER_MANAGEMENT": "ユーザー追加、権限管理、契約関連の確認を行えます。",
+    "GROUP_MANAGEMENT": "グループの作成と名称変更を行います。",
     "SETTINGS": "プロフィール・店舗・SNS連携の設定をまとめて管理します。"
   },
   "sidebarSteps": [
@@ -102,14 +103,14 @@
       {
         "title": "投稿予定の全体確認",
         "content": "月単位で投稿予定を確認できます。投稿が偏っていないか、空白日がないかを確認します。",
-        "targetId": "calendar-grid",
-        "position": "center"
+        "targetId": "calendar-month-navigation",
+        "position": "bottom"
       },
       {
         "title": "日付を押して投稿作成",
         "content": "カレンダーの日付を押すと、その日付で投稿作成を開始できます。予約漏れを防ぐのに便利です。",
-        "targetId": "calendar-grid",
-        "position": "center"
+        "targetId": "calendar-day-create-target",
+        "position": "right"
       },
       {
         "title": "絞り込みの使い方",
@@ -153,7 +154,7 @@
       },
       {
         "title": "配信対象の切り替え",
-        "content": "選択中の店舗に投稿するか、店舗グループへまとめて投稿するかを選べます。",
+        "content": "投稿先のSNSを選びます。店舗は右上の店舗セレクタで切り替えます。",
         "targetId": "post-platform-section",
         "position": "right"
       },
@@ -286,23 +287,37 @@
         "position": "bottom"
       },
       {
-        "title": "店舗グループ一括設定",
-        "content": "対象グループの全店舗へ、同じ機能公開状態をまとめて反映できます。",
-        "targetId": "store-group-bulk-settings",
+        "title": "並び替えとプラン確認",
+        "content": "契約プラン・権限・登録日などで並び替えて、対象ユーザーをすばやく確認できます。",
+        "targetId": "user-sort-key",
+        "position": "top"
+      }
+    ],
+    "GROUP_MANAGEMENT": [
+      {
+        "title": "所属グループを確認",
+        "content": "現在アクセスできるグループの一覧を確認できます。まずは対象グループが正しいか確認してください。",
+        "targetId": "group-list-panel",
+        "position": "right"
+      },
+      {
+        "title": "グループ名を変更",
+        "content": "選択中の店舗が属するグループ名を変更できます。名称変更はここから実行します。",
+        "targetId": "group-rename-form",
+        "position": "top"
+      },
+      {
+        "title": "グループを新規作成",
+        "content": "グループ名と初期店舗名を入力して、新しいグループを作成できます。",
+        "targetId": "group-create-form",
         "position": "top"
       }
     ],
     "SETTINGS": [
       {
         "title": "カテゴリを選ぶ",
-        "content": "左側のメニューから、設定したい項目（プロフィール・店舗・SNS連携など）を選びます。",
+        "content": "左側のメニューから、設定したい項目（プロフィール・システム管理など）を選びます。",
         "targetId": "settings-tabs",
-        "position": "right"
-      },
-      {
-        "title": "SNS連携の設定",
-        "content": "「SNS連携設定」を開き、保存後に接続確認を行って「接続済み」になっているかを確認します。",
-        "targetId": "settings-tab-integrations",
         "position": "right"
       },
       {

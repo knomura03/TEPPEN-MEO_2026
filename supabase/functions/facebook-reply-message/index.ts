@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+import { resolveAuthenticatedUserId } from '../_shared/auth.ts';
 import { decodeMaybeEncryptedPayload } from '../_shared/crypto.ts';
 
 const corsHeaders = {
@@ -12,37 +13,6 @@ const jsonResponse = (status: number, body: Record<string, unknown>) =>
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
-
-const extractBearerToken = (headerValue: string | null): string => {
-  if (!headerValue) return '';
-  const matched = headerValue.match(/Bearer\s+([^,\s]+)/i);
-  if (matched?.[1]) return matched[1].trim();
-  return headerValue.trim();
-};
-
-const resolveAuthenticatedUserId = async (
-  req: Request,
-  supabaseUrl: string,
-  serviceRoleKey: string
-): Promise<{ userId: string | null; error: string | null }> => {
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader || authHeader.trim().length === 0) {
-    return { userId: null, error: 'Missing auth token' };
-  }
-  const token = extractBearerToken(authHeader);
-  if (!token) {
-    return { userId: null, error: 'Missing auth token' };
-  }
-
-  const authClient = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { data, error } = await authClient.auth.getUser(token);
-  if (error || !data?.user?.id) {
-    return { userId: null, error: error?.message || 'Invalid auth token' };
-  }
-  return { userId: data.user.id, error: null };
-};
 
 const parseCredentialPayload = async (
   encoded: string,
@@ -112,7 +82,7 @@ Deno.serve(async (req) => {
   }
   const actorUserId = authResult.userId;
 
-  let payload: { messageId?: string; replyText?: string };
+  let payload: { messageId?: string; storeId?: string; externalMessageId?: string; replyText?: string };
   try {
     payload = await req.json();
   } catch {
@@ -120,34 +90,55 @@ Deno.serve(async (req) => {
   }
 
   const messageId = payload.messageId?.trim();
+  const storeIdFromPayload = payload.storeId?.trim();
+  const externalMessageIdFromPayload = payload.externalMessageId?.trim();
   const replyText = payload.replyText?.trim();
-  if (!messageId || !replyText) {
-    return jsonResponse(400, { error: 'Missing messageId or replyText' });
+  if (!replyText) {
+    return jsonResponse(400, { error: 'Missing replyText' });
+  }
+  if (!messageId && !(storeIdFromPayload && externalMessageIdFromPayload)) {
+    return jsonResponse(400, { error: 'Missing messageId or (storeId + externalMessageId)' });
   }
 
   const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
 
-  const { data: inboxMessage, error: inboxError } = await supabaseAdmin
-    .from('inbox_messages')
-    .select('id, store_id, provider, external_message_id, is_replied')
-    .eq('id', messageId)
-    .maybeSingle();
-  if (inboxError || !inboxMessage) {
-    return jsonResponse(404, { error: 'Inbox message not found' });
+  let resolvedStoreId = storeIdFromPayload || '';
+  let resolvedExternalMessageId = externalMessageIdFromPayload || '';
+  let targetMessageId = messageId || externalMessageIdFromPayload || '';
+
+  if (messageId) {
+    const { data: inboxMessage, error: inboxError } = await supabaseAdmin
+      .from('inbox_messages')
+      .select('id, store_id, provider, external_message_id, is_replied')
+      .eq('id', messageId)
+      .maybeSingle();
+    if (inboxError || !inboxMessage) {
+      return jsonResponse(404, { error: 'Inbox message not found' });
+    }
+    if (inboxMessage.provider !== 'FACEBOOK') {
+      return jsonResponse(400, { error: 'Message provider is not FACEBOOK' });
+    }
+    if (inboxMessage.is_replied) {
+      return jsonResponse(400, { error: 'Message already replied' });
+    }
+    if (!inboxMessage.store_id || !inboxMessage.external_message_id) {
+      return jsonResponse(400, { error: 'Message store/external ID is missing' });
+    }
+    resolvedStoreId = inboxMessage.store_id;
+    resolvedExternalMessageId = inboxMessage.external_message_id;
+    targetMessageId = inboxMessage.id;
   }
-  if (inboxMessage.provider !== 'FACEBOOK') {
-    return jsonResponse(400, { error: 'Message provider is not FACEBOOK' });
-  }
-  if (inboxMessage.is_replied) {
-    return jsonResponse(400, { error: 'Message already replied' });
+
+  if (!resolvedStoreId || !resolvedExternalMessageId) {
+    return jsonResponse(400, { error: 'Missing storeId or externalMessageId' });
   }
 
   const { data: store, error: storeError } = await supabaseAdmin
     .from('stores')
     .select('id, org_id')
-    .eq('id', inboxMessage.store_id)
+    .eq('id', resolvedStoreId)
     .maybeSingle();
   if (storeError || !store) {
     return jsonResponse(404, { error: 'Store not found' });
@@ -183,7 +174,7 @@ Deno.serve(async (req) => {
   const { data: configuration, error: configurationError } = await supabaseAdmin
     .from('provider_configurations')
     .select('id, config, has_gui_config, connection_status')
-    .eq('store_id', inboxMessage.store_id)
+    .eq('store_id', resolvedStoreId)
     .eq('provider_catalog_id', providerCatalog.id)
     .maybeSingle();
   if (configurationError || !configuration) {
@@ -199,7 +190,7 @@ Deno.serve(async (req) => {
   const { data: integration, error: integrationError } = await supabaseAdmin
     .from('integrations')
     .select('id, status')
-    .eq('store_id', inboxMessage.store_id)
+    .eq('store_id', resolvedStoreId)
     .eq('provider', 'FACEBOOK')
     .maybeSingle();
   if (integrationError || !integration || integration.status !== 'CONNECTED') {
@@ -231,7 +222,7 @@ Deno.serve(async (req) => {
   const apiVersion = configuredVersion || 'v20.0';
   const graphBaseUrl = `https://graph.facebook.com/${apiVersion}`;
 
-  const replyResponse = await fetch(`${graphBaseUrl}/${inboxMessage.external_message_id}/comments`, {
+  const replyResponse = await fetch(`${graphBaseUrl}/${resolvedExternalMessageId}/comments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: toFormBody({
@@ -260,19 +251,32 @@ Deno.serve(async (req) => {
     return jsonResponse(400, { error: 'Facebook reply ID の取得に失敗しました。' });
   }
 
+  const replySentAtIso = new Date().toISOString();
+  await supabaseAdmin
+    .from('inbox_messages')
+    .update({
+      is_replied: true,
+      reply_content: replyText,
+      reply_sent_at: replySentAtIso,
+      sla_status: 'COMPLETED',
+    })
+    .eq('store_id', resolvedStoreId)
+    .eq('provider', 'FACEBOOK')
+    .eq('external_message_id', resolvedExternalMessageId);
+
   await supabaseAdmin.from('audit_logs').insert({
-    org_id: store.org_id,
-    store_id: inboxMessage.store_id,
-    actor_user_id: actorUserId,
-    action: 'FACEBOOK_REPLY',
-    target_type: 'inbox_message',
-    target_id: inboxMessage.id,
-    payload: {
-      external_reply_id: externalReplyId,
-      external_message_id: inboxMessage.external_message_id,
-      page_id: pageId,
-      mode: 'REAL',
-    },
+      org_id: store.org_id,
+      store_id: resolvedStoreId,
+      actor_user_id: actorUserId,
+      action: 'FACEBOOK_REPLY',
+      target_type: messageId ? 'inbox_message' : 'inbox_message_external',
+      target_id: targetMessageId,
+      payload: {
+        external_reply_id: externalReplyId,
+        external_message_id: resolvedExternalMessageId,
+        page_id: pageId,
+        mode: 'REAL',
+      },
   });
 
   return jsonResponse(200, {

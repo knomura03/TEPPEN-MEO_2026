@@ -213,4 +213,19 @@ export const brandKitService = {
     }
     if (error) throw error;
   },
+
+  async removeTemplates(templateIds: string[]): Promise<void> {
+    const client = requireSupabase();
+    const uniqueIds = Array.from(new Set(templateIds.map((id) => id.trim()).filter((id) => id.length > 0)));
+    if (uniqueIds.length === 0) return;
+
+    const { error } = await client
+      .from('post_templates')
+      .update({ is_active: false })
+      .in('id', uniqueIds);
+    if (error && isMissingRelationError(error)) {
+      throw new Error(MIGRATION_ERROR_MESSAGE);
+    }
+    if (error) throw error;
+  },
 };

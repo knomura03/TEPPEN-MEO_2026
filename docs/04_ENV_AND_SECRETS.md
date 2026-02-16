@@ -1,6 +1,6 @@
 # TEPPEN MEO：環境変数 & 秘密情報の取り扱い（MVP）
 
-最終更新: 2026-02-03
+最終更新: 2026-02-13
 
 ## 目的
 knomuraが混乱せずに進められるよう、**何をどこに設定するか**を固定します。
@@ -11,6 +11,25 @@ knomuraが混乱せずに進められるよう、**何をどこに設定する�
 - **秘密情報はクライアント（ブラウザ）に置かない**
 - **秘密情報はGitにコミットしない**
 - 迷ったら「共有しない」→こちらに確認
+
+## Edge Functions の JWT検証ルール（重要）
+
+このプロジェクトの Supabase Auth アクセストークンは **ES256（非対称署名）** のため、  
+Edge Functions 配備時のゲートウェイ検証は以下に統一します。
+
+- **配備コマンドは `--no-verify-jwt` を標準とする**
+- 関数内で `resolveAuthenticatedUserId()`（`auth.getUser()`）により認証を行う
+- `401 Invalid JWT` が出た場合は、まず `--no-verify-jwt` 配備漏れを疑う
+
+例:
+
+```bash
+supabase functions deploy dashboard-metrics \
+  --project-ref odjlnwfrqckekrdicnaa \
+  --no-verify-jwt
+```
+
+配備漏れの検知は `npm run audit:edge:jwt` で自動確認します。
 
 ## 現状（このリポジトリの状態）
 - `.env.local` が存在します（プレースホルダー）。

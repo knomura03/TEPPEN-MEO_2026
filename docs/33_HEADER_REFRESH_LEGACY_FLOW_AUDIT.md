@@ -1,6 +1,6 @@
 # ヘッダー刷新対応：旧導線・旧文言スキャン結果（現時点）
 
-最終更新: 2026-02-16
+最終更新: 2026-02-16（再確認）
 
 ## 1. スキャン方針
 - 対象: `components`, `services`（アプリ実装）と `docs`（ドキュメント）
@@ -8,7 +8,7 @@
   `store_groups` / `店舗グループ` / `店舗情報（MEO）` / `SNS連携設定` / `SQL Editor` / `統合受信箱`
 
 ## 2. 実装側（components/services）スキャン結果
-- 0件（対象語のUI/サービス実装上の残存なし）
+- `components`, `services`, `contexts`, `App.tsx`, `supabase/functions` の範囲で対象語を再検索した結果、ヒットは0件。
 - 旧UI/文言は以下で継続確認済み:
   - `scripts/audit/e2e/storeGroupsRemoved.spec.ts`（店舗グループUIが現行画面に出ないことを回帰監視）
   - `components/HeaderScopeSelectors.tsx` / `components/ui/MultiSelectDropdown.tsx`（新規ヘッダー導線）

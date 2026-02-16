@@ -259,6 +259,26 @@ export const surveyService = {
     return mapSurvey(data as unknown as DbSurveyRow);
   },
 
+  async delete(surveyId: string): Promise<void> {
+    const client = requireSupabase();
+    const { error } = await client
+      .from('surveys')
+      .delete()
+      .eq('id', surveyId);
+    if (error) throw error;
+  },
+
+  async deleteMany(surveyIds: string[]): Promise<void> {
+    const client = requireSupabase();
+    const uniqueIds = Array.from(new Set(surveyIds.map((id) => id.trim()).filter((id) => id.length > 0)));
+    if (uniqueIds.length === 0) return;
+    const { error } = await client
+      .from('surveys')
+      .delete()
+      .in('id', uniqueIds);
+    if (error) throw error;
+  },
+
   async getPublishedByToken(publicToken: string): Promise<Survey | null> {
     const client = requireSupabase();
     const { data, error } = await client

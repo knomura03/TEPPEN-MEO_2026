@@ -100,6 +100,8 @@ Deno.serve(async (req) => {
     currency?: string;
     isActive?: boolean;
     description?: string | null;
+    featureRules?: Record<string, unknown>;
+    snsConnectionLimit?: number;
   };
   try {
     payload = await req.json();
@@ -113,8 +115,15 @@ Deno.serve(async (req) => {
   const currency = (payload.currency || 'JPY').trim() || 'JPY';
   const isActive = payload.isActive === undefined ? true : Boolean(payload.isActive);
   const description = payload.description ? String(payload.description).trim() : null;
+  const snsConnectionLimit = Math.max(0, Number(payload.snsConnectionLimit ?? 3));
+  const featureRules = payload.featureRules && typeof payload.featureRules === 'object'
+    ? Object.entries(payload.featureRules).reduce<Record<string, boolean>>((acc, [key, value]) => {
+      acc[String(key)] = Boolean(value);
+      return acc;
+    }, {})
+    : {};
 
-  if (!code || !name || !Number.isFinite(amountMonthly) || amountMonthly < 0) {
+  if (!code || !name || !Number.isFinite(amountMonthly) || amountMonthly < 0 || !Number.isFinite(snsConnectionLimit)) {
     return jsonResponse(400, { error: 'Missing or invalid fields' });
   }
 
@@ -137,6 +146,8 @@ Deno.serve(async (req) => {
         currency,
         is_active: isActive,
         description,
+        feature_rules: featureRules,
+        sns_connection_limit: snsConnectionLimit,
         updated_by: actorUserId,
       })
       .eq('code', code)
@@ -156,6 +167,8 @@ Deno.serve(async (req) => {
         currency,
         is_active: isActive,
         description,
+        feature_rules: featureRules,
+        sns_connection_limit: snsConnectionLimit,
         created_by: actorUserId,
         updated_by: actorUserId,
       })
@@ -178,6 +191,8 @@ Deno.serve(async (req) => {
       amount_monthly: amountMonthly,
       currency,
       is_active: isActive,
+      sns_connection_limit: snsConnectionLimit,
+      feature_rules: featureRules,
     },
   });
 

@@ -173,12 +173,12 @@ Deno.serve(async (req) => {
     return jsonResponse(403, { error: 'Not allowed' });
   }
 
-  const isInternal = actorMemberships.some((row: { role: string }) => {
+  const isAdmin = actorMemberships.some((row: { role: string }) => {
     const role = (row.role || '').toUpperCase();
-    return role === 'ADMIN' || role === 'SUPERVISOR';
+    return role === 'ADMIN';
   });
-  if (!isInternal) {
-    return jsonResponse(403, { error: 'Only ADMIN/SUPERVISOR can test provider connection' });
+  if (!isAdmin) {
+    return jsonResponse(403, { error: 'Only ADMIN can test provider connection' });
   }
 
   const { data: providerSecret, error: secretError } = await supabaseAdmin

@@ -240,6 +240,7 @@ export const DEFAULT_FEATURE_VISIBILITY: Record<string, VisibilityState> = {
   inbox: 'ENABLED',
   rank_tracker: 'ADMIN_ONLY',
   user_management: 'ENABLED',
+  group_management: 'ENABLED',
   settings_profile: 'ENABLED',
   settings_store: 'ENABLED',
   settings_integrations: 'ENABLED',

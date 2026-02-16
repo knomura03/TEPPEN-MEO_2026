@@ -8,6 +8,7 @@ import {
 } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
 import { migrationRequiredMessage } from './migrationRequiredMessage';
+import { getFunctionErrorMessage, invokeFunctionByHttp } from './functionHttpClient';
 
 type DbRankCollectionRunRow = {
   id: string;
@@ -53,12 +54,6 @@ type DbCompetitorMetricSnapshotRow = {
   created_at: string;
 };
 
-type FunctionInvokeResult = {
-  ok: boolean;
-  status: number;
-  body: unknown;
-};
-
 const MIGRATION_ERROR_MESSAGE = migrationRequiredMessage('順位チェック（順位収集）');
 const COMPETITOR_MIGRATION_ERROR_MESSAGE = migrationRequiredMessage('順位チェック（競合比較）');
 
@@ -81,51 +76,6 @@ const toErrorMessage = (error: unknown): string => {
   if (!error || typeof error !== 'object') return '';
   if ('message' in error) return String((error as { message?: string }).message || '');
   return '';
-};
-
-const requireFunctionRequestContext = async (client: ReturnType<typeof requireSupabase>) => {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-  if (!supabaseUrl || !anonKey) {
-    throw new Error('Supabase環境変数が不足しています。VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY を確認してください。');
-  }
-
-  const { data, error } = await client.auth.getSession();
-  if (error) {
-    throw new Error(`ログインセッションの取得に失敗しました。（${error.message}）`);
-  }
-  const accessToken = data.session?.access_token;
-  if (!accessToken) {
-    throw new Error('ログインセッションが無効です。いったんログアウトして再ログインしてください。');
-  }
-
-  return { supabaseUrl, anonKey, accessToken };
-};
-
-const invokeFunctionByHttp = async (
-  client: ReturnType<typeof requireSupabase>,
-  functionName: string,
-  payload: Record<string, unknown>
-): Promise<FunctionInvokeResult> => {
-  const { supabaseUrl, anonKey, accessToken } = await requireFunctionRequestContext(client);
-  const requestUrl = `${supabaseUrl}/functions/v1/${functionName}?client=direct-http-v3`;
-  const response = await fetch(requestUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: anonKey,
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(payload),
-  });
-  const text = await response.text();
-  let body: unknown = null;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = null;
-  }
-  return { ok: response.ok, status: response.status, body };
 };
 
 const mapRun = (row: DbRankCollectionRunRow): RankCollectionRun => ({
@@ -238,8 +188,7 @@ export const rankCollectionService = {
   },
 
   async collectByFunction(params: { storeId: string; mode?: RankCollectionMode }): Promise<RankCollectionExecutionResult> {
-    const client = requireSupabase();
-    const result = await invokeFunctionByHttp(client, 'rank-collect', {
+    const result = await invokeFunctionByHttp('rank-collect', {
       storeId: params.storeId,
       mode: params.mode || 'MOCK',
       triggerType: 'MANUAL',
@@ -250,7 +199,7 @@ export const rankCollectionService = {
         ? String((result.body as Record<string, unknown>).error || (result.body as Record<string, unknown>).message || '')
         : '';
     if (!result.ok) {
-      throw new Error(bodyError ? `${bodyError}（status=${result.status}）` : `順位収集の実行に失敗しました。（status=${result.status}）`);
+      throw new Error(bodyError ? `${bodyError}（status=${result.status}）` : getFunctionErrorMessage(result, '順位収集の実行に失敗しました。'));
     }
 
     const mappedBody = (result.body || {}) as Record<string, unknown>;

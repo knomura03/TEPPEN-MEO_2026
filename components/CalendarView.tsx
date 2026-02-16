@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { MOCK_POSTS, HOLIDAYS, MOCK_ACCOUNTS } from '../constants';
+import { HOLIDAYS } from '../constants';
 import { Post, PostStatus, Role, SocialPlatform, User } from '../types';
 import { ChevronLeft, ChevronRight, Clock, CheckCircle, AlertCircle, Filter, Plus, X, Image as ImageIcon, Sparkles, Loader2 } from 'lucide-react';
 import { isSupabaseConfigured } from '../services/supabaseClient';
@@ -10,14 +10,13 @@ import { postMediaService } from '../services/postMediaService';
 import { geminiService } from '../services/geminiService';
 import { ModalPortal } from './ModalPortal';
 import { PAGE_CARD_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS } from './ui/pageLayout';
+import { SocialPlatformBadge, SocialPlatformLogo } from './ui/SocialPlatformLogo';
+import { formatViewLabel } from './ui/formatters';
+import { COMMON_COPY } from './ui/copy';
 
 // Helpers
 const startOfMonth = (date: Date) => {
   return new Date(date.getFullYear(), date.getMonth(), 1);
-};
-
-const endOfMonth = (date: Date) => {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
 };
 
 const startOfWeek = (date: Date) => {
@@ -29,24 +28,22 @@ const startOfWeek = (date: Date) => {
   return newDate;
 };
 
-const endOfWeek = (date: Date) => {
-  const d = startOfWeek(date);
-  d.setDate(d.getDate() + 6);
-  return d;
+const addDays = (date: Date, amount: number) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
 };
 
-const eachDayOfInterval = ({ start, end }: { start: Date; end: Date }) => {
-  const days: Date[] = [];
-  const day = new Date(start);
-  const endDay = new Date(end);
-  day.setHours(0,0,0,0);
-  endDay.setHours(0,0,0,0);
-  
-  while (day <= endDay) {
-    days.push(new Date(day));
-    day.setDate(day.getDate() + 1);
-  }
-  return days;
+const buildMonthGridWeeks = (date: Date): Date[][] => {
+  const monthStart = startOfMonth(date);
+  const gridStart = startOfWeek(monthStart);
+  return Array.from({ length: 6 }, (_, weekIndex) =>
+    Array.from({ length: 7 }, (_, dayIndex) => {
+      const day = addDays(gridStart, weekIndex * 7 + dayIndex);
+      day.setHours(0, 0, 0, 0);
+      return day;
+    })
+  );
 };
 
 const addMonths = (date: Date, amount: number) => {
@@ -114,11 +111,11 @@ interface CalendarViewProps {
 
 export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
   const { addNotification } = useNotification();
-  const { activeStoreId } = useStore();
+  const { activeStoreId, selectedStoreIds } = useStore();
   const isApprovalRequester = currentUser.role === Role.USER;
   const [currentDate, setCurrentDate] = useState(new Date());
   const [filterPlatform, setFilterPlatform] = useState<SocialPlatform | 'ALL'>('ALL');
-  const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createDateTime, setCreateDateTime] = useState('');
   const [createContent, setCreateContent] = useState('');
@@ -136,15 +133,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
 
   const reload = async () => {
     if (!isSupabaseConfigured) {
-      setPosts(MOCK_POSTS);
+      setPosts([]);
       return;
     }
-    if (!activeStoreId) {
+    if (selectedStoreIds.length === 0) {
       setPosts([]);
       return;
     }
     try {
-      const data = await postsService.listByStore(activeStoreId);
+      const data = await postsService.listByStores(selectedStoreIds);
       setPosts(data);
     } catch {
       addNotification('読み込みエラー', 'カレンダー用の投稿取得に失敗しました。', 'ERROR');
@@ -154,17 +151,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
   useEffect(() => {
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStoreId]);
+  }, [selectedStoreIds.join(',')]);
 
   const monthStart = startOfMonth(currentDate);
-  const monthEnd = endOfMonth(monthStart);
-  const startDate = startOfWeek(monthStart);
-  const endDate = endOfWeek(monthEnd);
-
-  const days = eachDayOfInterval({
-    start: startDate,
-    end: endDate,
-  });
+  const calendarWeeks = buildMonthGridWeeks(currentDate);
 
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
   const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
@@ -181,6 +171,14 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
   };
 
   const handleDateClick = (date: Date) => {
+    if (!activeStoreId) {
+      addNotification(
+        '店舗未選択',
+        selectedStoreIds.length > 1 ? COMMON_COPY.multiStoreSnsDisabled : '投稿を作成する店舗を1つ選択してください。',
+        'WARNING'
+      );
+      return;
+    }
     const now = new Date();
     const base = new Date(date);
     base.setHours(now.getHours(), now.getMinutes(), 0, 0);
@@ -354,7 +352,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
     <div className={`${PAGE_CONTAINER_CLASS} h-full flex flex-col`}>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className={PAGE_HEADER_TITLE_CLASS}>カレンダー</h1>
+            <h1 className={PAGE_HEADER_TITLE_CLASS}>{formatViewLabel('CALENDAR')}</h1>
             <p className={PAGE_HEADER_DESCRIPTION_CLASS}>投稿予定と配信計画を管理します。</p>
           </div>
           
@@ -374,7 +372,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
                 </select>
              </div>
 
-             <div className="flex items-center space-x-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-1">
+             <div id="calendar-month-navigation" className="flex items-center space-x-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-1">
                <button onClick={prevMonth} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-600 rounded text-gray-600 dark:text-gray-300"><ChevronLeft size={18} /></button>
                <span className="px-2 text-sm font-bold text-gray-800 dark:text-white min-w-[100px] text-center">{formatMonth(currentDate)}</span>
                <button onClick={nextMonth} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-600 rounded text-gray-600 dark:text-gray-300"><ChevronRight size={18} /></button>
@@ -384,7 +382,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
           </div>
         </div>
 
-        <div className={`flex-1 ${PAGE_CARD_CLASS} flex flex-col overflow-hidden`}>
+        <div className={`${PAGE_CARD_CLASS} flex flex-col overflow-hidden h-[calc(100vh-220px)] min-h-[620px]`}>
           {/* Weekday Headers */}
           <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
             {['日', '月', '火', '水', '木', '金', '土'].map((day, idx) => (
@@ -395,18 +393,25 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
           </div>
 
           {/* Calendar Grid */}
-          <div id="calendar-grid" className="flex-1 grid grid-cols-7 auto-rows-fr">
-            {days.map((day, dayIdx) => {
+          <div
+            id="calendar-grid"
+            className="flex-1 min-h-0 grid grid-cols-7"
+            style={{ gridTemplateRows: 'repeat(6, minmax(0, 1fr))' }}
+          >
+            {calendarWeeks.flatMap((week, weekIndex) => week.map((day, dayIndex) => {
               const dayPosts = getPostsForDay(day);
               const isCurrentMonth = isSameMonth(day, monthStart);
               const isToday = isSameDay(day, new Date());
               const holidayName = getHolidayName(day);
 
+              const isCreateGuideTarget = isCurrentMonth && day.getDate() === 1;
+
               return (
                 <div 
-                  key={day.toString()} 
+                  id={isCreateGuideTarget ? 'calendar-day-create-target' : undefined}
+                  key={`${weekIndex}-${dayIndex}-${day.toISOString()}`} 
                   onClick={() => handleDateClick(day)}
-                  className={`min-h-[100px] border-b border-r border-gray-100 dark:border-gray-700 p-2 flex flex-col transition-all hover:bg-primary-50/30 dark:hover:bg-primary-900/10 group cursor-pointer relative
+                  className={`min-h-0 border-b border-r border-gray-100 dark:border-gray-700 p-2 flex flex-col transition-all hover:bg-primary-50/30 dark:hover:bg-primary-900/10 group cursor-pointer relative min-w-0
                     ${!isCurrentMonth ? 'bg-gray-50/50 dark:bg-gray-900/50 text-gray-400 dark:text-gray-600' : 'bg-white dark:bg-gray-800'}
                   `}
                 >
@@ -421,7 +426,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
                     <div className="flex flex-col">
                       <span className={`
                         text-sm w-7 h-7 flex items-center justify-center rounded-full font-medium
-                        ${isToday ? 'bg-primary-600 text-white font-bold shadow-md' : holidayName ? 'text-red-500' : 'text-gray-900 dark:text-gray-200'}
+                        ${isToday
+                          ? 'bg-primary-600 text-white font-bold shadow-md'
+                          : holidayName
+                            ? 'text-red-500'
+                            : isCurrentMonth
+                              ? 'text-gray-900 dark:text-gray-200'
+                              : 'text-gray-400 dark:text-gray-500'}
                       `}>
                         {day.getDate()}
                       </span>
@@ -445,13 +456,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
                         <div className="flex items-center gap-1 mb-0.5">
                           {post.approvalStatus === 'PENDING' ? <AlertCircle size={10} /> : post.status === PostStatus.PUBLISHED ? <CheckCircle size={10} /> : <Clock size={10} />}
                           <span className="truncate font-bold">{formatTime(post.scheduledDate || post.publishedDate || new Date())}</span>
-                          <div className="flex gap-0.5 ml-auto">
+                          <div className="flex gap-1 ml-auto">
                              {(post.platforms || []).map(p => (
-                                 <span key={p} className={`w-1.5 h-1.5 rounded-full ${
-                                     p === 'INSTAGRAM' ? 'bg-pink-500' : 
-                                     p === 'FACEBOOK' ? 'bg-blue-600' : 
-                                     'bg-blue-400'
-                                 }`} />
+                                 <SocialPlatformLogo
+                                   key={p}
+                                   platform={p as SocialPlatform}
+                                   size={10}
+                                 />
                              ))}
                           </div>
                         </div>
@@ -461,7 +472,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
                   </div>
                 </div>
               );
-            })}
+            }))}
           </div>
         </div>
 
@@ -496,18 +507,23 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
               <div>
                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">投稿先</label>
                 <div className="flex flex-wrap gap-2">
-                  {MOCK_ACCOUNTS.map((account) => (
+                  {(['INSTAGRAM', 'FACEBOOK', 'GOOGLE_BUSINESS'] as SocialPlatform[]).map((platform) => (
                     <button
-                      key={account.id}
+                      key={platform}
                       type="button"
-                      onClick={() => togglePlatform(account.platform)}
+                      onClick={() => togglePlatform(platform)}
                       className={`px-3 py-2 rounded-full text-xs font-bold border transition-all ${
-                        createPlatforms.includes(account.platform)
+                        createPlatforms.includes(platform)
                           ? 'bg-primary-600 text-white border-primary-600'
                           : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'
                       }`}
                     >
-                      {account.platform}
+                      <SocialPlatformBadge
+                        platform={platform}
+                        size={14}
+                        className="font-bold"
+                        labelClassName="text-xs font-bold"
+                      />
                     </button>
                   ))}
                 </div>
@@ -663,9 +679,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ currentUser }) => {
                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">投稿先</div>
                 <div className="flex gap-2 flex-wrap">
                   {(detailPost.platforms || []).map((p) => (
-                    <span key={p} className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-xs">
-                      {p}
-                    </span>
+                    <SocialPlatformBadge
+                      key={p}
+                      platform={p as SocialPlatform}
+                      size={13}
+                      className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-xs"
+                      labelClassName="text-xs"
+                    />
                   ))}
                 </div>
               </div>

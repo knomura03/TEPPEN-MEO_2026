@@ -12,6 +12,7 @@ import {
   PAGE_HEADER_TITLE_CLASS,
   PAGE_WARNING_CLASS,
 } from './ui/pageLayout';
+import { formatViewLabel } from './ui/formatters';
 
 interface AdviceViewProps {
   currentUser: User;
@@ -82,7 +83,7 @@ export const AdviceView: React.FC<AdviceViewProps> = () => {
   return (
     <div className={PAGE_CONTAINER_CLASS}>
       <section>
-        <h1 className={PAGE_HEADER_TITLE_CLASS}>集客アドバイス</h1>
+        <h1 className={PAGE_HEADER_TITLE_CLASS}>{formatViewLabel('ADVICE')}</h1>
         <p className={PAGE_HEADER_DESCRIPTION_CLASS}>
           この店舗の実績データから、MEO/SNS運用の優先アクションを提案します。分析はボタンを押した時だけ実行されます。
         </p>

@@ -1,6 +1,7 @@
-import { BillingPlan, OrgSubscription } from '../types';
+import { BillingPlan, OrgPlanSchedule, OrgSubscription, StorePlanSchedule, StoreSubscription } from '../types';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
 import { migrationRequiredMessage } from './migrationRequiredMessage';
+import { getFunctionErrorMessage, invokeFunctionByHttp } from './functionHttpClient';
 
 type DbBillingPlanRow = {
   id: string;
@@ -10,8 +11,38 @@ type DbBillingPlanRow = {
   currency: string;
   is_active: boolean;
   description: string | null;
+  feature_rules?: Record<string, unknown> | null;
+  sns_connection_limit?: number | null;
   created_at: string;
   updated_at: string;
+};
+
+type DbOrgPlanScheduleRow = {
+  id: string;
+  org_id: string;
+  billing_plan_id: string;
+  status: 'SCHEDULED' | 'APPLIED' | 'CANCELED';
+  effective_at: string;
+  applied_at: string | null;
+  canceled_at: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  billing_plan?: DbBillingPlanRow | DbBillingPlanRow[] | null;
+};
+
+type DbStorePlanScheduleRow = {
+  id: string;
+  store_id: string;
+  billing_plan_id: string;
+  status: 'SCHEDULED' | 'APPLIED' | 'CANCELED';
+  effective_at: string;
+  applied_at: string | null;
+  canceled_at: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  billing_plan?: DbBillingPlanRow | DbBillingPlanRow[] | null;
 };
 
 type DbOrgSubscriptionRow = {
@@ -28,11 +59,22 @@ type DbOrgSubscriptionRow = {
   billing_plan?: DbBillingPlanRow | DbBillingPlanRow[] | null;
 };
 
-type FunctionInvokeResult = {
-  ok: boolean;
-  status: number;
-  body: unknown;
-  text: string;
+type DbStoreSubscriptionRow = {
+  id: string;
+  store_id: string;
+  billing_plan_id: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  billing_plan?: DbBillingPlanRow | DbBillingPlanRow[] | null;
+};
+
+export type BillingPlanDeleteResult = {
+  code: string;
+  deleted: boolean;
+  blockedUserCount: number;
+  blockedStoreCount: number;
+  message?: string;
 };
 
 const requireSupabase = () => {
@@ -49,52 +91,6 @@ const isMissingRelationError = (error: unknown): boolean => {
   return maybeCode === '42P01' || maybeMessage.includes('does not exist');
 };
 
-const requireFunctionRequestContext = async (client: ReturnType<typeof requireSupabase>) => {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-  if (!supabaseUrl || !anonKey) {
-    throw new Error('Supabase環境変数が不足しています。VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY を確認してください。');
-  }
-
-  const { data, error } = await client.auth.getSession();
-  if (error) {
-    throw new Error(`ログインセッションの取得に失敗しました。（${error.message}）`);
-  }
-  const accessToken = data.session?.access_token;
-  if (!accessToken) {
-    throw new Error('ログインセッションが無効です。いったんログアウトして再ログインしてください。');
-  }
-
-  return { supabaseUrl, anonKey, accessToken };
-};
-
-const invokeFunctionByHttp = async (
-  client: ReturnType<typeof requireSupabase>,
-  functionName: string,
-  payload: Record<string, unknown>
-): Promise<FunctionInvokeResult> => {
-  const { supabaseUrl, anonKey, accessToken } = await requireFunctionRequestContext(client);
-  const requestUrl = `${supabaseUrl}/functions/v1/${functionName}?client=direct-http-v3`;
-  const response = await fetch(requestUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: anonKey,
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const text = await response.text();
-  let body: unknown = null;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = null;
-  }
-  return { ok: response.ok, status: response.status, body, text };
-};
-
 const mapBillingPlan = (row: DbBillingPlanRow): BillingPlan => ({
   id: row.id,
   code: row.code,
@@ -103,6 +99,48 @@ const mapBillingPlan = (row: DbBillingPlanRow): BillingPlan => ({
   currency: row.currency || 'JPY',
   isActive: Boolean(row.is_active),
   description: row.description || undefined,
+  featureRules:
+    row.feature_rules && typeof row.feature_rules === 'object'
+      ? Object.entries(row.feature_rules).reduce<Record<string, boolean>>((acc, [key, value]) => {
+          acc[key] = Boolean(value);
+          return acc;
+        }, {})
+      : {},
+  snsConnectionLimit: Math.max(0, Number(row.sns_connection_limit ?? 3)),
+  createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+  updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
+});
+
+const mapOrgPlanSchedule = (row: DbOrgPlanScheduleRow): OrgPlanSchedule => ({
+  id: row.id,
+  orgId: row.org_id,
+  billingPlanId: row.billing_plan_id,
+  billingPlan: (() => {
+    const embedded = resolveEmbeddedBillingPlan(row.billing_plan as DbOrgSubscriptionRow['billing_plan']);
+    return embedded ? mapBillingPlan(embedded) : null;
+  })(),
+  status: row.status,
+  effectiveAt: row.effective_at ? new Date(row.effective_at) : new Date(),
+  appliedAt: row.applied_at ? new Date(row.applied_at) : undefined,
+  canceledAt: row.canceled_at ? new Date(row.canceled_at) : undefined,
+  note: row.note || undefined,
+  createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+  updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
+});
+
+const mapStorePlanSchedule = (row: DbStorePlanScheduleRow): StorePlanSchedule => ({
+  id: row.id,
+  storeId: row.store_id,
+  billingPlanId: row.billing_plan_id,
+  billingPlan: (() => {
+    const embedded = resolveEmbeddedBillingPlan(row.billing_plan as DbOrgSubscriptionRow['billing_plan']);
+    return embedded ? mapBillingPlan(embedded) : null;
+  })(),
+  status: row.status,
+  effectiveAt: row.effective_at ? new Date(row.effective_at) : new Date(),
+  appliedAt: row.applied_at ? new Date(row.applied_at) : undefined,
+  canceledAt: row.canceled_at ? new Date(row.canceled_at) : undefined,
+  note: row.note || undefined,
   createdAt: row.created_at ? new Date(row.created_at) : new Date(),
   updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
 });
@@ -129,13 +167,26 @@ const mapOrgSubscription = (row: DbOrgSubscriptionRow): OrgSubscription => ({
   updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
 });
 
+const mapStoreSubscription = (row: DbStoreSubscriptionRow): StoreSubscription => ({
+  id: row.id,
+  storeId: row.store_id,
+  billingPlanId: row.billing_plan_id,
+  billingPlan: (() => {
+    const embedded = resolveEmbeddedBillingPlan(row.billing_plan as DbOrgSubscriptionRow['billing_plan']);
+    return embedded ? mapBillingPlan(embedded) : null;
+  })(),
+  status: row.status,
+  createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+  updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
+});
+
 export const billingService = {
   async listBillingPlans(params?: { includeInactive?: boolean }): Promise<BillingPlan[]> {
     const client = requireSupabase();
     const includeInactive = params?.includeInactive ?? true;
     const query = client
       .from('billing_plans')
-      .select('id, code, name, amount_monthly, currency, is_active, description, created_at, updated_at')
+      .select('id, code, name, amount_monthly, currency, is_active, description, feature_rules, sns_connection_limit, created_at, updated_at')
       .order('amount_monthly', { ascending: true })
       .order('code', { ascending: true });
     if (!includeInactive) {
@@ -156,7 +207,7 @@ export const billingService = {
     const { data, error } = await client
       .from('org_subscriptions')
       .select(
-        'id, org_id, billing_plan_id, status, current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at, billing_plan:billing_plans (id, code, name, amount_monthly, currency, is_active, description, created_at, updated_at)'
+        'id, org_id, billing_plan_id, status, current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at, billing_plan:billing_plans (id, code, name, amount_monthly, currency, is_active, description, feature_rules, sns_connection_limit, created_at, updated_at)'
       )
       .eq('org_id', orgId)
       .order('created_at', { ascending: true })
@@ -168,22 +219,107 @@ export const billingService = {
       throw error;
     }
     if (!data) return null;
-    return mapOrgSubscription(data as DbOrgSubscriptionRow);
+    const mapped = mapOrgSubscription(data as DbOrgSubscriptionRow);
+
+    const { data: dueSchedule, error: scheduleError } = await client
+      .from('org_subscription_plan_schedules')
+      .select('id, org_id, billing_plan_id, status, effective_at, applied_at, canceled_at, note, created_at, updated_at, billing_plan:billing_plans (id, code, name, amount_monthly, currency, is_active, description, feature_rules, sns_connection_limit, created_at, updated_at)')
+      .eq('org_id', orgId)
+      .eq('status', 'SCHEDULED')
+      .lte('effective_at', new Date().toISOString())
+      .order('effective_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (scheduleError && !isMissingRelationError(scheduleError)) {
+      throw scheduleError;
+    }
+    if (dueSchedule) {
+      const schedule = mapOrgPlanSchedule(dueSchedule as DbOrgPlanScheduleRow);
+      if (schedule.billingPlan) {
+        mapped.billingPlanId = schedule.billingPlan.id;
+        mapped.billingPlan = schedule.billingPlan;
+        mapped.status = 'ACTIVE';
+      }
+    }
+    return mapped;
   },
 
-  async setOrgPlan(params: { orgId: string; planCode: string }): Promise<void> {
-    const client = requireSupabase();
-    const invoke = await invokeFunctionByHttp(client, 'admin-org-subscription-set-plan', {
+  async setOrgPlan(params: { orgId: string; planCode: string; effectiveAt?: Date }): Promise<void> {
+    const invoke = await invokeFunctionByHttp('admin-org-subscription-set-plan', {
       orgId: params.orgId,
       planCode: params.planCode,
+      effectiveAt: params.effectiveAt ? params.effectiveAt.toISOString() : null,
     });
     if (!invoke.ok) {
-      const message =
-        (invoke.body && typeof invoke.body === 'object' && (invoke.body as any).error) ||
-        invoke.text ||
-        `status=${invoke.status}`;
-      throw new Error(`プラン変更に失敗しました。（${String(message)} / status=${invoke.status}）`);
+      throw new Error(getFunctionErrorMessage(invoke, 'プラン変更に失敗しました。'));
     }
+  },
+
+  async getStoreSubscription(storeId: string): Promise<StoreSubscription | null> {
+    const client = requireSupabase();
+    const { data, error } = await client
+      .from('store_subscriptions')
+      .select(
+        'id, store_id, billing_plan_id, status, created_at, updated_at, billing_plan:billing_plans (id, code, name, amount_monthly, currency, is_active, description, feature_rules, sns_connection_limit, created_at, updated_at)'
+      )
+      .eq('store_id', storeId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      if (isMissingRelationError(error)) return null;
+      throw error;
+    }
+    if (!data) return null;
+    const mapped = mapStoreSubscription(data as DbStoreSubscriptionRow);
+
+    const { data: dueSchedule, error: scheduleError } = await client
+      .from('store_subscription_plan_schedules')
+      .select('id, store_id, billing_plan_id, status, effective_at, applied_at, canceled_at, note, created_at, updated_at, billing_plan:billing_plans (id, code, name, amount_monthly, currency, is_active, description, feature_rules, sns_connection_limit, created_at, updated_at)')
+      .eq('store_id', storeId)
+      .eq('status', 'SCHEDULED')
+      .lte('effective_at', new Date().toISOString())
+      .order('effective_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (scheduleError && !isMissingRelationError(scheduleError)) {
+      throw scheduleError;
+    }
+    if (dueSchedule) {
+      const schedule = mapStorePlanSchedule(dueSchedule as DbStorePlanScheduleRow);
+      if (schedule.billingPlan) {
+        mapped.billingPlanId = schedule.billingPlan.id;
+        mapped.billingPlan = schedule.billingPlan;
+        mapped.status = 'ACTIVE';
+      }
+    }
+    return mapped;
+  },
+
+  async setStorePlan(params: { storeId: string; planCode: string; effectiveAt?: Date }): Promise<void> {
+    const invoke = await invokeFunctionByHttp('admin-store-subscription-set-plan', {
+      storeId: params.storeId,
+      planCode: params.planCode,
+      effectiveAt: params.effectiveAt ? params.effectiveAt.toISOString() : null,
+    });
+    if (!invoke.ok) {
+      throw new Error(getFunctionErrorMessage(invoke, '店舗プランの更新に失敗しました。'));
+    }
+  },
+
+  async listStorePlanSchedules(storeId: string): Promise<StorePlanSchedule[]> {
+    const client = requireSupabase();
+    const { data, error } = await client
+      .from('store_subscription_plan_schedules')
+      .select('id, store_id, billing_plan_id, status, effective_at, applied_at, canceled_at, note, created_at, updated_at, billing_plan:billing_plans (id, code, name, amount_monthly, currency, is_active, description, feature_rules, sns_connection_limit, created_at, updated_at)')
+      .eq('store_id', storeId)
+      .order('effective_at', { ascending: true });
+    if (error) {
+      if (isMissingRelationError(error)) return [];
+      throw error;
+    }
+    return ((data || []) as DbStorePlanScheduleRow[]).map(mapStorePlanSchedule);
   },
 
   async upsertBillingPlan(params: {
@@ -193,22 +329,61 @@ export const billingService = {
     currency?: string;
     isActive?: boolean;
     description?: string;
+    featureRules?: Record<string, boolean>;
+    snsConnectionLimit?: number;
   }): Promise<void> {
     const client = requireSupabase();
-    const invoke = await invokeFunctionByHttp(client, 'admin-billing-plan-upsert', {
+    const invoke = await invokeFunctionByHttp('admin-billing-plan-upsert', {
       code: params.code,
       name: params.name,
       amountMonthly: params.amountMonthly,
       currency: params.currency || 'JPY',
       isActive: params.isActive ?? true,
       description: params.description || null,
+      featureRules: params.featureRules || {},
+      snsConnectionLimit: Number.isFinite(params.snsConnectionLimit) ? Math.max(0, Number(params.snsConnectionLimit)) : 3,
     });
     if (!invoke.ok) {
-      const message =
-        (invoke.body && typeof invoke.body === 'object' && (invoke.body as any).error) ||
-        invoke.text ||
-        `status=${invoke.status}`;
-      throw new Error(`プラン保存に失敗しました。（${String(message)} / status=${invoke.status}）`);
+      throw new Error(getFunctionErrorMessage(invoke, 'プラン保存に失敗しました。'));
     }
+  },
+
+  async listOrgPlanSchedules(orgId: string): Promise<OrgPlanSchedule[]> {
+    const client = requireSupabase();
+    const { data, error } = await client
+      .from('org_subscription_plan_schedules')
+      .select('id, org_id, billing_plan_id, status, effective_at, applied_at, canceled_at, note, created_at, updated_at, billing_plan:billing_plans (id, code, name, amount_monthly, currency, is_active, description, feature_rules, sns_connection_limit, created_at, updated_at)')
+      .eq('org_id', orgId)
+      .order('effective_at', { ascending: true });
+    if (error) {
+      if (isMissingRelationError(error)) return [];
+      throw error;
+    }
+    return ((data || []) as DbOrgPlanScheduleRow[]).map(mapOrgPlanSchedule);
+  },
+
+  async deleteBillingPlans(planCodes: string[]): Promise<BillingPlanDeleteResult[]> {
+    const uniqueCodes = Array.from(new Set(planCodes.map((code) => code.trim().toUpperCase()).filter((code) => code.length > 0)));
+    if (uniqueCodes.length === 0) return [];
+
+    const invoke = await invokeFunctionByHttp('admin-billing-plan-delete', {
+      planCodes: uniqueCodes,
+    });
+    if (!invoke.ok) {
+      throw new Error(getFunctionErrorMessage(invoke, 'プラン削除に失敗しました。'));
+    }
+
+    const body = invoke.body && typeof invoke.body === 'object' ? (invoke.body as Record<string, unknown>) : {};
+    const rawResults = Array.isArray(body.results) ? body.results : [];
+    return rawResults.map((row) => {
+      const typed = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
+      return {
+        code: String(typed.code || '').trim().toUpperCase(),
+        deleted: Boolean(typed.deleted),
+        blockedUserCount: Number(typed.blockedUserCount || 0),
+        blockedStoreCount: Number(typed.blockedStoreCount || 0),
+        message: typeof typed.message === 'string' ? typed.message : undefined,
+      } satisfies BillingPlanDeleteResult;
+    }).filter((item) => item.code.length > 0);
   },
 };

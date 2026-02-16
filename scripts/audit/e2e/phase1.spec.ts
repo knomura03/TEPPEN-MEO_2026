@@ -518,40 +518,14 @@ test('Phase1: Approval workflow (USER -> MANAGER approve/reject)', async ({ page
   await logout(page);
 });
 
-test('Phase1: Store group CRUD + per-user controls + CSV import', async ({ page }, testInfo) => {
+test('Phase1: User controls + CSV import', async ({ page }, testInfo) => {
   await ensureLoggedOut(page);
   await login(page, env.admin);
   await ensureStoreSelected(page);
 
   await navigateToView(page, 'USER_MANAGEMENT', page.locator('h1', { hasText: 'ユーザー管理' }).first());
 
-  // Create store group with the first store only (minimal).
-  await page.getByTestId('store-group-add').click();
-  await expect(page.getByText('店舗グループ作成')).toBeVisible();
-  const groupModal = page.getByTestId('store-group-modal');
-  const groupName = `[AUDIT] ${runId} group`;
-  await page.getByTestId('store-group-name').fill(groupName);
-  await groupModal.locator('input[type="checkbox"]').first().check();
-  await page.getByTestId('store-group-save').click();
-  await expect(page.getByText(groupName, { exact: true })).toBeVisible();
-
-  // P1-09: bulk apply a visibility setting to the group.
-  const bulkGroupSelect = page.getByTestId('store-group-bulk-group-select');
-  const bulkOption = bulkGroupSelect.locator('option').filter({ hasText: groupName }).first();
-  const bulkGroupId = await bulkOption.getAttribute('value');
-  if (bulkGroupId) {
-    await bulkGroupSelect.selectOption(bulkGroupId);
-  }
-  await page.getByTestId('store-group-bulk-state-select').selectOption('ADMIN_ONLY');
-  await page.getByTestId('store-group-bulk-apply').click();
-  const bulkApplySucceeded = page.getByText('一括設定完了');
-  const bulkApplyFailed = page.getByText('一括設定エラー');
-  await Promise.race([
-    bulkApplySucceeded.waitFor({ state: 'visible', timeout: 60_000 }),
-    bulkApplyFailed.waitFor({ state: 'visible', timeout: 60_000 }).then(async () => {
-      throw new Error('Bulk group feature upsert failed (一括設定エラー).');
-    }),
-  ]);
+  const csvStoreName = `[AUDIT] ${runId} store`;
 
   // Prepare CSV target user (first option) and enable CSV + increase store limit.
   const userSelect = page.getByTestId('store-csv-user-select');
@@ -579,7 +553,7 @@ test('Phase1: Store group CRUD + per-user controls + CSV import', async ({ page 
   // Build a valid CSV (1 row) and execute import.
   const csvBody = [
     'store_name,address,phone,category,business_hours,website,note',
-    `"${groupName} store","Tokyo","03-1234-9999","Cafe","Mon:10:00-19:00","","audit"`,
+    `"${csvStoreName}","Tokyo","03-1234-9999","Cafe","Mon:10:00-19:00","","audit"`,
     '',
   ].join('\n');
   const csvPath = testInfo.outputPath('stores.csv');

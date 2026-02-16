@@ -1,23 +1,23 @@
 # TEPPEN MEO：ロール/権限設計（権限フラグ方式）
 
-最終更新: 2026-02-09
+最終更新: 2026-02-14
 
 ## 目的
-ロール（ADMIN/MANAGER/USER）の呼び名や範囲が将来変わっても、実装や運用が壊れないようにします。
+ロール（ADMIN/SUPERVISOR/MANAGER/USER）の呼び名や範囲が将来変わっても、実装や運用が壊れないようにします。
 
 そのために、**ロール名ではなく「権限フラグ」で機能アクセスを制御**します。
 
 ## ロール定義（確定: 2026-02-09）
 ロールは4段階に整理しました（内部と顧客を明確に分離します）。
 
-- **ADMIN**: 内部。全権（全組織/全店舗/全設定/全ログ/全ユーザー作成）。
-- **SUPERVISOR**: 内部。販売代理店（旧MANAGERの置換）。顧客ORGの管理（契約プラン割当、顧客ユーザー招待、上限管理など）。
-- **MANAGER**: 顧客。ORG内リーダー（店舗責任者）。顧客ユーザー管理（USER招待）や承認などの運用権限。
+- **ADMIN**: 内部。全権（全グループ/全店舗/全設定/全ログ/全ユーザー作成）。
+- **SUPERVISOR**: 内部。販売代理店（旧MANAGERの置換）。顧客グループの管理（契約プラン割当、顧客ユーザー招待、上限管理など）。
+- **MANAGER**: 顧客。グループ内リーダー（店舗責任者）。顧客ユーザー管理（USER招待）や承認などの運用権限。
 - **USER**: 顧客。一般ユーザー（店舗スタッフ）。基本機能（投稿/受信箱/設定など）。
 
 補足:
 - **旧`MANAGER`（代理店）= 新`SUPERVISOR`**へ移行する前提（DB migrationで置換）。
-- 新`MANAGER`は「顧客側のORG内リーダー」として新規に作成していく。
+- 新`MANAGER`は「顧客側のグループ内リーダー」として新規に作成していく。
 
 ## 基本方針（重要）
 1. **表示制御（フロント）**: 画面・ボタンは権限に応じて表示/非活性にする（UX）。
@@ -34,10 +34,10 @@
 - `canManageIntegrations`：外部連携（GBP等）の接続/解除、再同期
 - `canViewAuditLogs`：監査ログ閲覧
 - `canManageBillingPlans`：契約プラン（Plan catalog）の作成/更新/有効化
-- `canSetOrgPlan`：ORGへの契約プラン割当/変更（`org_subscriptions`）
+- `canSetStorePlan`：店舗への契約プラン割当/変更（`store_subscriptions`）
 - `canManageUserStoreControls`：ユーザー別 店舗上限/CSV一括ON-OFF（`user_store_controls`）
 - `canManageSystemSettings`：システム設定（将来: GUIで鍵管理等）
-- `canManageStoreGroups`：店舗グループCRUD・グループ一括設定（P1-08/09）
+- `canManageGroups`：グループ作成/名称変更（Settings > グループ）
 
 ### 日常機能
 - `canCreatePosts`：投稿作成/編集/削除
@@ -58,8 +58,8 @@
 - **顧客ユーザーの定義**: `MANAGER` / `USER`
 - **FeatureFlagの`ADMIN_ONLY`**: 内部のみ（`ADMIN`/`SUPERVISOR`）
 - **契約プラン割当（請求は外部運用）**
-  - プラン割当単位はORG（`org_subscriptions`）
-  - 内部（`ADMIN`/`SUPERVISOR`）が「そのORGで最初の顧客ユーザー（`MANAGER`/`USER`）を作成」する場合のみ、`planCode`を必須にする（事故防止）
+  - プラン割当単位は店舗（`store_subscriptions`）
+  - 内部（`ADMIN`/`SUPERVISOR`）が店舗付きで顧客ユーザー（`MANAGER`/`USER`）を作成する場合、`planCode`を指定すると店舗プランを即時反映できる
   - 顧客`MANAGER`がユーザー招待する場合は、`planCode`は無視する（顧客がプランを触れない運用を保証）
 
 運用手順は `docs/15_CONTRACT_PLAN_OPERATIONS.md` を参照。
@@ -80,3 +80,9 @@ knomuraの工数を最小にするため、最終的には以下を管理画面�
 - 変更は監査ログに自動記録
 
 ※MVPでは「安全運用」を優先し、秘密情報の登録は環境変数運用になる可能性があります（`docs/04_ENV_AND_SECRETS.md`）。
+
+## 関連ドキュメント
+- `/Users/nomurakatsuya/.codex/worktrees/b98f/TEPPEN-MEO_2026/docs/22_ROLE_ACCESS_MATRIX.md`（UI表示/操作/API/RLSを1枚で確認）
+- `/Users/nomurakatsuya/.codex/worktrees/b98f/TEPPEN-MEO_2026/docs/19_USER_CRUD_RUNBOOK.md`（招待/編集/削除の実運用手順）
+- `/Users/nomurakatsuya/.codex/worktrees/b98f/TEPPEN-MEO_2026/docs/26_MANAGEMENT_UNIT_OPERATIONS.md`（ADMIN向け: 管理ユニット運用手順）
+- `/Users/nomurakatsuya/.codex/worktrees/b98f/TEPPEN-MEO_2026/docs/27_USER_PROVISIONING_RULES.md`（新規作成/既存追加ルール）

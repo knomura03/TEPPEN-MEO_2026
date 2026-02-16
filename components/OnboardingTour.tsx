@@ -109,7 +109,12 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({ onComplete, isOp
 
     const target = document.getElementById(targetId);
     if (!target) return;
-    target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+
+    const rect = target.getBoundingClientRect();
+    const block: ScrollLogicalPosition =
+      rect.height > window.innerHeight * 0.6 || rect.width > window.innerWidth * 0.8 ? 'start' : 'center';
+
+    target.scrollIntoView({ block, inline: 'nearest', behavior: 'smooth' });
   }, [currentStep, steps, isOpen]);
 
   if (!isOpen) return null;
@@ -142,6 +147,8 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({ onComplete, isOp
       >
         <button
           onClick={onComplete}
+          data-testid="tour-close"
+          aria-label="ガイドを閉じる"
           className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
         >
           <X size={20} />

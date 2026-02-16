@@ -288,7 +288,7 @@ TEPPEN MEO の「ユーザー・契約管理」→「新規ユーザー作成」
 - 上限を超える行数のCSVは取り込めません
 
 ## （Phase0）Provider設定と接続テストを使うための設定
-「設定 → SNS連携設定」でProvider追加・シークレット保存・接続テストを使う場合、Functionsを2つ追加します。
+「プラットフォーム管理」でProvider追加・シークレット保存・接続テストを使う場合、Functionsを2つ追加します。
 
 ### 手順（クリック順）
 1. 上の「Functionを新規作成する手順」で `admin-provider-secret-upsert` を作成
@@ -318,15 +318,15 @@ Functionsの「Secrets」で以下を登録します。
 
 ### 動作確認
 1. TEPPEN MEOにADMINでログイン
-2. 「設定 → SNS連携設定」を開く
+2. 「プラットフォーム管理」を開く
 3. Providerを1つ選んで設定JSONを保存
 4. シークレットを入力して保存
 5. 「接続テスト」を押す
 6. 接続状態が `CONNECTED` または `ERROR` で更新されればOK
 
 ### 補足（重要）
-- 現時点の `接続テスト` は「外部APIへの実通信」ではなく、**設定JSONとSecretが保存されているか**の確認です。
-- つまり `CONNECTED` は「接続準備が完了」の意味です（本番APIの疎通試験は後続Phaseで拡張予定）。
+- 現時点の `接続テスト` は、**実APIの read-only 疎通**まで行います（`CONNECTED / ERROR` が嘘にならないようにするため）。
+- `CONNECTED` は「接続して利用可能」まで到達した状態を意味します。
 
 ## （P2-01）OAuth共通基盤を有効化する手順（IG/FB/GBP）
 OAuthの「連携する/連携解除」ボタンを使うには、P2-01 migrationが必要です。
@@ -335,13 +335,13 @@ OAuthの「連携する/連携解除」ボタンを使うには、P2-01 migratio
 1. Supabaseの「SQL Editor」を開く
 2. `supabase/migrations/202602060010_p2_oauth_common_foundation.sql` を貼り付けて実行
 3. `Success. No rows returned` を確認する
-4. TEPPEN MEOを再読み込みして「設定 → SNS連携設定」を開く
+4. TEPPEN MEOを再読み込みして「プラットフォーム管理」を開く
 
 ### 動作確認（最小）
 1. OAUTH2 provider（Facebook / Instagram / GBP）を選ぶ
 2. 「連携する」を押す
 3. OAuthモーダルに認可URLが表示されることを確認
-4. 仮の認可コードを入力して「接続を完了」を押す
+4. 認可画面で許可し、コールバックでTEPPENに戻る（認可コード貼り付け不要）
 5. カードの `connection` が `CONNECTED` になることを確認
 6. 「連携解除」を押し、`DISCONNECTED` に戻ることを確認
 
@@ -400,7 +400,7 @@ OAuthの「連携する/連携解除」ボタンを使うには、P2-01 migratio
 7. `facebook-reply-message` も `Verify JWT = OFF` にする
 
 ### 手順3: Facebook provider設定（GUI）
-1. TEPPEN MEOで「設定 → SNS連携設定」を開く
+1. TEPPEN MEOで「プラットフォーム管理」を開く
 2. Facebookの「Provider設定（Admin）」で設定JSONに `page_id`（または `facebook_page_id`）を入れる
 3. シークレット欄にアクセストークンを入力して「設定を保存」
 4. 「接続テスト」を押して `CONNECTED` を確認
@@ -415,7 +415,7 @@ OAuthの「連携する/連携解除」ボタンを使うには、P2-01 migratio
 - いずれも `post_publish_logs` に履歴が残る
 
 ### 手順5: GUIで返信実行確認
-1. ADMINまたはMANAGERで「統合受信箱」を開く
+1. ADMINまたはMANAGERで「受信箱」を開く
 2. Facebookメッセージ（未返信）を選び、返信文を入力して送信
 
 期待結果:
@@ -743,7 +743,7 @@ NAP整合性チェック（P3-05）の結果から、未対応アラートを一
 
 #### 手順3: もう一度GUI操作
 1. TEPPEN MEOでいったん `ログアウト` して再ログイン（トークン更新）
-2. `設定 -> SNS連携設定`
+2. `プラットフォーム管理`
 3. Providerを選択
 4. `設定を保存` → `接続テスト`
 

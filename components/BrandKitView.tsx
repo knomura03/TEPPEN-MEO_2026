@@ -15,6 +15,7 @@ import {
   PAGE_SECTION_TITLE_CLASS,
   PAGE_WARNING_CLASS,
 } from './ui/pageLayout';
+import { formatViewLabel } from './ui/formatters';
 
 interface BrandKitViewProps {
   currentUser: User;
@@ -96,7 +97,7 @@ export const BrandKitView: React.FC<BrandKitViewProps> = ({ currentUser }) => {
   return (
     <div className={PAGE_CONTAINER_CLASS}>
       <section>
-        <h1 className={PAGE_HEADER_TITLE_CLASS}>ブランドキット</h1>
+        <h1 className={PAGE_HEADER_TITLE_CLASS}>{formatViewLabel('BRAND_KIT')}</h1>
         <p className={PAGE_HEADER_DESCRIPTION_CLASS}>投稿文の表現ルール（口調・NGワード・推奨ハッシュタグ・署名）を管理します。</p>
       </section>
 
@@ -111,7 +112,7 @@ export const BrandKitView: React.FC<BrandKitViewProps> = ({ currentUser }) => {
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
             <h2 className={PAGE_SECTION_TITLE_CLASS}>投稿ルール</h2>
-            <p className={PAGE_SECTION_DESCRIPTION_CLASS}>入力した内容は、同じ組織の投稿作成画面で共通利用されます。</p>
+            <p className={PAGE_SECTION_DESCRIPTION_CLASS}>入力した内容は、同じグループ内の投稿作成画面で共通利用されます。</p>
           </div>
           {isLoading && <span className="text-xs text-gray-500 dark:text-gray-400">読み込み中...</span>}
         </div>

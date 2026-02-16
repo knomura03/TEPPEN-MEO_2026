@@ -7,8 +7,9 @@ import { surveyAssetService } from '../services/surveyAssetService';
 import { surveyMediaService } from '../services/surveyMediaService';
 import { DEFAULT_SURVEY_COPY } from '../services/surveyCopy';
 import { getErrorMessage } from '../services/errorMessage';
-import { PlusCircle, Save, Rocket, Archive, Copy, ExternalLink, Download, QrCode, FileText } from 'lucide-react';
+import { PlusCircle, Save, Rocket, Archive, Copy, ExternalLink, Download, QrCode, FileText, Trash2 } from 'lucide-react';
 import { PAGE_CARD_PADDED_CLASS, PAGE_CONTAINER_CLASS, PAGE_HEADER_DESCRIPTION_CLASS, PAGE_HEADER_TITLE_CLASS, PAGE_WARNING_CLASS } from './ui/pageLayout';
+import { formatViewLabel } from './ui/formatters';
 
 interface SurveyManagerViewProps {
   currentUser: User;
@@ -40,6 +41,8 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string | null>(null);
+  const [surveySearchTerm, setSurveySearchTerm] = useState('');
+  const [surveyStatusFilter, setSurveyStatusFilter] = useState<'ALL' | Survey['status']>('ALL');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [reviewRedirectUrl, setReviewRedirectUrl] = useState('');
@@ -57,6 +60,8 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
   const [analytics, setAnalytics] = useState<SurveyAnalytics | null>(null);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
   const [isGeneratingAsset, setIsGeneratingAsset] = useState(false);
+  const [selectedSurveyIds, setSelectedSurveyIds] = useState<string[]>([]);
+  const [isDeletingSurveys, setIsDeletingSurveys] = useState(false);
   const headerImageObjectUrlRef = useRef<string | null>(null);
   const getSurveyStatusLabel = (status: Survey['status']) => {
     if (status === 'PUBLISHED') return '公開中';
@@ -68,6 +73,26 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
     () => surveys.find((survey) => survey.id === selectedSurveyId) || null,
     [surveys, selectedSurveyId]
   );
+
+  const filteredSurveys = useMemo(() => {
+    const normalizedSearch = surveySearchTerm.trim().toLowerCase();
+    return surveys
+      .filter((survey) => {
+        if (surveyStatusFilter !== 'ALL' && survey.status !== surveyStatusFilter) {
+          return false;
+        }
+        if (!normalizedSearch) return true;
+        const titleText = survey.title.toLowerCase();
+        const descriptionText = (survey.description || '').toLowerCase();
+        return titleText.includes(normalizedSearch) || descriptionText.includes(normalizedSearch);
+      })
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  }, [surveySearchTerm, surveyStatusFilter, surveys]);
+
+  useEffect(() => {
+    const available = new Set(surveys.map((survey) => survey.id));
+    setSelectedSurveyIds((prev) => prev.filter((id) => available.has(id)));
+  }, [surveys]);
 
   const clearObjectPreviewUrl = () => {
     if (headerImageObjectUrlRef.current) {
@@ -474,6 +499,56 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
     }
   };
 
+  const toggleSurveySelection = (surveyId: string) => {
+    setSelectedSurveyIds((prev) => (
+      prev.includes(surveyId)
+        ? prev.filter((id) => id !== surveyId)
+        : [...prev, surveyId]
+    ));
+  };
+
+  const toggleSelectAllSurveys = () => {
+    if (filteredSurveys.length === 0) {
+      setSelectedSurveyIds([]);
+      return;
+    }
+    setSelectedSurveyIds((prev) => (
+      prev.filter((id) => filteredSurveys.some((survey) => survey.id === id)).length === filteredSurveys.length
+        ? prev.filter((id) => !filteredSurveys.some((survey) => survey.id === id))
+        : Array.from(new Set([...prev, ...filteredSurveys.map((survey) => survey.id)]))
+    ));
+  };
+
+  const handleBulkDeleteSurveys = async () => {
+    if (selectedSurveyIds.length === 0) {
+      addNotification('選択エラー', '削除対象のアンケートを選択してください。', 'WARNING');
+      return;
+    }
+    if (!window.confirm(`選択した ${selectedSurveyIds.length} 件のアンケートを削除しますか？`)) {
+      return;
+    }
+
+    setIsDeletingSurveys(true);
+    try {
+      const targets = surveys.filter((survey) => selectedSurveyIds.includes(survey.id));
+      await Promise.allSettled(
+        targets.map(async (survey) => {
+          if (!survey.headerImageStoragePath) return;
+          await surveyMediaService.deleteHeaderImage(survey.headerImageStoragePath);
+        })
+      );
+      await surveyService.deleteMany(selectedSurveyIds);
+      setSelectedSurveyIds([]);
+      addNotification('一括削除完了', `${selectedSurveyIds.length} 件のアンケートを削除しました。`, 'SUCCESS');
+      await loadSurveys();
+    } catch (error) {
+      console.error('[SurveyManagerView] Failed to delete surveys:', error);
+      addNotification('削除エラー', `アンケートの一括削除に失敗しました。${getErrorMessage(error) ? `（${getErrorMessage(error)}）` : ''}`, 'ERROR');
+    } finally {
+      setIsDeletingSurveys(false);
+    }
+  };
+
   const handleCopyPublicUrl = async () => {
     if (!selectedSurvey?.publicToken) {
       addNotification('未公開', 'このアンケートはまだ公開されていません。', 'WARNING');
@@ -566,9 +641,9 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
   return (
     <div className={PAGE_CONTAINER_CLASS}>
       <div>
-        <h1 className={PAGE_HEADER_TITLE_CLASS}>アンケート</h1>
+        <h1 className={PAGE_HEADER_TITLE_CLASS}>{formatViewLabel('SURVEY')}</h1>
         <p className={PAGE_HEADER_DESCRIPTION_CLASS}>
-          アンケートを作成して公開URLを発行します。公開中はユーザーごとに1件までです。
+          アンケートを作成して公開URLを発行します。公開中にできるアンケートは1件までです。
         </p>
       </div>
 
@@ -582,23 +657,68 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
         <div id="survey-list-panel" className={`${PAGE_CARD_PADDED_CLASS} space-y-4`}>
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-gray-800 dark:text-white">アンケート一覧</h2>
-            <button
-              type="button"
-              onClick={() => void loadSurveys()}
-              className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded-lg"
-            >
-              再読み込み
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleSelectAllSurveys}
+                className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+              >
+                {filteredSurveys.length > 0 && filteredSurveys.every((survey) => selectedSurveyIds.includes(survey.id))
+                  ? '選択解除'
+                  : '表示中を選択'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBulkDeleteSurveys()}
+                disabled={selectedSurveyIds.length === 0 || isDeletingSurveys}
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Trash2 size={14} />
+                {isDeletingSurveys ? '削除中...' : `選択削除 (${selectedSurveyIds.length})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => void loadSurveys()}
+                className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded-lg"
+              >
+                再読み込み
+              </button>
+            </div>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <input
+              id="survey-search"
+              data-testid="survey-search"
+              type="text"
+              value={surveySearchTerm}
+              onChange={(e) => setSurveySearchTerm(e.target.value)}
+              placeholder="タイトル・説明で検索"
+              className="w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
+            />
+            <select
+              id="survey-status-filter"
+              data-testid="survey-status-filter"
+              value={surveyStatusFilter}
+              onChange={(e) => setSurveyStatusFilter(e.target.value as 'ALL' | Survey['status'])}
+              className="w-full p-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
+            >
+              <option value="ALL">すべての状態</option>
+              <option value="DRAFT">下書き</option>
+              <option value="PUBLISHED">公開中</option>
+              <option value="ARCHIVED">アーカイブ</option>
+            </select>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            表示: {filteredSurveys.length} / 全体: {surveys.length}
+          </p>
 
           {isLoading && <p className="text-sm text-gray-500 dark:text-gray-400">読み込み中...</p>}
 
           <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
-            {surveys.map((survey) => (
-              <button
+            {filteredSurveys.map((survey) => (
+              <div
                 key={survey.id}
-                type="button"
-                onClick={() => setSelectedSurveyId(survey.id)}
                 data-testid="survey-list-item"
                 data-survey-id={survey.id}
                 data-survey-status={survey.status}
@@ -609,27 +729,43 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
                     : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20'
                 }`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-semibold text-gray-800 dark:text-white truncate">{survey.title}</p>
-                  <span
-                    className={`text-[11px] px-2 py-0.5 rounded-full ${
-                      survey.status === 'PUBLISHED'
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                        : survey.status === 'DRAFT'
-                          ? 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
-                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                    }`}
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedSurveyIds.includes(survey.id)}
+                    onChange={() => toggleSurveySelection(survey.id)}
+                    className="mt-1 h-4 w-4"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSurveyId(survey.id)}
+                    className="flex-1 min-w-0 text-left"
                   >
-                    {getSurveyStatusLabel(survey.status)}
-                  </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold text-gray-800 dark:text-white truncate">{survey.title}</p>
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-full ${
+                          survey.status === 'PUBLISHED'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                            : survey.status === 'DRAFT'
+                              ? 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
+                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                        }`}
+                      >
+                        {getSurveyStatusLabel(survey.status)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      回答数: {survey.responseCount} / 高評価とみなす点数: {survey.positiveThreshold}点 / 更新: {survey.updatedAt.toLocaleString('ja-JP')}
+                    </p>
+                  </button>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  回答数: {survey.responseCount} / 口コミ案内の基準点: {survey.positiveThreshold}点 / 更新: {survey.updatedAt.toLocaleString('ja-JP')}
-                </p>
-              </button>
+              </div>
             ))}
-            {!isLoading && surveys.length === 0 && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">アンケートがありません。右側で作成してください。</p>
+            {!isLoading && filteredSurveys.length === 0 && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                条件に一致するアンケートがありません。検索条件を見直してください。
+              </p>
             )}
           </div>
         </div>
@@ -662,7 +798,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                高評価時の遷移URL（任意）
+                高評価だったときに開くURL（任意）
               </label>
               <input
                 type="url"
@@ -675,7 +811,7 @@ export const SurveyManagerView: React.FC<SurveyManagerViewProps> = ({ currentUse
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                口コミ案内の基準点（この点数以上で案内）
+                高評価とみなす点数（この点数以上）
               </label>
               <select
                 data-testid="survey-positive-threshold"

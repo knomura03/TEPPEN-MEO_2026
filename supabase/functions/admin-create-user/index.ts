@@ -1,24 +1,76 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resolveAuthenticatedUserId } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const jsonResponse = (status: number, body: Record<string, unknown>) => {
-  return new Response(JSON.stringify(body), {
+const EXISTING_EMAIL_ERROR = 'すでに存在しているユーザーのため招待できません。別のメールアドレスを指定してください。';
+
+type AppRole = 'ADMIN' | 'SUPERVISOR' | 'MANAGER' | 'USER';
+
+const jsonResponse = (status: number, body: Record<string, unknown>) =>
+  new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
+
+const normalizeRole = (raw: unknown): AppRole | null => {
+  const role = String(raw || '').trim().toUpperCase();
+  if (role === 'ADMIN' || role === 'SUPERVISOR' || role === 'MANAGER' || role === 'USER') return role;
+  return null;
 };
 
-const extractBearerToken = (headerValue: string | null): string => {
-  if (!headerValue) return '';
-  const matched = headerValue.match(/Bearer\s+([^,\s]+)/i);
-  if (matched?.[1]) {
-    return matched[1].trim();
+const canCreateRole = (actorRole: AppRole, targetRole: AppRole): boolean => {
+  if (actorRole === 'ADMIN') return true;
+  if (actorRole === 'SUPERVISOR') return targetRole === 'MANAGER' || targetRole === 'USER';
+  if (actorRole === 'MANAGER') return targetRole === 'USER';
+  return false;
+};
+
+const normalizeRedirectTo = (value: string | null | undefined): string | null => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed.toString();
+  } catch {
+    return null;
   }
-  return headerValue.trim();
+};
+
+const resolveInviteRedirectTo = (req: Request, payloadValue: string | undefined): string | undefined => {
+  const allowlistRaw =
+    Deno.env.get('INVITE_REDIRECT_ALLOWLIST') ||
+    Deno.env.get('APP_INVITE_REDIRECT_ALLOWLIST') ||
+    '';
+  const allowlist = allowlistRaw
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  const isAllowed = (urlValue: string) => {
+    if (allowlist.length === 0) return true;
+    return allowlist.some((prefix) => urlValue.startsWith(prefix));
+  };
+
+  const fromPayload = normalizeRedirectTo(payloadValue);
+  if (fromPayload && isAllowed(fromPayload)) return fromPayload;
+
+  const fromEnv =
+    normalizeRedirectTo(Deno.env.get('INVITE_REDIRECT_URL')) ||
+    normalizeRedirectTo(Deno.env.get('APP_INVITE_REDIRECT_URL'));
+  if (fromEnv && isAllowed(fromEnv)) return fromEnv;
+
+  const requestOrigin = normalizeRedirectTo(req.headers.get('origin'));
+  if (requestOrigin && isAllowed(requestOrigin)) {
+    const base = requestOrigin.endsWith('/') ? requestOrigin.slice(0, -1) : requestOrigin;
+    return `${base}/invite`;
+  }
+
+  return undefined;
 };
 
 const findUserIdByEmail = async (
@@ -26,7 +78,6 @@ const findUserIdByEmail = async (
   email: string
 ): Promise<string | null> => {
   const normalized = email.trim().toLowerCase();
-  // Fallback only. This is used when createUser fails due to an existing account.
   for (let page = 1; page <= 10; page++) {
     const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 });
     if (error || !data?.users) return null;
@@ -37,28 +88,75 @@ const findUserIdByEmail = async (
   return null;
 };
 
-const resolveAuthenticatedUserId = async (
-  req: Request,
-  supabaseUrl: string,
-  serviceRoleKey: string
-): Promise<{ userId: string | null; error: string | null }> => {
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader || authHeader.trim().length === 0) {
-    return { userId: null, error: 'Missing auth token' };
-  }
-  const token = extractBearerToken(authHeader);
-  if (!token) {
-    return { userId: null, error: 'Missing auth token' };
+const resolveActorRoleForOrg = async (
+  supabaseAdmin: ReturnType<typeof createClient>,
+  actorUserId: string,
+  targetOrgId: string
+): Promise<{ actorRole: AppRole | null; targetOrgManagementUnitId: string | null }> => {
+  const { data: actorMembershipRows, error: actorMembershipError } = await supabaseAdmin
+    .from('memberships')
+    .select('org_id, role')
+    .eq('user_id', actorUserId);
+  if (actorMembershipError) {
+    throw new Error(actorMembershipError.message);
   }
 
-  const authClient = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { data, error } = await authClient.auth.getUser(token);
-  if (error || !data?.user?.id) {
-    return { userId: null, error: error?.message || 'Invalid auth token' };
+  const memberships = (actorMembershipRows || []) as Array<{ org_id: string; role: string }>;
+  const actorRoles = memberships
+    .map((row) => normalizeRole(row.role))
+    .filter((role): role is AppRole => Boolean(role));
+  const isAdmin = actorRoles.includes('ADMIN');
+  const isSupervisor = actorRoles.includes('SUPERVISOR');
+  const isManagerInTargetOrg = memberships.some(
+    (row) => row.org_id === targetOrgId && normalizeRole(row.role) === 'MANAGER'
+  );
+
+  const { data: targetOrgRow, error: targetOrgError } = await supabaseAdmin
+    .from('organizations')
+    .select('id, management_unit_id')
+    .eq('id', targetOrgId)
+    .maybeSingle();
+  if (targetOrgError || !targetOrgRow) {
+    throw new Error(targetOrgError?.message || 'group not found');
   }
-  return { userId: data.user.id, error: null };
+  const targetOrgManagementUnitId = String(targetOrgRow.management_unit_id || '');
+
+  if (isAdmin) {
+    return {
+      actorRole: 'ADMIN',
+      targetOrgManagementUnitId: targetOrgManagementUnitId || null,
+    };
+  }
+
+  if (isSupervisor) {
+    const { data: actorUnitRow, error: actorUnitError } = await supabaseAdmin
+      .from('management_unit_supervisors')
+      .select('management_unit_id')
+      .eq('supervisor_user_id', actorUserId)
+      .maybeSingle();
+    if (actorUnitError) {
+      throw new Error(actorUnitError.message);
+    }
+    const actorUnitId = String(actorUnitRow?.management_unit_id || '');
+    if (actorUnitId && actorUnitId === targetOrgManagementUnitId) {
+      return {
+        actorRole: 'SUPERVISOR',
+        targetOrgManagementUnitId: targetOrgManagementUnitId || null,
+      };
+    }
+  }
+
+  if (isManagerInTargetOrg) {
+    return {
+      actorRole: 'MANAGER',
+      targetOrgManagementUnitId: targetOrgManagementUnitId || null,
+    };
+  }
+
+  return {
+    actorRole: null,
+    targetOrgManagementUnitId: targetOrgManagementUnitId || null,
+  };
 };
 
 Deno.serve(async (req) => {
@@ -93,7 +191,7 @@ Deno.serve(async (req) => {
     storeId?: string;
     orgId?: string;
     planCode?: string;
-    // Optional: when provided, create/update the user with a known password (no invite email).
+    redirectTo?: string;
     password?: string;
   };
   try {
@@ -104,172 +202,107 @@ Deno.serve(async (req) => {
 
   const email = payload.email?.trim().toLowerCase();
   const name = payload.name?.trim();
-  const role = payload.role?.toUpperCase();
+  const role = normalizeRole(payload.role);
   const storeId = payload.storeId?.trim();
   const orgId = payload.orgId?.trim();
   const planCode = payload.planCode?.trim().toUpperCase();
   const password = payload.password?.trim();
+  const inviteRedirectTo = resolveInviteRedirectTo(req, payload.redirectTo);
 
   if (!email || !name || !role) {
     return jsonResponse(400, { error: 'Missing required fields' });
   }
-
-  const allowedRoles = new Set(['ADMIN', 'SUPERVISOR', 'MANAGER', 'USER']);
-  if (!allowedRoles.has(role)) {
-    return jsonResponse(400, { error: 'Invalid role' });
+  if (!orgId || !storeId) {
+    return jsonResponse(400, { error: 'group and store are required' });
   }
 
-  let targetOrgId = orgId || null;
-  if (storeId) {
-    const { data: storeRow, error: storeError } = await supabaseAdmin
-      .from('stores')
-      .select('id, org_id')
-      .eq('id', storeId)
-      .maybeSingle();
-    if (storeError || !storeRow) {
-      return jsonResponse(400, { error: 'Store not found' });
-    }
-    targetOrgId = storeRow.org_id;
+  const { data: storeRow, error: storeError } = await supabaseAdmin
+    .from('stores')
+    .select('id, org_id')
+    .eq('id', storeId)
+    .maybeSingle();
+  if (storeError || !storeRow) {
+    return jsonResponse(400, { error: 'Store not found' });
+  }
+  if (storeRow.org_id !== orgId) {
+    return jsonResponse(400, { error: 'storeId is not part of orgId' });
   }
 
-  if (!targetOrgId) {
-    return jsonResponse(400, { error: 'orgId is required when storeId is omitted' });
+  let actorContext: { actorRole: AppRole | null; targetOrgManagementUnitId: string | null };
+  try {
+    actorContext = await resolveActorRoleForOrg(supabaseAdmin, actorUserId, orgId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to resolve actor role';
+    return jsonResponse(400, { error: message });
   }
 
-  const { data: actorMemberships, error: actorMembershipError } = await supabaseAdmin
-    .from('memberships')
-    .select('role, org_id')
-    .eq('user_id', actorUserId)
-    .eq('org_id', targetOrgId);
-  if (actorMembershipError || !actorMemberships || actorMemberships.length === 0) {
+  const actorRole = actorContext.actorRole;
+  if (!actorRole || !canCreateRole(actorRole, role)) {
     return jsonResponse(403, { error: 'Not allowed' });
   }
 
-  const actorRoles = actorMemberships.map((row: { role: string }) => row.role.toUpperCase());
-  const isAdmin = actorRoles.includes('ADMIN');
-  const isSupervisor = actorRoles.includes('SUPERVISOR');
-  const isManager = actorRoles.includes('MANAGER');
-  const isInternal = isAdmin || isSupervisor;
-
-  if (role === 'ADMIN' && !isAdmin) {
-    return jsonResponse(403, { error: 'Only ADMIN can create ADMIN' });
-  }
-  if (role === 'SUPERVISOR' && !isAdmin) {
-    return jsonResponse(403, { error: 'Only ADMIN can create SUPERVISOR' });
-  }
-  if (role === 'MANAGER' && !isInternal) {
-    return jsonResponse(403, { error: 'Only ADMIN/SUPERVISOR can create MANAGER' });
-  }
-  if (role === 'USER' && !(isInternal || isManager)) {
-    return jsonResponse(403, { error: 'Only ADMIN/SUPERVISOR/MANAGER can create USER' });
+  const existingUserId = await findUserIdByEmail(supabaseAdmin, email);
+  if (existingUserId) {
+    return jsonResponse(400, { error: EXISTING_EMAIL_ERROR });
   }
 
-  let newUserId: string;
+  let newUserId = '';
   if (password && password.length > 0) {
-    // For deterministic automation (e.g., audits), allow provisioning with a known password.
-    // This does not send an invite email.
     const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
       user_metadata: { name },
     });
-
     if (createError || !created?.user?.id) {
-      const existingUserId = await findUserIdByEmail(supabaseAdmin, email);
-      if (!existingUserId) {
-        return jsonResponse(400, { error: createError?.message || 'Failed to create user' });
-      }
-      const { data: updated, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(existingUserId, {
-        password,
-        email_confirm: true,
-        user_metadata: { name },
-      });
-      if (updateError || !updated?.user?.id) {
-        return jsonResponse(400, { error: updateError?.message || 'Failed to update user' });
-      }
-      newUserId = existingUserId;
-    } else {
-      newUserId = created.user.id;
+      return jsonResponse(400, { error: createError?.message || 'Failed to create user' });
     }
+    newUserId = created.user.id;
   } else {
-    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      data: { name },
-    });
+    const inviteOptions: { data: { name: string }; redirectTo?: string } = { data: { name } };
+    if (inviteRedirectTo) {
+      inviteOptions.redirectTo = inviteRedirectTo;
+    }
+    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, inviteOptions);
     if (inviteError || !inviteData?.user?.id) {
       return jsonResponse(400, { error: inviteError?.message || 'Failed to invite user' });
     }
     newUserId = inviteData.user.id;
   }
 
-  const { error: profileError } = await supabaseAdmin.from('profiles').upsert(
-    {
-      id: newUserId,
-      name,
-      email,
-    },
-    { onConflict: 'id' }
-  );
+  if (!newUserId) {
+    return jsonResponse(400, { error: 'Failed to resolve new user id' });
+  }
+
+  const profilePayload: Record<string, unknown> = {
+    id: newUserId,
+    name,
+    email,
+    invited_at: new Date().toISOString(),
+    password_set_at: password && password.length > 0 ? new Date().toISOString() : null,
+  };
+
+  const { error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .upsert(profilePayload, { onConflict: 'id' });
   if (profileError) {
     return jsonResponse(400, { error: profileError.message });
   }
 
-  const membershipStoreId = role === 'USER' ? storeId || null : null;
-  const { data: existingMembership, error: existingMembershipError } = await supabaseAdmin
-    .from('memberships')
-    .select('id')
-    .eq('user_id', newUserId)
-    .eq('org_id', targetOrgId)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (existingMembershipError) {
-    return jsonResponse(400, { error: existingMembershipError.message });
+  const membershipStoreId = role === 'USER' ? storeId : null;
+  const { error: membershipInsertError } = await supabaseAdmin.from('memberships').insert({
+    user_id: newUserId,
+    org_id: orgId,
+    store_id: membershipStoreId,
+    role,
+  });
+  if (membershipInsertError) {
+    return jsonResponse(400, { error: membershipInsertError.message });
   }
 
-  if (existingMembership?.id) {
-    const { error: membershipUpdateError } = await supabaseAdmin
-      .from('memberships')
-      .update({ store_id: membershipStoreId, role })
-      .eq('id', existingMembership.id);
-    if (membershipUpdateError) {
-      return jsonResponse(400, { error: membershipUpdateError.message });
-    }
-  } else {
-    const { error: membershipInsertError } = await supabaseAdmin.from('memberships').insert({
-      user_id: newUserId,
-      org_id: targetOrgId,
-      store_id: membershipStoreId,
-      role,
-    });
-    if (membershipInsertError) {
-      return jsonResponse(400, { error: membershipInsertError.message });
-    }
-  }
-
-  // Contract plan enforcement:
-  // - Internal (ADMIN/SUPERVISOR) must provide planCode when the org has no plan and they are creating a customer user (MANAGER/USER).
-  // - Customer MANAGER invitations ignore planCode to prevent plan changes by customers.
-  let orgHasPlan = false;
-  if (isInternal && (role === 'MANAGER' || role === 'USER')) {
-    const { data: existingSubscription, error: subscriptionError } = await supabaseAdmin
-      .from('org_subscriptions')
-      .select('id, billing_plan_id')
-      .eq('org_id', targetOrgId)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (subscriptionError) {
-      return jsonResponse(400, { error: subscriptionError.message });
-    }
-    orgHasPlan = Boolean(existingSubscription?.billing_plan_id);
-    if (!orgHasPlan && (!planCode || planCode.length === 0)) {
-      return jsonResponse(400, { error: 'planCode is required for the first customer user in this org' });
-    }
-  }
-
-  // Optional: assign/update contract plan for the org (billing foundation must be applied).
-  if (isInternal && planCode && planCode.length > 0) {
+  const isInternalActor = actorRole === 'ADMIN' || actorRole === 'SUPERVISOR';
+  let appliedPlanCode: string | null = null;
+  if (isInternalActor && planCode && planCode.length > 0) {
     const { data: planRow, error: planError } = await supabaseAdmin
       .from('billing_plans')
       .select('id, code, is_active')
@@ -282,57 +315,42 @@ Deno.serve(async (req) => {
       return jsonResponse(400, { error: 'billing plan is inactive' });
     }
 
-    const { data: existingSubscription, error: subscriptionError } = await supabaseAdmin
-      .from('org_subscriptions')
-      .select('id, org_id')
-      .eq('org_id', targetOrgId)
-      .order('created_at', { ascending: true })
-      .limit(1)
+    const { data: storeSubscriptionRow, error: storeSubscriptionError } = await supabaseAdmin
+      .from('store_subscriptions')
+      .upsert(
+        {
+          store_id: storeId,
+          billing_plan_id: planRow.id,
+          status: 'ACTIVE',
+        },
+        { onConflict: 'store_id' }
+      )
+      .select('id')
       .maybeSingle();
-    if (subscriptionError) {
-      return jsonResponse(400, { error: subscriptionError.message });
-    }
-
-    if (existingSubscription?.id) {
-      const { error: subscriptionUpdateError } = await supabaseAdmin
-        .from('org_subscriptions')
-        .update({
-          billing_plan_id: planRow.id,
-          status: 'ACTIVE',
-        })
-        .eq('id', existingSubscription.id);
-      if (subscriptionUpdateError) {
-        return jsonResponse(400, { error: subscriptionUpdateError.message });
-      }
-    } else {
-      const { error: subscriptionInsertError } = await supabaseAdmin
-        .from('org_subscriptions')
-        .insert({
-          org_id: targetOrgId,
-          billing_plan_id: planRow.id,
-          status: 'ACTIVE',
-        });
-      if (subscriptionInsertError) {
-        return jsonResponse(400, { error: subscriptionInsertError.message });
-      }
+    if (storeSubscriptionError || !storeSubscriptionRow?.id) {
+      return jsonResponse(400, { error: storeSubscriptionError?.message || 'Failed to set store subscription plan' });
     }
 
     await supabaseAdmin.from('audit_logs').insert({
-      org_id: targetOrgId,
+      org_id: orgId,
+      store_id: storeId,
       actor_user_id: actorUserId,
-      action: 'ORG_SUBSCRIPTION_SET_PLAN',
-      target_type: 'organization',
-      target_id: targetOrgId,
+      action: 'STORE_SUBSCRIPTION_SET_PLAN',
+      target_type: 'store_subscription',
+      target_id: storeSubscriptionRow.id,
       payload: {
-        org_id: targetOrgId,
+        store_id: storeId,
         plan_code: planCode,
         via: 'admin-create-user',
       },
     });
+    appliedPlanCode = planCode;
   }
 
   return jsonResponse(200, {
     ok: true,
     userId: newUserId,
+    appliedPlanCode,
+    targetOrgManagementUnitId: actorContext.targetOrgManagementUnitId,
   });
 });

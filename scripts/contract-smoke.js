@@ -40,12 +40,15 @@ for (const file of requiredFiles) {
   }
 }
 
-const assertIncludes = (file, token) => {
+const collectMissingToken = (file, token, sink) => {
   const text = readFileSync(join(root, file), 'utf8');
   if (!text.includes(token)) {
-    throw new Error(`Contract token not found in ${file}: ${token}`);
+    sink.push({ file, token });
   }
 };
+
+const missingTokens = [];
+const assertIncludes = (file, token) => collectMissingToken(file, token, missingTokens);
 
 assertIncludes('services/providerAdapterRegistry.ts', 'registerProviderAdapter');
 assertIncludes('services/providerAdapterRegistry.ts', 'resolveProviderAdapter');
@@ -53,8 +56,11 @@ assertIncludes('services/providerReadinessService.ts', 'testMode');
 assertIncludes('services/providerReadinessService.ts', 'runtimeMode');
 assertIncludes('services/featureFlagsService.ts', 'resolveFeatureState');
 assertIncludes('components/Layout.tsx', 'featureFlagsService.listByOrg');
-assertIncludes('components/SettingsView.tsx', 'providerCatalogService.createProvider');
-assertIncludes('components/SettingsView.tsx', 'providerConfigurationService.testConnection');
+assertIncludes('components/PlatformManagementView.tsx', 'providerCatalogService.createProvider');
+assertIncludes('components/PlatformManagementView.tsx', 'providerConfigurationService.testConnection');
+assertIncludes('components/PlatformManagementView.tsx', 'oauthConnectionService');
+assertIncludes('components/PlatformManagementView.tsx', '.start({');
+assertIncludes('components/PlatformManagementView.tsx', '.disconnect({');
 assertIncludes('services/postPublishService.ts', 'publishFacebookPost');
 assertIncludes('services/messageReplyService.ts', 'replyFacebookMessage');
 assertIncludes('services/brandKitService.ts', 'upsertBrandKit');
@@ -71,20 +77,18 @@ assertIncludes('services/napAlertService.ts', 'nap_alerts');
 assertIncludes('services/napAlertService.ts', 'syncFromRunResults');
 assertIncludes('services/inboxService.ts', 'listAssignableUsersByStore');
 assertIncludes('services/inboxService.ts', 'updateWorkflow');
-assertIncludes('components/PostList.tsx', 'Facebook投稿');
+assertIncludes('components/PostList.tsx', 'providerPostsService.fetch');
+assertIncludes('components/PostList.tsx', 'SocialPlatformBadge');
 assertIncludes('components/PostCreator.tsx', 'brandKitService.lintContent');
 assertIncludes('components/PostCreator.tsx', 'テンプレート / ブランドキット');
-assertIncludes('components/RankTrackerView.tsx', '順位計測');
-assertIncludes('components/RankTrackerView.tsx', '収集実行（MOCK）');
-assertIncludes('components/RankTrackerView.tsx', '競合ターゲット（P3-03）');
-assertIncludes('components/RankTrackerView.tsx', '順位/競合ダッシュボード（P3-04）');
-assertIncludes('components/RankTrackerView.tsx', 'NAP整合性チェック（P3-05）');
-assertIncludes('components/RankTrackerView.tsx', 'NAPアラート（P3-06）');
+assertIncludes('components/RankTrackerView.tsx', '順位・競合ダッシュボード');
+assertIncludes('components/RankTrackerView.tsx', '競合ターゲット');
+assertIncludes('components/RankTrackerView.tsx', '店舗情報チェック（名前/住所/電話）');
+assertIncludes('components/RankTrackerView.tsx', '店舗情報アラート');
 assertIncludes('components/UnifiedInbox.tsx', 'messageReplyService.replyFacebookMessage');
 assertIncludes('components/UnifiedInbox.tsx', 'ワークフローを保存');
-assertIncludes('components/SettingsView.tsx', 'ブランドキット');
-assertIncludes('components/SettingsView.tsx', 'brandKitService.upsertBrandKit');
-assertIncludes('components/SettingsView.tsx', 'brandKitService.createTemplate');
+assertIncludes('components/BrandKitView.tsx', 'brandKitService.upsertBrandKit');
+assertIncludes('components/PostTemplatesView.tsx', 'brandKitService.createTemplate');
 assertIncludes('supabase/migrations/202602060014_p2_template_brand_kit.sql', 'create table if not exists public.brand_kits');
 assertIncludes('supabase/migrations/202602060015_p3_rank_keyword_management.sql', 'create table if not exists public.rank_keywords');
 assertIncludes('supabase/functions/rank-collect/index.ts', 'rank_collection_runs');
@@ -93,5 +97,10 @@ assertIncludes('supabase/functions/rank-collect/index.ts', 'competitor_metric_sn
 assertIncludes('supabase/migrations/202602060017_p3_competitor_comparison_collection.sql', 'create table if not exists public.competitor_targets');
 assertIncludes('supabase/migrations/202602060018_p3_nap_consistency_check.sql', 'create table if not exists public.nap_consistency_runs');
 assertIncludes('supabase/migrations/202602060019_p3_nap_alert_operations.sql', 'create table if not exists public.nap_alerts');
+
+if (missingTokens.length > 0) {
+  const details = missingTokens.map((item) => `- ${item.file}: ${item.token}`).join('\n');
+  throw new Error(`Contract token missing (${missingTokens.length}):\n${details}`);
+}
 
 console.log('Contract smoke check passed.');

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -13,6 +14,7 @@ export type AuditBootstrapUsersResult = {
   storeId?: string;
   managerUserId?: string;
   userUserId?: string;
+  supervisorUserId?: string;
   error?: string;
 };
 
@@ -83,6 +85,8 @@ const requireValue = (map: Record<string, string>, key: string): string => {
 const roleRank = (role: string): number => {
   switch (String(role || '').toUpperCase()) {
     case 'ADMIN':
+      return 4;
+    case 'SUPERVISOR':
       return 3;
     case 'MANAGER':
       return 2;
@@ -118,6 +122,162 @@ const invokeEdgeFunctionJson = async (params: {
     json = undefined;
   }
   return { ok: res.ok, status: res.status, statusText: res.statusText, json, text };
+};
+
+const extractString = (value: unknown): string => {
+  if (typeof value === 'string') return value;
+  return '';
+};
+
+const findExistingUserIdByEmail = async (params: {
+  supabaseUrl: string;
+  anonKey: string;
+  accessToken: string;
+  orgId: string;
+  email: string;
+}): Promise<string | null> => {
+  const query = params.email.split('@')[0] || params.email;
+  const search = await invokeEdgeFunctionJson({
+    supabaseUrl: params.supabaseUrl,
+    anonKey: params.anonKey,
+    accessToken: params.accessToken,
+    functionName: 'admin-user-attach-existing',
+    body: {
+      orgId: params.orgId,
+      query,
+    },
+  });
+  if (!search.ok) return null;
+
+  const candidatesRaw =
+    search.json && typeof search.json === 'object' && 'candidates' in search.json
+      ? (search.json as { candidates?: unknown }).candidates
+      : undefined;
+  if (!Array.isArray(candidatesRaw)) return null;
+
+  const wanted = params.email.trim().toLowerCase();
+  for (const item of candidatesRaw) {
+    if (!item || typeof item !== 'object') continue;
+    const typed = item as { userId?: unknown; email?: unknown };
+    const email = extractString(typed.email).trim().toLowerCase();
+    const userId = extractString(typed.userId).trim();
+    if (!userId || !email) continue;
+    if (email === wanted) return userId;
+  }
+  return null;
+};
+
+const deleteUserFully = async (params: {
+  supabaseUrl: string;
+  anonKey: string;
+  accessToken: string;
+  orgId: string;
+  targetUserId: string;
+}): Promise<void> => {
+  const first = await invokeEdgeFunctionJson({
+    supabaseUrl: params.supabaseUrl,
+    anonKey: params.anonKey,
+    accessToken: params.accessToken,
+    functionName: 'admin-user-delete',
+    body: {
+      orgId: params.orgId,
+      targetUserId: params.targetUserId,
+      mode: 'FULL_DELETE',
+    },
+  });
+  if (first.status !== 409) {
+    if (!first.ok) {
+      throw new Error(`Failed to request FULL_DELETE confirm token: ${first.text} (status=${first.status})`);
+    }
+    return;
+  }
+
+  const confirmToken =
+    first.json && typeof first.json === 'object' && 'confirmToken' in first.json
+      ? extractString((first.json as { confirmToken?: unknown }).confirmToken).trim()
+      : '';
+  if (!confirmToken) {
+    throw new Error(`FULL_DELETE confirm token is missing: ${first.text}`);
+  }
+
+  const second = await invokeEdgeFunctionJson({
+    supabaseUrl: params.supabaseUrl,
+    anonKey: params.anonKey,
+    accessToken: params.accessToken,
+    functionName: 'admin-user-delete',
+    body: {
+      orgId: params.orgId,
+      targetUserId: params.targetUserId,
+      mode: 'FULL_DELETE',
+      confirmToken,
+    },
+  });
+  if (!second.ok) {
+    throw new Error(`Failed to execute FULL_DELETE: ${second.text} (status=${second.status})`);
+  }
+};
+
+const recreateAuditUser = async (params: {
+  supabaseUrl: string;
+  anonKey: string;
+  accessToken: string;
+  orgId: string;
+  storeId: string;
+  email: string;
+  password: string;
+  role: 'SUPERVISOR' | 'MANAGER' | 'USER';
+  name: string;
+  outputDir: string;
+  outputPrefix: string;
+}): Promise<string> => {
+  const existingUserId = await findExistingUserIdByEmail({
+    supabaseUrl: params.supabaseUrl,
+    anonKey: params.anonKey,
+    accessToken: params.accessToken,
+    orgId: params.orgId,
+    email: params.email,
+  });
+  if (existingUserId) {
+    try {
+      await deleteUserFully({
+        supabaseUrl: params.supabaseUrl,
+        anonKey: params.anonKey,
+        accessToken: params.accessToken,
+        orgId: params.orgId,
+        targetUserId: existingUserId,
+      });
+    } catch (error) {
+      await writeTextFile(
+        path.join(params.outputDir, `${params.outputPrefix}.delete.error.log`),
+        error instanceof Error ? error.stack || error.message : String(error)
+      );
+      throw error;
+    }
+  }
+
+  const createResult = await invokeEdgeFunctionJson({
+    supabaseUrl: params.supabaseUrl,
+    anonKey: params.anonKey,
+    accessToken: params.accessToken,
+    functionName: 'admin-create-user',
+    body: {
+      email: params.email,
+      name: params.name,
+      role: params.role,
+      orgId: params.orgId,
+      storeId: params.storeId,
+      password: params.password,
+    },
+  });
+  if (!createResult.ok) {
+    await writeJsonFile(path.join(params.outputDir, `${params.outputPrefix}.create.error.json`), createResult);
+    throw new Error(`Failed to provision ${params.role}: ${createResult.text} (status=${createResult.status})`);
+  }
+  const userId =
+    createResult.json && typeof createResult.json === 'object' && 'userId' in createResult.json
+      ? extractString((createResult.json as { userId?: unknown }).userId).trim()
+      : '';
+  return userId;
 };
 
 const toInvokeErrorInfo = async (error: unknown): Promise<InvokeErrorInfo> => {
@@ -170,6 +330,10 @@ export const ensureAuditUsers = async (params: {
 
     const userEmail = requireValue(envAudit, 'AUDIT_USER_EMAIL');
     const userPassword = requireValue(envAudit, 'AUDIT_USER_PASSWORD');
+
+    const supervisorEmail = envAudit.AUDIT_SUPERVISOR_EMAIL?.trim() || '';
+    const supervisorPassword = envAudit.AUDIT_SUPERVISOR_PASSWORD?.trim() || '';
+    const hasSupervisorCreds = Boolean(supervisorEmail && supervisorPassword);
 
     const supabase = createClient(supabaseUrl, anonKey);
 
@@ -234,46 +398,49 @@ export const ensureAuditUsers = async (params: {
       actorUserId,
     });
 
-    // Ensure MANAGER exists and can sign in (deterministic password provisioning via Edge Function).
-    const managerInvoke = await invokeEdgeFunctionJson({
-      supabaseUrl,
-      anonKey,
-      accessToken,
-      functionName: 'admin-create-user',
-      body: {
-        email: managerEmail,
-        name: '[AUDIT] Manager',
-        role: 'MANAGER',
-        orgId,
-        password: managerPassword,
-      },
-    });
-    if (!managerInvoke.ok) {
-      await writeJsonFile(path.join(params.outputDir, 'invoke.manager.error.json'), managerInvoke);
-      throw new Error(`Failed to provision manager: ${managerInvoke.text} (status=${managerInvoke.status})`);
-    }
-    out.managerUserId = String((managerInvoke.json as { userId?: string } | null)?.userId || '');
-
-    // Ensure USER exists and is scoped to the selected store.
-    const userInvoke = await invokeEdgeFunctionJson({
-      supabaseUrl,
-      anonKey,
-      accessToken,
-      functionName: 'admin-create-user',
-      body: {
-        email: userEmail,
-        name: '[AUDIT] User',
-        role: 'USER',
+    if (hasSupervisorCreds) {
+      out.supervisorUserId = await recreateAuditUser({
+        supabaseUrl,
+        anonKey,
+        accessToken,
         orgId,
         storeId,
-        password: userPassword,
-      },
-    });
-    if (!userInvoke.ok) {
-      await writeJsonFile(path.join(params.outputDir, 'invoke.user.error.json'), userInvoke);
-      throw new Error(`Failed to provision user: ${userInvoke.text} (status=${userInvoke.status})`);
+        email: supervisorEmail,
+        password: supervisorPassword,
+        role: 'SUPERVISOR',
+        name: '[AUDIT] Supervisor',
+        outputDir: params.outputDir,
+        outputPrefix: 'invoke.supervisor',
+      });
     }
-    out.userUserId = String((userInvoke.json as { userId?: string } | null)?.userId || '');
+
+    out.managerUserId = await recreateAuditUser({
+      supabaseUrl,
+      anonKey,
+      accessToken,
+      orgId,
+      storeId,
+      email: managerEmail,
+      password: managerPassword,
+      role: 'MANAGER',
+      name: '[AUDIT] Manager',
+      outputDir: params.outputDir,
+      outputPrefix: 'invoke.manager',
+    });
+
+    out.userUserId = await recreateAuditUser({
+      supabaseUrl,
+      anonKey,
+      accessToken,
+      orgId,
+      storeId,
+      email: userEmail,
+      password: userPassword,
+      role: 'USER',
+      name: '[AUDIT] User',
+      outputDir: params.outputDir,
+      outputPrefix: 'invoke.user',
+    });
 
     // Basic sign-in sanity (avoid running E2E with broken credentials).
     const sanityClient = createClient(supabaseUrl, anonKey);
@@ -282,6 +449,9 @@ export const ensureAuditUsers = async (params: {
       if (error) throw new Error(`${label} sign-in failed after provisioning: ${error.message}`);
       await sanityClient.auth.signOut();
     };
+    if (hasSupervisorCreds) {
+      await sanity(supervisorEmail, supervisorPassword, 'SUPERVISOR');
+    }
     await sanity(managerEmail, managerPassword, 'MANAGER');
     await sanity(userEmail, userPassword, 'USER');
 
@@ -299,3 +469,20 @@ export const ensureAuditUsers = async (params: {
 
   return out;
 };
+
+const main = async () => {
+  const repoRoot = process.cwd();
+  const outputDir =
+    process.env.AUDIT_OUTPUT_DIR || path.join(repoRoot, 'output', 'audit', '_adhoc', 'bootstrap_users', new Date().toISOString().replace(/[:.]/g, '-'));
+  const result = await ensureAuditUsers({ repoRoot, outputDir });
+  // eslint-disable-next-line no-console
+  console.log(JSON.stringify(result, null, 2));
+  process.exit(result.ok ? 0 : 1);
+};
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  void main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}

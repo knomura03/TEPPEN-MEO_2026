@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
+import { ensureAuditUsers } from './bootstrapUsers';
 import { loadDotEnvFile, resolveRepoRoot } from './lib';
 
 type SessionInfo = {
@@ -129,6 +130,14 @@ const main = async () => {
   const supervisorPassword = requireValue(auditEnv.AUDIT_SUPERVISOR_PASSWORD || auditEnv.AUDIT_MANAGER_PASSWORD, 'AUDIT_SUPERVISOR_PASSWORD または AUDIT_MANAGER_PASSWORD');
   const managerEmail = requireValue(auditEnv.AUDIT_MANAGER_EMAIL, 'AUDIT_MANAGER_EMAIL');
   const managerPassword = requireValue(auditEnv.AUDIT_MANAGER_PASSWORD, 'AUDIT_MANAGER_PASSWORD');
+
+  const bootstrapResult = await ensureAuditUsers({
+    repoRoot,
+    outputDir: path.join(repoRoot, 'output', 'audit', '_adhoc', 'api_user_provisioning_bootstrap'),
+  });
+  if (!bootstrapResult.ok) {
+    throw new Error(`監査ユーザー再生成に失敗: ${bootstrapResult.error || 'unknown error'}`);
+  }
 
   const checks: CheckResult[] = [];
 

@@ -78,8 +78,16 @@ const commitAndPushAuditLog = async (params: {
     command: 'git',
     args: ['diff', '--cached', '--name-only', '--', filePath],
   });
-  if (diff.exitCode !== 0) return;
-  if (!diff.stdout.trim()) return;
+  if (diff.exitCode !== 0) {
+    // eslint-disable-next-line no-console
+    console.log('[audit] git diff --cached failed. docs/14 の自動commitをスキップします。');
+    return;
+  }
+  if (!diff.stdout.trim()) {
+    // eslint-disable-next-line no-console
+    console.log('[audit] docs/14_PHASE_AUDIT_LOG.md に差分がないため自動commitをスキップします。');
+    return;
+  }
 
   const label = params.ok ? 'PASS' : 'FAIL';
   const commit = await runCommand({
@@ -290,7 +298,12 @@ const main = async (): Promise<void> => {
   await writeJsonFile(path.join(outputDir, 'phaseAudit.summary.json'), summary);
 
   await appendPhaseAuditLog({ repoRoot, summary });
-  await commitAndPushAuditLog({ repoRoot, phase, ok });
+  if (process.env.AUDIT_AUTO_COMMIT === '1') {
+    await commitAndPushAuditLog({ repoRoot, phase, ok });
+  } else {
+    // eslint-disable-next-line no-console
+    console.log('[audit] AUDIT_AUTO_COMMIT!=1 のため docs/14 の自動commit/pushをスキップしました。');
+  }
 
   process.exit(ok ? 0 : 1);
 };

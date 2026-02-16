@@ -814,3 +814,12 @@
 - preflight(users): SKIPPED
 - C(e2e): SKIPPED
 
+## 2026-02-16 FULL AUDIT PASS
+
+- command: `npm run audit:full`
+- output: `output/audit/full/20260216_144007`
+- result: `21/21 steps passed`（static / db / edge / api / e2e / deploy-ready）
+- deploy-ready: `ready=true`（blockingIssues=0）
+- note:
+  - 手動監査では `AUDIT_AUTO_COMMIT=0`（デフォルト）を利用し、自動commit/pushは実行しません。
+  - `AUDIT_AUTO_COMMIT=1` を明示した場合のみ、`audit:phase*` で `docs/14` の自動commit/pushが有効です。

@@ -73,3 +73,16 @@
 - まずは `組織から外す` を使い、`完全削除` は最終手段にしてください。
 - メール不達時はすぐに `招待URLコピー` を使って運用停止を防いでください。
 - 監査用ユーザーは名前に `[AUDIT]` 接頭辞を付け、定期的に整理してください。
+
+## 9. 監査ユーザー再生成ルール（2026-02-16 追加）
+- 監査実行前は毎回 `npm run audit:bootstrap:users` を実行します。
+- 再生成は以下の順で実施します。
+  1. 同メールの既存ユーザーを検索
+  2. 見つかった場合は `admin-user-delete`（`FULL_DELETE` 2段階確認）で削除
+  3. `admin-create-user` で再作成（`orgId + storeId` 必須）
+- これにより、`Invalid login credentials` や古い所属情報の混入を防ぎます。
+
+## 10. 監査系コマンド
+- 事前整備: `npm run audit:bootstrap:users`
+- API監査（自己修復込み）: `npm run audit:api:user-provisioning`
+- フル監査: `npm run audit:full`

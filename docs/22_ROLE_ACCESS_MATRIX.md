@@ -72,3 +72,12 @@
 - `management_units` / `management_unit_supervisors` はADMINのみ参照/更新可
 - `organizations` / `stores` / `memberships` のアクセス境界は管理ユニット関数で制御
 - `memberships` の変更は原則Edge Function経由（クライアント直更新を避ける）
+
+## 9) 監査シナリオ対応（2026-02-16）
+| 監査シナリオ | 対応コマンド |
+|---|---|
+| 既存メール新規招待拒否 | `npm run audit:api:user-provisioning` / `npm run audit:e2e:existing-email-rejected` |
+| ロール別UI表示（ADMIN/SUPERVISOR/MANAGER/USER） | `npm run audit:e2e:users` |
+| 複数店舗選択時の制御 | `npm run audit:e2e:header-multiselect` / `npm run audit:e2e:multi-store-db-views` |
+| 単一店舗時のプラットフォーム操作可否 | `npm run audit:e2e:platform-single-store` |
+| 店舗管理（USER編集可否） | `npm run audit:e2e:store-management-user-edit` |

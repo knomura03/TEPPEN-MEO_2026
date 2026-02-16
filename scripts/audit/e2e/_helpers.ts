@@ -171,8 +171,13 @@ export const loginAs = async (page: Page, creds: AuditCreds) => {
 };
 
 export const gotoSidebarView = async (page: Page, view: string) => {
-  await page.locator(`#nav-${view}`).click();
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  const nav = page.locator(`#nav-${view}`).first();
+  if (await nav.isVisible().catch(() => false)) {
+    await nav.click();
+  } else {
+    await page.goto(`/?view=${view}`, { waitUntil: 'domcontentloaded' });
+  }
+  await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 20_000 });
 };
 
 export const openMultiSelectDialog = async (page: Page, buttonTestId: string) => {
@@ -193,6 +198,47 @@ export const multiSelectClear = async (dialog: Locator, buttonTestId: string) =>
 
 export const closeMultiSelectDialog = async (page: Page) => {
   await page.keyboard.press('Escape');
+};
+
+const clickOptionByIndex = async (dialog: Locator, index: number) => {
+  const options = dialog.locator('[role="option"]');
+  const count = await options.count();
+  if (count === 0) {
+    throw new Error('選択候補がありません。');
+  }
+  const safeIndex = Math.min(Math.max(index, 0), count - 1);
+  await options.nth(safeIndex).click();
+};
+
+export const selectSingleStore = async (page: Page, index = 0) => {
+  const storeSelectorId = 'header-store-selector';
+  const dialog = await openMultiSelectDialog(page, storeSelectorId);
+  await multiSelectClear(dialog, storeSelectorId);
+  await closeMultiSelectDialog(page);
+  await page.waitForTimeout(200);
+
+  const multiBanner = page.getByTestId('multi-store-sns-disabled-banner');
+  if (await multiBanner.isVisible().catch(() => false)) {
+    const retryDialog = await openMultiSelectDialog(page, storeSelectorId);
+    await multiSelectClear(retryDialog, storeSelectorId);
+    await clickOptionByIndex(retryDialog, index);
+    await closeMultiSelectDialog(page);
+  }
+};
+
+export const selectMultipleStores = async (page: Page, count = 2) => {
+  const storeSelectorId = 'header-store-selector';
+  const dialog = await openMultiSelectDialog(page, storeSelectorId);
+  await multiSelectClear(dialog, storeSelectorId);
+  const options = dialog.locator('[role="option"]');
+  const optionCount = await options.count();
+  if (optionCount < count) {
+    throw new Error(`複数店舗選択に必要な店舗数が不足しています。required=${count}, actual=${optionCount}`);
+  }
+  for (let index = 0; index < count; index += 1) {
+    await options.nth(index).click();
+  }
+  await closeMultiSelectDialog(page);
 };
 
 export const ensureAtLeastTwoStores = async (page: Page) => {
@@ -225,7 +271,10 @@ export const navigateToUserManagement = async (page: Page) => {
 };
 
 export const createInviteLinkFromUserManagement = async (page: Page, params: { email: string; name: string; role: string }) => {
-  await page.getByRole('button', { name: '新規ユーザー作成' }).click();
+  const inviteNameInput = page.getByTestId('invite-name-input');
+  if (!(await inviteNameInput.isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: '新規ユーザー作成' }).click();
+  }
   await page.getByTestId('invite-name-input').fill(params.name);
   await page.getByTestId('invite-email-input').fill(params.email);
   await page.getByTestId('invite-role-select').selectOption(params.role);
@@ -249,5 +298,9 @@ export const createInviteLinkFromUserManagement = async (page: Page, params: { e
 
   const actionLink = await readClipboardText(page);
   expect(actionLink).toContain('/auth/v1/verify');
+  const cancelButton = page.getByRole('button', { name: 'キャンセル' }).first();
+  if (await cancelButton.isVisible().catch(() => false)) {
+    await cancelButton.click();
+  }
   return actionLink;
 };

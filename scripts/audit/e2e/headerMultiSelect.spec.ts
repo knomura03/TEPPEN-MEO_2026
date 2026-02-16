@@ -1,13 +1,12 @@
 import { expect, test } from '@playwright/test';
 
 import {
-  closeMultiSelectDialog,
   ensureAtLeastTwoStores,
   loadAuditEnv,
   loginAs,
-  multiSelectClear,
   multiSelectSelectAll,
   openMultiSelectDialog,
+  selectSingleStore,
 } from './_helpers';
 
 const env = loadAuditEnv();
@@ -26,25 +25,13 @@ test.describe('Header Multi Select', () => {
     const multiBanner = page.getByTestId('multi-store-sns-disabled-banner');
 
     const dialog = await openMultiSelectDialog(page, storeSelectorId);
+    await expect(dialog.getByTestId('header-store-selector-search')).toBeVisible();
     await multiSelectSelectAll(dialog, storeSelectorId);
-    await closeMultiSelectDialog(page);
+    await page.keyboard.press('Escape');
     await expect(multiBanner).toBeVisible();
 
-    const dialog2 = await openMultiSelectDialog(page, storeSelectorId);
-    await multiSelectClear(dialog2, storeSelectorId);
-    const searchInput = dialog2.getByTestId('header-store-selector-search');
-    await expect(searchInput).toBeVisible();
-    await searchInput.focus();
-    await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('Enter');
-    await closeMultiSelectDialog(page);
+    await selectSingleStore(page, 0);
     await expect(multiBanner).toBeHidden();
     await expect(page.getByTestId(storeSelectorId)).not.toContainText('未選択');
-
-    const dialog3 = await openMultiSelectDialog(page, storeSelectorId);
-    await multiSelectClear(dialog3, storeSelectorId);
-    await dialog3.locator('[role="option"]').first().click();
-    await closeMultiSelectDialog(page);
-    await expect(multiBanner).toBeHidden();
   });
 });

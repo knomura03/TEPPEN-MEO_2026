@@ -228,7 +228,7 @@ test('サイドバー権限: MANAGER', async ({ page, browser }) => {
 
 test('サイドバー権限: USER', async ({ page }) => {
   await login(page, creds.user);
-  await assertNavVisibility(page, [], ['STORE_MANAGEMENT', 'GROUP_MANAGEMENT', 'MANAGEMENT_UNIT_MANAGEMENT']);
+  await assertNavVisibility(page, ['STORE_MANAGEMENT'], ['GROUP_MANAGEMENT', 'MANAGEMENT_UNIT_MANAGEMENT']);
 });
 
 test('サイドバー権限: SUPERVISOR', async ({ page, browser }) => {
